@@ -4,6 +4,9 @@ import { useUser, useAuth } from '@clerk/clerk-expo';
 import { Picker } from '@react-native-picker/picker';
 import * as ImagePicker from 'expo-image-picker';
 import { Pencil, X, Camera, LogOut } from 'lucide-react-native';
+import { COLORS } from '../styles/colors';
+import { Check, Edit2, Upload } from 'lucide-react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 // Define the states available for selection
 const availableStates = [
@@ -24,6 +27,8 @@ export default function ProfileSettingsScreen() {
     const [profileImageUri, setProfileImageUri] = useState<string | null>(null); // Local URI for display/upload
     const [profileImageBase64, setProfileImageBase64] = useState<string | null>(null); // Store base64
     const [initialImageUri, setInitialImageUri] = useState<string | null>(null); // To track if image changed
+    const [newImageUri, setNewImageUri] = useState<string | null>(null); // URI of newly selected image
+    const [newImageBlob, setNewImageBlob] = useState<Blob | null>(null); // Blob for upload
 
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
@@ -53,95 +58,35 @@ export default function ProfileSettingsScreen() {
 
     // --- Updated Image Picker Logic ---
     const pickImage = async () => {
-        if (Platform.OS === 'web') {
-             // Web: Directly launch library, skip permissions and camera option
-             try {
-                 let result = await ImagePicker.launchImageLibraryAsync({
-                    mediaTypes: ImagePicker.MediaTypeOptions.Images,
-                    allowsEditing: true,
-                    aspect: [1, 1],
-                    quality: 0.7,
-                    base64: true,
-                });
-                handleImageResult(result);
-            } catch (error) {
-                handleImageError(error);
-            }
-        } else {
-            // Native: Request permissions and show options alert
-            const cameraPermission = await ImagePicker.requestCameraPermissionsAsync();
-            const libraryPermission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-            if (cameraPermission.status !== 'granted' || libraryPermission.status !== 'granted') {
-                Alert.alert('Permission required', 'Camera and Media Library permissions are needed to select an image.');
-                return;
-            }
-
-            // Ask user for source
-            Alert.alert(
-                "Select Image Source",
-                "Choose where to get the image from:",
-                [
-                    {
-                        text: "Take Photo",
-                        onPress: async () => {
-                            try {
-                                let result = await ImagePicker.launchCameraAsync({
-                                    allowsEditing: true,
-                                    aspect: [1, 1],
-                                    quality: 0.7,
-                                    base64: true, // Request base64 again
-                                });
-                                handleImageResult(result);
-                            } catch (error) {
-                                handleImageError(error);
-                            }
-                        }
-                    },
-                    {
-                        text: "Choose from Library",
-                        onPress: async () => {
-                            try {
-                                let result = await ImagePicker.launchImageLibraryAsync({
-                                    mediaTypes: ImagePicker.MediaTypeOptions.Images,
-                                    allowsEditing: true,
-                                    aspect: [1, 1],
-                                    quality: 0.7,
-                                    base64: true, // Request base64 again
-                                });
-                                handleImageResult(result);
-                            } catch (error) {
-                                handleImageError(error);
-                            }
-                        }
-                    },
-                    {
-                        text: "Cancel",
-                        style: "cancel"
-                    }
-                ]
-            );
+        const permissions = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!permissions.granted) {
+            Alert.alert('Permission required', 'Media Library permission is needed to select an image.');
+            return;
         }
-    };
 
-    // Helper function to handle result from either picker
-    const handleImageResult = (result: ImagePicker.ImagePickerResult) => {
+        let result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.7,
+        });
+
         if (!result.canceled && result.assets && result.assets.length > 0) {
             const asset = result.assets[0];
-            setProfileImageUri(asset.uri); // Update local display URI
-            setProfileImageBase64(asset.base64 ?? null); // Store base64
-        } else {
-            console.log('Image selection cancelled or failed');
+            setNewImageUri(asset.uri);
+            // Fetch the blob data needed for Clerk upload
+            try {
+                const response = await fetch(asset.uri);
+                const blob = await response.blob();
+                setNewImageBlob(blob);
+            } catch (fetchError) {
+                console.error("Error fetching image blob:", fetchError);
+                Alert.alert("Error", "Could not prepare image for upload.");
+                setNewImageUri(null);
+                setNewImageBlob(null);
+            }
         }
     };
-
-     // Helper function to handle errors from either picker
-    const handleImageError = (error: any) => {
-        console.error("ImagePicker Error: ", error);
-        setError('Failed to pick image. Please try again.');
-        Alert.alert('Error', 'Could not load the image.');
-    };
-    // --- End Updated Image Picker Logic ---
 
     // --- Updated Save Changes Logic ---
     const handleSaveChanges = async () => {
@@ -159,49 +104,15 @@ export default function ProfileSettingsScreen() {
 
         try {
             // --- Step 1: Handle Profile Image Update ---
-            if (profileImageBase64) { // If we have new base64 data
-                console.log("Profile image changed, attempting update with base64...");
-                try {
-                    // --- Determine MIME Type (Still useful for potential future backend upload) ---
-                    let mimeType = 'image/jpeg'; // Default
-                    if (profileImageUri) { // Get extension from URI if available
-                         const extension = profileImageUri.split('.').pop()?.toLowerCase();
-                         if (extension === 'png') mimeType = 'image/png';
-                         else if (extension === 'jpg' || extension === 'jpeg') mimeType = 'image/jpeg';
-                         else if (extension === 'gif') mimeType = 'image/gif';
-                         else if (extension === 'webp') mimeType = 'image/webp';
-                         console.log(`Determined MIME type: ${mimeType} for extension: ${extension}`);
-                    } else {
-                         console.warn("Cannot determine exact MIME type without URI, defaulting to image/jpeg");
-                    }
-
-                    /* // Remove ArrayBuffer/Blob approach
-                    // Fetch the image data as an ArrayBuffer
-                    const response = await fetch(profileImageUri);
-                    const imageBuffer = await response.arrayBuffer();
-                    // Create a new Blob with the correct MIME type
-                    const typedBlob = new Blob([imageBuffer], { type: mimeType });
-                    */
-
-                    // Try using the base64 string directly with setProfileImage
-                    // Prepend the data URI scheme which might be required by some APIs
-                    // Note: Clerk might *still* not support this directly from client.
-                    const dataUri = `data:${mimeType};base64,${profileImageBase64}`;
-                    console.log(`Attempting to upload image with data URI prefix (length: ${dataUri.length})`);
-
-                    // *** This is speculative - Clerk might reject this format ***
-                    await user.setProfileImage({ file: dataUri });
-                    console.log("Profile image updated successfully on Clerk (using base64/data URI).");
-                    setInitialImageUri(profileImageUri); // Update initial URI tracker on success
-                    setProfileImageBase64(null); // Clear base64 after successful upload attempt
-
-                } catch (imgErr: any) {
-                    console.error("Error updating profile image:", imgErr);
-                    setError(`Failed to update profile image: ${imgErr.errors?.[0]?.message || imgErr.message || 'Unknown error'}`); // Try to get detailed Clerk error
-                    Alert.alert("Image Update Error", `Failed to update profile image: ${imgErr.errors?.[0]?.message || imgErr.message || 'Please try again.'}`);
-                    imageUpdateSuccess = false; // Mark image update as failed
-                    // Don't clear base64 on failure, user might retry
-                }
+            if (newImageBlob) {
+                console.log("Profile image changed, attempting update with blob...");
+                await user.setProfileImage({
+                    file: newImageBlob,
+                });
+                console.log("Profile image updated successfully on Clerk (using blob).");
+                setInitialImageUri(newImageUri); // Update initial URI tracker on success
+                setNewImageUri(null); // Clear temporary states after successful upload
+                setNewImageBlob(null);
             }
 
             // --- Step 2: Handle Text Field Updates ---
@@ -218,7 +129,7 @@ export default function ProfileSettingsScreen() {
                     console.log("Updating user profile metadata/name with:", updates);
                     await user.update(updates);
                     Alert.alert("Success", "Profile updated successfully!");
-                 } else if (!profileImageBase64) {
+                 } else if (!newImageBlob) {
                     console.log("No changes detected to save.");
                  } else {
                      Alert.alert("Success", "Profile image updated successfully!");
@@ -280,7 +191,7 @@ export default function ProfileSettingsScreen() {
                 <View style={styles.content}>
                     <TouchableOpacity onPress={pickImage} style={styles.profileImageContainer}>
                         <Image
-                            source={{ uri: profileImageUri || 'https://via.placeholder.com/150' }}
+                            source={{ uri: newImageUri || profileImageUri || 'https://via.placeholder.com/150' }}
                             style={styles.profileImage}
                         />
                         <View style={styles.cameraOverlay}>

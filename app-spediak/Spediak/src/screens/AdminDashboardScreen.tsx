@@ -29,10 +29,11 @@ interface UserData {
     id: string;
     name: string;
     email: string;
+    username: string | null; // Add username field
     createdAt: string | Date;
-    state: string | null; // Added back
-    profilePhoto: string | null; // Added back
-    inspectionCount: number; // Added inspection count
+    state: string | null;
+    profilePhoto: string | null;
+    inspectionCount: number;
 }
 
 // API Response Interfaces
@@ -321,7 +322,6 @@ const UserList: React.FC = () => {
     const renderUserItem = ({ item }: { item: UserData }) => (
         <TouchableOpacity style={styles.userItemContainer} onPress={() => Alert.alert('User Profile', `User ID: ${item.id}`)}>
             <View style={styles.userItemContent}>
-                 {/* User Image */}
                  <View style={styles.userListImageContainer}>
                     {item.profilePhoto ? (
                         <Image source={{ uri: item.profilePhoto }} style={styles.userListImage} />
@@ -331,14 +331,12 @@ const UserList: React.FC = () => {
                          </View>
                     )}
                 </View>
-                {/* User Info */}
                 <View style={styles.userInfoContainer}>
-                    <Text style={styles.userNameText}>{item.name}</Text>
+                    <Text style={styles.userNameText}>{item.name || 'Unknown Name'}</Text>
                     <Text style={styles.userEmailText}>{item.email}</Text>
+                    <Text style={styles.userDetailText}>Username: {item.username || 'N/A'}</Text>
                     <Text style={styles.userDetailText}>State: {item.state || 'N/A'}</Text>
-                    <Text style={styles.userDetailText}>Statements: {item.inspectionCount}</Text> 
                 </View>
-                 <Text style={styles.userDateText}>Joined: {new Date(item.createdAt).toLocaleDateString()}</Text>
              </View>
          </TouchableOpacity>
     );
@@ -649,12 +647,6 @@ const styles = StyleSheet.create({
         fontSize: 13,
         color: '#777',
         marginTop: 2, // Add small space between detail lines
-    },
-    userDateText: {
-        fontSize: 12,
-        color: '#999',
-        textAlign: 'right',
-        marginLeft: 0, 
     },
     userSearchContainer: {
         flexDirection: 'row',

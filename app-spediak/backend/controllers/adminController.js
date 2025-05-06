@@ -115,7 +115,7 @@ const getAllUsers = async (req, res) => {
     // Query for paginated user data WITH inspection count
     const dataQuery = `
       SELECT 
-        u.clerk_id AS id, u.name, u.email, u.created_at AS "createdAt", 
+        u.clerk_id AS id, u.name, u.email, u.username, u.created_at AS "createdAt",
         u.state, u.profile_photo_url AS "profilePhoto",
         (SELECT COUNT(*) FROM inspections WHERE user_id = u.clerk_id) AS "inspectionCount"
       ${baseQuery}
