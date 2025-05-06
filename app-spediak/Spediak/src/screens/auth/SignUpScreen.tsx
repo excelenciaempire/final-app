@@ -17,11 +17,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../styles/colors';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AuthStackParamList } from '../../navigation/AuthNavigator';
+import { useNavigation } from '@react-navigation/native';
 
 type SignUpScreenProps = NativeStackScreenProps<AuthStackParamList, 'SignUp'>;
 
 const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
   const { isLoaded, signUp, setActive } = useSignUp();
+  const navigationNative = useNavigation();
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState(''); // Assuming full name is first + last
@@ -33,14 +35,19 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
   const [code, setCode] = useState('');
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [confirmPasswordVisible, setConfirmPasswordVisible] = useState(false);
+  const [username, setUsername] = useState('');
 
   // Start the sign up process.
   const onSignUpPress = async () => {
-    if (!isLoaded) {
+    if (!isLoaded || loading) {
       return;
     }
     if (password !== confirmPassword) {
         Alert.alert('Error', 'Passwords do not match.');
+        return;
+    }
+    if (!firstName || !lastName || !emailAddress || !password || !username) {
+        Alert.alert("Missing Information", "Please fill in all fields.");
         return;
     }
 
@@ -51,6 +58,7 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
         lastName,
         emailAddress,
         password,
+        unsafeMetadata: { username: username.trim() },
       });
 
       // Send email verification code
@@ -67,7 +75,7 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
 
   // Verify the email code
   const onPressVerify = async () => {
-    if (!isLoaded) {
+    if (!isLoaded || loading) {
       return;
     }
     setLoading(true);
@@ -132,7 +140,7 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
                       onChangeText={setLastName}
                   />
               </View>
-              <View style={styles.inputContainer}>
+               <View style={styles.inputContainer}>
                   <Ionicons name="mail-outline" size={20} color={COLORS.darkText} style={styles.inputIcon} />
                   <TextInput
                   style={styles.input}
@@ -144,7 +152,7 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
                   onChangeText={setEmailAddress}
                   />
               </View>
-              <View style={styles.inputContainer}>
+               <View style={styles.inputContainer}>
                    <Ionicons name="lock-closed-outline" size={20} color={COLORS.darkText} style={styles.inputIcon} />
                   <TextInput
                   style={styles.input}
@@ -171,6 +179,16 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
                    <TouchableOpacity onPress={() => setConfirmPasswordVisible(!confirmPasswordVisible)} style={styles.eyeIconContainer}>
                       <Ionicons name={confirmPasswordVisible ? "eye-off-outline" : "eye-outline"} size={20} color={COLORS.darkText} />
                   </TouchableOpacity>
+              </View>
+               <View style={styles.inputContainer}>
+                   <Ionicons name="person-outline" size={20} color={COLORS.darkText} style={styles.inputIcon} />
+                  <TextInput
+                      style={styles.input}
+                      placeholder="Username"
+                      placeholderTextColor={COLORS.darkText}
+                      value={username}
+                      onChangeText={setUsername}
+                  />
               </View>
 
               <TouchableOpacity style={styles.button} onPress={onSignUpPress} disabled={loading}>

@@ -3,7 +3,7 @@ import { View, Text, Button, Image, TextInput, StyleSheet, Alert, ScrollView, Ac
 import * as ImagePicker from 'expo-image-picker';
 import { useAuth, useUser } from "@clerk/clerk-expo";
 import axios from 'axios';
-import { ImagePlus, Send, BotMessageSquare, RefreshCcw, Mic, MicOff, Check, Edit3 } from 'lucide-react-native';
+import { ImagePlus, Send, BotMessageSquare, RefreshCcw, Mic, MicOff, Check, Edit3, Camera } from 'lucide-react-native';
 import DdidModal from '../../src/components/DdidModal';
 import { Audio, InterruptionModeIOS, InterruptionModeAndroid } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
@@ -135,74 +135,56 @@ export default function NewInspectionScreen() {
     }, [user]);
     // --- End user state fetching ---
 
-    const pickImage = async () => {
-        if (Platform.OS === 'web') {
-            // Web: Directly launch library, skip permissions and camera option
-            try {
-                let result = await ImagePicker.launchImageLibraryAsync({
-                   mediaTypes: ImagePicker.MediaTypeOptions.Images,
-                   allowsEditing: true,
-                   aspect: [1, 1],
-                   quality: 0.8,
-                   base64: true,
-               });
-               handleImageResult(result);
-           } catch (error) {
-               handleImageError(error);
-           }
-        } else {
-            // Native: Request permissions and show options alert
+    // --- Refactored Image Picking Logic ---
+    const requestPermissions = async (): Promise<boolean> => {
+        if (Platform.OS !== 'web') {
             const cameraPermission = await ImagePicker.requestCameraPermissionsAsync();
             const libraryPermission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-
             if (cameraPermission.status !== 'granted' || libraryPermission.status !== 'granted') {
-                Alert.alert('Permission required', 'Camera and Media Library permissions are needed to select an image.');
-                return;
+                Alert.alert('Permission required', 'Camera and Media Library permissions are needed.');
+                return false;
             }
+        }
+        // Web doesn't require explicit permissions via this API for library access
+        return true;
+    };
 
-            Alert.alert(
-                "Select Image Source",
-                "Choose where to get the image from:",
-                [
-                    {
-                        text: "Take Photo",
-                        onPress: async () => {
-                            try {
-                                let result = await ImagePicker.launchCameraAsync({
-                                    allowsEditing: true,
-                                    aspect: [1, 1],
-                                    quality: 0.8,
-                                    base64: true,
-                                });
-                                handleImageResult(result);
-                            } catch (error) {
-                                handleImageError(error);
-                            }
-                        }
-                    },
-                    {
-                        text: "Choose from Library",
-                        onPress: async () => {
-                            try {
-                                 let result = await ImagePicker.launchImageLibraryAsync({
-                                    mediaTypes: ImagePicker.MediaTypeOptions.Images,
-                                    allowsEditing: true,
-                                    aspect: [1, 1],
-                                    quality: 0.8,
-                                    base64: true,
-                                });
-                                handleImageResult(result);
-                            } catch (error) {
-                                handleImageError(error);
-                            }
-                        }
-                    },
-                    {
-                        text: "Cancel",
-                        style: "cancel"
-                    }
-                ]
-            );
+    const launchCamera = async () => {
+        const hasPermission = await requestPermissions();
+        if (!hasPermission) return;
+
+        try {
+            let result = await ImagePicker.launchCameraAsync({
+                allowsEditing: true,
+                aspect: [1, 1],
+                quality: 0.8,
+                base64: true,
+            });
+            handleImageResult(result);
+        } catch (error) {
+            handleImageError(error);
+        }
+    };
+
+    const launchLibrary = async () => {
+        // On native, ensure permissions are granted before launching library
+        // On web, permissions are not needed for library access here
+        if (Platform.OS !== 'web') {
+             const hasPermission = await requestPermissions();
+             if (!hasPermission) return;
+        }
+
+        try {
+            let result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                allowsEditing: true,
+                aspect: [1, 1],
+                quality: 0.8,
+                base64: true,
+            });
+            handleImageResult(result);
+        } catch (error) {
+            handleImageError(error);
         }
     };
 
@@ -371,11 +353,15 @@ export default function NewInspectionScreen() {
                 const receivedDdid = ddidResponse.data.ddid;
                 console.log("[handleGenerateFinalDdid] Final DDID received:", receivedDdid);
                 setGeneratedDdid(receivedDdid);
+
+                setIsGeneratingFinalDdid(false);
+
                 setShowDdidModal(true);
 
                 await saveInspection(receivedDdid, cloudinaryUrl);
 
             } else {
+                setIsGeneratingFinalDdid(false);
                 throw new Error("Invalid response structure from DDID server.");
             }
 
@@ -384,7 +370,6 @@ export default function NewInspectionScreen() {
             const errorMessage = err.response?.data?.message || err.message || "Failed to generate final statement";
             setError(errorMessage);
             Alert.alert("Statement Generation Failed", errorMessage);
-        } finally {
             setIsGeneratingFinalDdid(false);
         }
     };
@@ -649,6 +634,7 @@ export default function NewInspectionScreen() {
         }
     };
 
+    // --- Loading Indicator Logic ---
     const isLoading = isUploading || isGeneratingPreDescription || isGeneratingFinalDdid;
     const loadingText = isUploading ? 'Uploading Image...' :
                        isGeneratingPreDescription ? 'Analyzing Defect...' :
@@ -674,7 +660,7 @@ export default function NewInspectionScreen() {
                         onDrop={handleDrop as any}
                         style={webDropZoneStyle}
                     >
-                        <TouchableOpacity style={styles.imagePicker} onPress={pickImage}>
+                        <TouchableOpacity style={styles.imagePicker} onPress={launchLibrary}>
                             {imageUri ? (
                                 <Image source={{ uri: imageUri }} style={styles.imagePreview} />
                             ) : (
@@ -686,7 +672,7 @@ export default function NewInspectionScreen() {
                         </TouchableOpacity>
                     </div>
                  ) : (
-                    <TouchableOpacity style={styles.imagePicker} onPress={pickImage}>
+                    <TouchableOpacity style={styles.imagePicker} onPress={launchLibrary}>
                         {imageUri ? (
                             <Image source={{ uri: imageUri }} style={styles.imagePreview} />
                         ) : (
@@ -695,6 +681,9 @@ export default function NewInspectionScreen() {
                                 <Text style={styles.imagePlaceholderText}>Tap to select image</Text>
                             </View>
                         )}
+                        <TouchableOpacity style={styles.cameraIconTouchable} onPress={launchCamera}>
+                            <Camera size={28} color={COLORS.primary} />
+                        </TouchableOpacity>
                     </TouchableOpacity>
                  )}
 
@@ -713,19 +702,19 @@ export default function NewInspectionScreen() {
                         disabled={isTranscribing || isLoading}
                         >
                         {isRecording ? (
-                             <MicOff size={24} color="#dc3545" />
+                             <Mic size={24} color="#28a745" />
                         ) : isTranscribing ? (
-                             <ActivityIndicator size="small" color="#007bff" />
+                             <ActivityIndicator size="small" color={COLORS.primary} />
                         ) : (
-                             <Mic size={24} color="#007bff" />
+                             <MicOff size={24} color={COLORS.primary} />
                         )}
                     </TouchableOpacity>
                 </View>
 
                 <TouchableOpacity
-                    style={[styles.button, styles.analyzeButton, (!imageUri || isLoading) && styles.buttonDisabled]}
+                    style={[styles.button, styles.analyzeButton, (!imageBase64 || !initialDescription.trim() || isLoading) && styles.buttonDisabled]}
                     onPress={handleAnalyze}
-                    disabled={!imageUri || isLoading}
+                    disabled={!imageBase64 || !initialDescription.trim() || isLoading}
                 >
                     <Text style={styles.buttonText}>
                          {'Analyze Defect'}
@@ -820,6 +809,7 @@ const styles = StyleSheet.create({
              native: { width: width * 0.85, },
              web: { maxWidth: '100%', }
          }),
+        position: 'relative',
     },
     imagePreview: { width: '100%', height: '100%', borderRadius: 8, },
     imagePlaceholder: { justifyContent: 'center', alignItems: 'center', },
@@ -944,5 +934,18 @@ const styles = StyleSheet.create({
         fontSize: 15,
         fontWeight: '500',
         textAlign: 'center',
-    }
+    },
+    cameraIconTouchable: {
+        position: 'absolute',
+        bottom: 10,
+        right: 10,
+        backgroundColor: 'rgba(255, 255, 255, 0.8)',
+        padding: 8,
+        borderRadius: 50,
+        elevation: 3,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.2,
+        shadowRadius: 1,
+    },
 });

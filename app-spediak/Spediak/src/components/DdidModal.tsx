@@ -65,8 +65,7 @@ const DdidModal: React.FC<DdidModalProps> = ({
                 <View style={styles.modalView}>
                     <View style={styles.modalHeader}>
                         <View style={styles.headerUserInfo}>
-                           <Text style={styles.headerUserName} numberOfLines={1}>{userName || 'Inspection'} Report</Text>
-                           {userEmail && <Text style={styles.headerUserEmail} numberOfLines={1}>{userEmail}</Text>}
+                           <Text style={styles.headerUserName} numberOfLines={1}>Statement</Text>
                         </View>
                         <TouchableOpacity onPress={onClose} style={styles.closeButton}>
                             <X size={24} color="#6c757d" />
@@ -74,9 +73,11 @@ const DdidModal: React.FC<DdidModalProps> = ({
                     </View>
 
                     <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollViewContent}>
+                        {/* REMOVE Image display from final modal
                         {imageUrl && (
                             <Image source={{ uri: imageUrl }} style={styles.modalImage} resizeMode="contain" />
                         )}
+                        */}
                         <View style={styles.sectionContainer}>
                              <Text style={styles.sectionTitle}>Generated Statement:</Text>
                              <Markdown style={markdownStyles}>

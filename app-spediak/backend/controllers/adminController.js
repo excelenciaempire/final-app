@@ -7,106 +7,140 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
+// Helper function to build WHERE clauses for search
+const buildSearchWhereClause = (searchFields, searchTerm) => {
+  if (!searchTerm || searchFields.length === 0) {
+    return { clause: '', params: [] };
+  }
+  const lowerSearchTerm = `%${searchTerm.toLowerCase()}%`;
+  const clauses = searchFields.map((field, index) => `LOWER(${field}) LIKE $${index + 1}`); // Start param index from 1
+  return {
+    clause: `WHERE (${clauses.join(' OR ')})`,
+    params: Array(searchFields.length).fill(lowerSearchTerm)
+  };
+};
+
+// GET All Inspections (Admin - Paginated, Searchable, Sortable)
 const getAllInspectionsWithUserDetails = async (req, res) => {
-  // IMPORTANT: Add admin authorization check here in a real application!
-  // For now, we proceed without checking if the caller is an admin.
+  // Pagination
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 15; // Default limit 15
+  const offset = (page - 1) * limit;
+
+  // Search
+  const searchQuery = req.query.search || '';
+  const inspectionSearchFields = ['i.description', 'i.ddid', 'u.name', 'u.email'];
+  const { clause: searchClause, params: searchParams } = buildSearchWhereClause(inspectionSearchFields, searchQuery);
+
+  // Sorting
+  const sortBy = req.query.sortBy || 'created_at'; // Default sort by creation date
+  const sortOrder = (req.query.sortOrder || 'desc').toUpperCase() === 'ASC' ? 'ASC' : 'DESC'; // Default DESC
+  // Whitelist valid sort columns to prevent SQL injection
+  const validSortColumns = { created_at: 'i.created_at', userName: 'u.name', userEmail: 'u.email' };
+  const orderByColumn = validSortColumns[sortBy] || 'i.created_at'; // Fallback to default
 
   try {
-    // 1. Fetch all inspections
-    console.log('[AdminInspections] Fetching all inspections...');
-    const inspectionResult = await pool.query('SELECT * FROM inspections ORDER BY created_at DESC');
-    const inspections = inspectionResult.rows;
-    console.log(`[AdminInspections] Found ${inspections.length} inspections.`);
+    // Base query joining inspections and users
+    const baseQuery = `
+      FROM inspections i
+      LEFT JOIN users u ON i.user_id = u.clerk_id
+      ${searchClause}
+    `;
 
-    if (inspections.length === 0) {
-      return res.json([]); // Return empty if no inspections
-    }
+    // Query to get total count for pagination
+    const countQuery = `SELECT COUNT(*) ${baseQuery}`;
+    console.log("[AdminInspections Count Query]:", countQuery, searchParams);
+    const totalResult = await pool.query(countQuery, searchParams);
+    const totalCount = parseInt(totalResult.rows[0].count, 10);
 
-    // 2. Get unique User IDs
-    const userIds = [...new Set(inspections.map(insp => insp.user_id).filter(id => id != null))];
-    console.log(`[AdminInspections] Found ${userIds.length} unique user IDs.`);
+    // Query to get paginated data
+    const dataQuery = `
+      SELECT 
+        i.id, i.user_id, i.image_url, i.description, i.ddid, i.state, i.created_at,
+        u.name AS "userName", u.email AS "userEmail", u.state AS "userState", u.profile_photo_url AS "userProfilePhoto"
+      ${baseQuery}
+      ORDER BY ${orderByColumn} ${sortOrder}
+      LIMIT $${searchParams.length + 1} OFFSET $${searchParams.length + 2}
+    `;
+    const dataParams = [...searchParams, limit, offset];
+    console.log("[AdminInspections Data Query]:", dataQuery, dataParams);
+    const dataResult = await pool.query(dataQuery, dataParams);
 
-    // 3. Fetch user details from Clerk for these IDs
-    let usersMap = new Map();
-    if (userIds.length > 0) {
-      console.log('[AdminInspections] Fetching user details from Clerk...');
-      try {
-        const users = await clerkClient.users.getUserList({ userId: userIds, limit: userIds.length });
-        console.log(`[AdminInspections] Fetched details for ${users.length} users from Clerk.`);
-        users.forEach(user => {
-          usersMap.set(user.id, {
-            name: user.fullName || `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'N/A',
-            email: user.primaryEmailAddress?.emailAddress || user.emailAddresses?.[0]?.emailAddress || 'N/A',
-            profilePhoto: user.imageUrl,
-            state: user.unsafeMetadata?.inspectionState || null
-          });
-        });
-      } catch (clerkError) {
-        console.error("[AdminInspections] Error fetching users from Clerk:", clerkError);
-        // Decide how to handle Clerk errors - return partial data or fail?
-        // For now, we'll continue and users might be missing details.
-      }
-    }
-
-    // 4. Combine data
-    const combinedData = inspections.map(insp => {
-      const userData = usersMap.get(insp.user_id);
-      return {
-        ...insp,
-        userName: userData?.name || 'Unknown',
-        userEmail: userData?.email || 'Unknown',
-        userProfilePhoto: userData?.profilePhoto || null, // Added user profile photo
-        userState: userData?.state || null // Added user state
-      };
+    res.json({
+      totalCount,
+      page,
+      limit,
+      totalPages: Math.ceil(totalCount / limit),
+      inspections: dataResult.rows
     });
 
-    return res.json(combinedData);
+  } catch (err) {
+    console.error('Error fetching all inspections (Admin):', err);
+    res.status(500).json({ message: 'Error fetching inspection data' });
+  }
+};
+
+// GET All Users (Admin - Paginated, Searchable)
+const getAllUsers = async (req, res) => {
+  // Pagination
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 15; // Default limit 15
+  const offset = (page - 1) * limit;
+
+  // Search
+  const searchQuery = req.query.search || '';
+  const userSearchFields = ['name', 'email']; // Fields in the users table
+  const { clause: searchClause, params: searchParams } = buildSearchWhereClause(userSearchFields, searchQuery);
+
+  // Sorting (Example: by name or join date)
+  const sortBy = req.query.sortBy || 'created_at'; // Default sort by creation date
+  const sortOrder = (req.query.sortOrder || 'asc').toUpperCase() === 'DESC' ? 'DESC' : 'ASC'; // Default ASC for names
+  const validSortColumns = { name: 'u.name', email: 'u.email', created_at: 'u.created_at' };
+  const orderByColumn = validSortColumns[sortBy] || 'u.created_at';
+
+  try {
+    // Base query for users
+    // We also join inspections to get the count
+    const baseQuery = `
+      FROM users u
+      ${searchClause}
+    `;
+
+    // Query for total count
+    const countQuery = `SELECT COUNT(*) ${baseQuery}`;
+    console.log("[AdminUsers Count Query]:", countQuery, searchParams);
+    const totalResult = await pool.query(countQuery, searchParams);
+    const totalCount = parseInt(totalResult.rows[0].count, 10);
+
+    // Query for paginated user data WITH inspection count
+    const dataQuery = `
+      SELECT 
+        u.clerk_id AS id, u.name, u.email, u.created_at AS "createdAt", 
+        u.state, u.profile_photo_url AS "profilePhoto",
+        (SELECT COUNT(*) FROM inspections WHERE user_id = u.clerk_id) AS "inspectionCount"
+      ${baseQuery}
+      ORDER BY ${orderByColumn} ${sortOrder}
+      LIMIT $${searchParams.length + 1} OFFSET $${searchParams.length + 2}
+    `;
+    const dataParams = [...searchParams, limit, offset];
+    console.log("[AdminUsers Data Query]:", dataQuery, dataParams);
+    const dataResult = await pool.query(dataQuery, dataParams);
+
+    res.json({
+        totalCount,
+        page,
+        limit,
+        totalPages: Math.ceil(totalCount / limit),
+        users: dataResult.rows
+    });
 
   } catch (err) {
-    console.error('[AdminInspections] Error fetching all inspections:', err);
-    return res.status(500).json({ message: 'Error fetching all inspection data' });
+    console.error('Error fetching all users (Admin):', err);
+    res.status(500).json({ message: 'Error fetching user data' });
   }
 };
 
-const getAllUsers = async (req, res) => {
-  // Assumes requireAdmin middleware has already run
-  console.log('[AdminUsers] Attempting to fetch all users from Clerk...');
-  try {
-    // 1. Fetch all users from Clerk
-    const userList = await clerkClient.users.getUserList({ limit: 500 });
-    console.log(`[AdminUsers] Fetched ${userList.length} users from Clerk.`);
-
-    // 2. Fetch inspection counts from database
-    let inspectionCountsMap = new Map(); // Initialize the map here, outside the inner try/catch
-    try {
-      console.log('[AdminUsers] Fetching inspection counts...');
-      const countResult = await pool.query('SELECT user_id, COUNT(*) AS inspection_count FROM inspections WHERE user_id IS NOT NULL GROUP BY user_id');
-      countResult.rows.forEach(row => {
-        inspectionCountsMap.set(row.user_id, parseInt(row.inspection_count, 10));
-      });
-      console.log(`[AdminUsers] Fetched counts for ${inspectionCountsMap.size} users.`);
-    } catch (dbError) {
-      console.error('[AdminUsers] Error fetching inspection counts:', dbError);
-      // inspectionCountsMap will remain empty if DB query fails, which is handled below
-    }
-
-    // 3. Format user data, including counts, state, and photo
-    const formattedUsers = userList.map(user => ({
-      id: user.id,
-      name: user.fullName || `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'N/A',
-      email: user.primaryEmailAddress?.emailAddress || user.emailAddresses?.[0]?.emailAddress || 'N/A',
-      createdAt: user.createdAt,
-      profilePhoto: user.imageUrl || null, 
-      state: user.unsafeMetadata?.inspectionState || null,
-      inspectionCount: inspectionCountsMap.get(user.id) || 0
-    }));
-
-    return res.json(formattedUsers);
-
-  } catch (error) {
-    console.error('[AdminUsers] Error fetching users from Clerk:', error);
-    return res.status(500).json({ message: 'Failed to fetch users', details: error.message });
-  }
-};
-
-module.exports = { getAllInspectionsWithUserDetails, getAllUsers }; 
+module.exports = {
+  getAllInspectionsWithUserDetails,
+  getAllUsers,
+}; 

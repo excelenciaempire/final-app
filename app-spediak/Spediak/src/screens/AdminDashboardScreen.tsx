@@ -8,6 +8,7 @@ import { COLORS } from '../styles/colors';
 import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
 import { Search, Eye, UserCircle } from 'lucide-react-native';
 import DdidModal from '../components/DdidModal';
+import { useDebounce } from '../hooks/useDebounce';
 
 // Interface for the combined data expected from the admin endpoint
 interface AdminInspectionData {
@@ -34,6 +35,16 @@ interface UserData {
     inspectionCount: number; // Added inspection count
 }
 
+// API Response Interfaces
+interface PaginatedResponse<T> {
+    totalCount: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+    inspections?: T[]; // Use specific keys based on endpoint
+    users?: T[];
+}
+
 // Component for the Inspection List
 const InspectionList: React.FC = () => {
     const [inspections, setInspections] = useState<AdminInspectionData[]>([]);
@@ -41,60 +52,88 @@ const InspectionList: React.FC = () => {
     const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
-    const [sortBy, setSortBy] = useState('newest');
+    const [sortBy, setSortBy] = useState('created_at');
+    const [sortOrder, setSortOrder] = useState('desc');
+    const [currentPage, setCurrentPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
+    const [isLoadingMore, setIsLoadingMore] = useState(false);
     const [selectedInspection, setSelectedInspection] = useState<AdminInspectionData | null>(null);
     const [isModalVisible, setIsModalVisible] = useState(false);
     const { getToken } = useAuth();
+    const debouncedSearchQuery = useDebounce(searchQuery, 500);
 
-    const fetchData = useCallback(async () => {
-        console.log('[AdminInspections] Fetching all inspections data...');
+    const fetchData = useCallback(async (page = 1, search = debouncedSearchQuery, sortCol = sortBy, sortDir = sortOrder, refreshing = false) => {
+        console.log(`[AdminInspections] Fetching page ${page}, search: '${search}', sort: ${sortCol} ${sortDir}`);
+        if (!refreshing && page === 1) setIsLoading(true);
+        if (page > 1) setIsLoadingMore(true);
         setError(null);
+
         try {
             const token = await getToken();
             if (!token) throw new Error("User not authenticated");
-            setIsLoading(true);
-            const response = await axios.get<AdminInspectionData[]>(`${BASE_URL}/api/admin/all-inspections`, { // Expecting flat array now
-                headers: { Authorization: `Bearer ${token}` }
+
+            const params = {
+                page,
+                limit: 15, // Keep limit consistent
+                search,
+                sortBy: sortCol,
+                sortOrder: sortDir
+            };
+
+            const response = await axios.get<PaginatedResponse<AdminInspectionData>>(`${BASE_URL}/api/admin/all-inspections`, {
+                headers: { Authorization: `Bearer ${token}` },
+                params
             });
-            setInspections(response.data || []); // Use response.data directly
+
+            const { inspections: fetchedInspections = [], totalPages: fetchedTotalPages, page: fetchedPage } = response.data;
+
+            setInspections(prev => (page === 1 ? fetchedInspections : [...prev, ...fetchedInspections]));
+            setTotalPages(fetchedTotalPages);
+            setCurrentPage(fetchedPage);
+
         } catch (err: any) {
-             console.error("[AdminInspections] Error fetching data:", err);
+            console.error("[AdminInspections] Error fetching data:", err);
             let errorMessage = "Failed to fetch inspection data.";
             if (err.response) { errorMessage = err.response.data?.message || errorMessage; }
             setError(errorMessage);
         } finally {
             setIsLoading(false);
+            setIsLoadingMore(false);
+            if (refreshing) setIsRefreshing(false);
         }
-    }, [getToken]);
+    }, [getToken, debouncedSearchQuery, sortBy, sortOrder]);
 
-    useEffect(() => { fetchData(); }, []);
+    useEffect(() => { fetchData(1); }, [fetchData]);
 
-    const onRefresh = useCallback(async () => {
+    useEffect(() => {
+        if (debouncedSearchQuery !== undefined || sortBy !== 'created_at' || sortOrder !== 'desc') {
+            setCurrentPage(1);
+            fetchData(1);
+        }
+    }, [debouncedSearchQuery, sortBy, sortOrder]);
+
+    const handleRefresh = useCallback(() => {
         setIsRefreshing(true);
-        await fetchData();
-        setIsRefreshing(false);
-    }, [fetchData]);
+        setCurrentPage(1);
+        fetchData(1, searchQuery, sortBy, sortOrder, true);
+    }, [fetchData, searchQuery, sortBy, sortOrder]);
 
-    const processedInspections = useMemo(() => {
-        let filtered = inspections;
-        if (searchQuery) {
-            const lowerCaseQuery = searchQuery.toLowerCase();
-            filtered = inspections.filter(insp =>
-                insp.userName?.toLowerCase().includes(lowerCaseQuery) ||
-                insp.userEmail?.toLowerCase().includes(lowerCaseQuery) ||
-                insp.description?.toLowerCase().includes(lowerCaseQuery) ||
-                insp.ddid?.toLowerCase().includes(lowerCaseQuery)
-            );
+    const handleLoadMore = () => {
+        if (!isLoadingMore && currentPage < totalPages) {
+            console.log('[AdminInspections] Loading more...', currentPage + 1);
+            fetchData(currentPage + 1);
+        } else {
+            console.log('[AdminInspections] No more pages or already loading.');
         }
-        filtered.sort((a, b) => {
-            const dateA = new Date(a.created_at).getTime();
-            const dateB = new Date(b.created_at).getTime();
-            return sortBy === 'newest' ? dateB - dateA : dateA - dateB;
-        });
-        return filtered;
-    }, [inspections, searchQuery, sortBy]);
+    };
 
-    const renderInspectionItem = ({ item, index }: { item: AdminInspectionData; index: number }) => (
+    const handleSortChange = (newSortCol: string) => {
+        const newSortOrder = sortBy === newSortCol ? (sortOrder === 'asc' ? 'desc' : 'asc') : 'desc';
+        setSortBy(newSortCol);
+        setSortOrder(newSortOrder);
+    };
+
+    const renderInspectionItem = ({ item }: { item: AdminInspectionData }) => (
         <View style={styles.cardContainer}>
             <View style={styles.cardContent}>
                  <View style={styles.cardHeaderInfo}> 
@@ -145,8 +184,13 @@ const InspectionList: React.FC = () => {
         </View>
     );
 
-    if (isLoading && !isRefreshing) return <ActivityIndicator size="large" color={COLORS.primary} style={styles.loader} />;
-    if (error) return <Text style={styles.errorText}>{error}</Text>;
+    const renderFooter = () => {
+        if (!isLoadingMore) return null;
+        return <ActivityIndicator style={{ marginVertical: 20 }} size="large" color={COLORS.primary} />;
+    };
+
+    if (isLoading && currentPage === 1 && !isRefreshing) return <ActivityIndicator size="large" color={COLORS.primary} style={styles.loader} />;
+    if (error && inspections.length === 0) return <Text style={styles.errorText}>{error}</Text>;
 
     return (
         <View style={{flex: 1}}>
@@ -161,29 +205,27 @@ const InspectionList: React.FC = () => {
                         placeholderTextColor="#999"
                      />
                 </View>
-                <View style={styles.sortWrapper}>
-                    <Picker
-                        selectedValue={sortBy}
-                        onValueChange={(itemValue) => setSortBy(itemValue)}
-                        style={styles.sortPicker}
-                        mode="dropdown"
-                    >
-                        <Picker.Item label="Newest first" value="newest" />
-                        <Picker.Item label="Oldest first" value="oldest" />
-                    </Picker>
-                </View>
+                <TouchableOpacity onPress={() => handleSortChange('created_at')} style={styles.sortButton}>
+                    <Text style={styles.sortButtonText}>Date {sortBy === 'created_at' ? (sortOrder === 'desc' ? '▼' : '▲') : ''}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => handleSortChange('userName')} style={styles.sortButton}>
+                    <Text style={styles.sortButtonText}>User {sortBy === 'userName' ? (sortOrder === 'desc' ? '▼' : '▲') : ''}</Text>
+                </TouchableOpacity>
             </View>
 
             <FlatList
-                data={processedInspections}
+                data={inspections}
                 renderItem={renderInspectionItem}
-                keyExtractor={(item) => item.id}
+                keyExtractor={(item) => `insp-${item.id}`}
                 style={styles.list}
                 contentContainerStyle={{ paddingHorizontal: 5, paddingBottom: 20 }}
                 ListEmptyComponent={<Text style={styles.emptyText}>No inspections found.</Text>}
                 refreshControl={
-                    <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} colors={[COLORS.primary]} tintColor={COLORS.primary} />
+                    <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} colors={[COLORS.primary]} tintColor={COLORS.primary} />
                 }
+                onEndReached={handleLoadMore}
+                onEndReachedThreshold={0.5}
+                ListFooterComponent={renderFooter}
             />
              <DdidModal
                  visible={isModalVisible}
@@ -199,84 +241,111 @@ const InspectionList: React.FC = () => {
 };
 
 // Component for the User List
-const UserList = () => {
+const UserList: React.FC = () => {
     const [users, setUsers] = useState<UserData[]>([]);
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
-    const [userSearchQuery, setUserSearchQuery] = useState<string>(''); // State for user search
+    const [userSearchQuery, setUserSearchQuery] = useState<string>('');
+    const [currentPage, setCurrentPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
+    const [isLoadingMore, setIsLoadingMore] = useState(false);
+    const [totalUsers, setTotalUsers] = useState(0);
     const { getToken } = useAuth();
+    const debouncedUserSearch = useDebounce(userSearchQuery, 500);
 
-    const fetchUsers = useCallback(async () => {
-        console.log('[AdminUsers] Fetching all users data...');
+    const fetchUsers = useCallback(async (page = 1, search = debouncedUserSearch, refreshing = false) => {
+        console.log(`[AdminUsers] Fetching page ${page}, search: '${search}'`);
+        if (!refreshing && page === 1) setIsLoading(true);
+        if (page > 1) setIsLoadingMore(true);
         setError(null);
+
         try {
             const token = await getToken();
             if (!token) throw new Error("User not authenticated");
-            setIsLoading(true);
-            const response = await axios.get<UserData[]>(`${BASE_URL}/api/admin/all-users`, { // Expecting flat array now
-                headers: { Authorization: `Bearer ${token}` }
+
+            const params = { page, limit: 20, search }; // Increased limit slightly for users
+
+            const response = await axios.get<PaginatedResponse<UserData>>(`${BASE_URL}/api/admin/all-users`, {
+                headers: { Authorization: `Bearer ${token}` },
+                params
             });
-             setUsers(response.data || []); // Use response.data directly
+
+            const { users: fetchedUsers = [], totalPages: fetchedTotalPages, page: fetchedPage, totalCount } = response.data;
+
+            setUsers(prev => (page === 1 ? fetchedUsers : [...prev, ...fetchedUsers]));
+            setTotalPages(fetchedTotalPages);
+            setCurrentPage(fetchedPage);
+            setTotalUsers(totalCount);
+
         } catch (err: any) {
-             console.error("[AdminUsers] Error fetching data:", err);
+            console.error("[AdminUsers] Error fetching data:", err);
             let errorMessage = "Failed to fetch user data.";
             if (err.response) { errorMessage = err.response.data?.message || errorMessage; }
             setError(errorMessage);
         } finally {
             setIsLoading(false);
+            setIsLoadingMore(false);
+            if (refreshing) setIsRefreshing(false);
         }
-    }, [getToken]);
+    }, [getToken, debouncedUserSearch]);
 
-    useEffect(() => { fetchUsers(); }, []);
+    useEffect(() => { fetchUsers(1); }, [fetchUsers]);
 
-    const onRefresh = useCallback(async () => {
+    useEffect(() => {
+        if (debouncedUserSearch !== undefined) {
+            setCurrentPage(1);
+            fetchUsers(1);
+        }
+    }, [debouncedUserSearch]);
+
+    const handleRefresh = useCallback(() => {
         setIsRefreshing(true);
-        await fetchUsers();
-        setIsRefreshing(false);
-    }, [fetchUsers]);
+        setCurrentPage(1);
+        fetchUsers(1, userSearchQuery, true);
+    }, [fetchUsers, userSearchQuery]);
 
-    // Filter users based on search query
-    const processedUsers = useMemo(() => {
-        if (!userSearchQuery) {
-            return users;
+    const handleLoadMore = () => {
+        if (!isLoadingMore && currentPage < totalPages) {
+            console.log('[AdminUsers] Loading more...', currentPage + 1);
+            fetchUsers(currentPage + 1);
+        } else {
+            console.log('[AdminUsers] No more pages or already loading.');
         }
-        const lowerCaseQuery = userSearchQuery.toLowerCase();
-        return users.filter(user =>
-            user.name?.toLowerCase().includes(lowerCaseQuery) ||
-            user.email?.toLowerCase().includes(lowerCaseQuery)
-        );
-    }, [users, userSearchQuery]);
-
-    const renderUserItem = ({ item }: { item: UserData }) => {
-        return (
-            <TouchableOpacity style={styles.userItemContainer} onPress={() => Alert.alert('User Profile', `User ID: ${item.id}`)}>
-                <View style={styles.userItemContent}>
-                     {/* User Image */}
-                     <View style={styles.userListImageContainer}>
-                        {item.profilePhoto ? (
-                            <Image source={{ uri: item.profilePhoto }} style={styles.userListImage} />
-                        ) : (
-                             <View style={styles.userListImagePlaceholder}>
-                                <UserCircle size={32} color={COLORS.secondary} />
-                             </View>
-                        )}
-                    </View>
-                    {/* User Info */}
-                    <View style={styles.userInfoContainer}>
-                        <Text style={styles.userNameText}>{item.name}</Text>
-                        <Text style={styles.userEmailText}>{item.email}</Text>
-                        <Text style={styles.userDetailText}>State: {item.state || 'N/A'}</Text>
-                        <Text style={styles.userDetailText}>Statements: {item.inspectionCount}</Text> 
-                    </View>
-                     <Text style={styles.userDateText}>Joined: {new Date(item.createdAt).toLocaleDateString()}</Text>
-                 </View>
-             </TouchableOpacity>
-        );
     };
 
-    if (isLoading && !isRefreshing) return <ActivityIndicator size="large" color={COLORS.primary} style={styles.loader} />;
-    if (error) return <Text style={styles.errorText}>{error}</Text>;
+    const renderUserItem = ({ item }: { item: UserData }) => (
+        <TouchableOpacity style={styles.userItemContainer} onPress={() => Alert.alert('User Profile', `User ID: ${item.id}`)}>
+            <View style={styles.userItemContent}>
+                 {/* User Image */}
+                 <View style={styles.userListImageContainer}>
+                    {item.profilePhoto ? (
+                        <Image source={{ uri: item.profilePhoto }} style={styles.userListImage} />
+                    ) : (
+                         <View style={styles.userListImagePlaceholder}>
+                            <UserCircle size={32} color={COLORS.secondary} />
+                         </View>
+                    )}
+                </View>
+                {/* User Info */}
+                <View style={styles.userInfoContainer}>
+                    <Text style={styles.userNameText}>{item.name}</Text>
+                    <Text style={styles.userEmailText}>{item.email}</Text>
+                    <Text style={styles.userDetailText}>State: {item.state || 'N/A'}</Text>
+                    <Text style={styles.userDetailText}>Statements: {item.inspectionCount}</Text> 
+                </View>
+                 <Text style={styles.userDateText}>Joined: {new Date(item.createdAt).toLocaleDateString()}</Text>
+             </View>
+         </TouchableOpacity>
+    );
+
+    const renderFooter = () => {
+        if (!isLoadingMore) return null;
+        return <ActivityIndicator style={{ marginVertical: 20 }} size="large" color={COLORS.primary} />;
+    };
+
+    if (isLoading && currentPage === 1 && !isRefreshing) return <ActivityIndicator size="large" color={COLORS.primary} style={styles.loader} />;
+    if (error && users.length === 0) return <Text style={styles.errorText}>{error}</Text>;
 
     return (
         <View style={{flex: 1}}>
@@ -293,16 +362,19 @@ const UserList = () => {
             </View>
 
             <FlatList
-                data={processedUsers}
+                data={users}
                 renderItem={renderUserItem}
-                keyExtractor={(item: UserData) => item.id}
+                keyExtractor={(item: UserData) => `user-${item.id}`}
                 style={styles.list}
                 contentContainerStyle={{ padding: 15, paddingTop: 0 }}
-                ListHeaderComponent={<Text style={styles.totalCountText}>Total Users: {processedUsers.length}</Text>}
+                ListHeaderComponent={<Text style={styles.totalCountText}>Total Users: {totalUsers}</Text>}
                 ListEmptyComponent={<Text style={styles.emptyText}>{userSearchQuery ? 'No matching users found.' : 'No users found.'}</Text>}
                 refreshControl={
-                    <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} colors={[COLORS.primary]} tintColor={COLORS.primary} />
+                    <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} colors={[COLORS.primary]} tintColor={COLORS.primary} />
                 }
+                onEndReached={handleLoadMore}
+                onEndReachedThreshold={0.5}
+                ListFooterComponent={renderFooter}
             />
         </View>
     );
@@ -393,16 +465,17 @@ const styles = StyleSheet.create({
         height: 40,
         fontSize: 14,
     },
-    sortWrapper: {
-        flex: 0.4,
-        backgroundColor: '#fff',
-        borderRadius: 8,
+    sortButton: {
+        paddingVertical: 8,
+        paddingHorizontal: 12,
+        borderRadius: 5,
         borderWidth: 1,
-        borderColor: '#ddd',
-        justifyContent: 'center',
+        borderColor: COLORS.primary,
+        marginLeft: 5,
     },
-    sortPicker: {
-        height: 40,
+    sortButtonText: {
+        color: COLORS.primary,
+        fontWeight: '500',
     },
     cardContainer: {
         backgroundColor: '#fff',
