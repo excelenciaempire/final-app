@@ -667,6 +667,40 @@ export default function NewInspectionScreen() {
         }
     };
 
+    // --- NEW: Function to launch camera directly on WEB ---
+    const launchWebCamera = () => {
+        // This will create a hidden file input and click it
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.capture = 'environment'; // Prioritize back camera
+        input.onchange = async (event) => {
+            const target = event.target as HTMLInputElement;
+            if (target.files && target.files.length > 0) {
+                const file = target.files[0];
+                try {
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                        const uri = reader.result as string; // data: URL
+                        const base64Marker = ';base64,';
+                        const markerIndex = uri.indexOf(base64Marker);
+                        if (markerIndex === -1) {
+                            handleImageError(new Error("Invalid Data URL from web camera."));
+                            return;
+                        }
+                        const base64 = uri.substring(markerIndex + base64Marker.length);
+                        handleImageResult({ assets: [{ uri, base64 }] });
+                    };
+                    reader.onerror = (error) => handleImageError(error);
+                    reader.readAsDataURL(file);
+                } catch (err) {
+                    handleImageError(err);
+                }
+            }
+        };
+        input.click();
+    };
+
     // --- Loading Indicator Logic ---
     const isLoading = isUploading || isGeneratingPreDescription || isGeneratingFinalDdid;
     const loadingText = isUploading ? 'Uploading Image...' :
@@ -688,12 +722,8 @@ export default function NewInspectionScreen() {
                 <Text style={styles.userStateText}>State: {userState}</Text>
 
                 {Platform.OS === 'web' ? (
-                    <div
-                        onDragOver={handleDragOver as any}
-                        onDrop={handleDrop as any}
-                        style={webDropZoneStyle}
-                    >
-                        <TouchableOpacity style={styles.imagePicker} onPress={launchLibrary}>
+                    <View style={styles.webImagePickerContainer}>
+                        <TouchableOpacity style={styles.imagePickerWebMain} onPress={launchLibrary}>
                             {imageUri ? (
                                 <Image source={{ uri: imageUri }} style={styles.imagePreview} />
                             ) : (
@@ -703,7 +733,11 @@ export default function NewInspectionScreen() {
                                 </View>
                             )}
                         </TouchableOpacity>
-                    </div>
+                        <TouchableOpacity style={[styles.button, styles.takePhotoButtonWeb]} onPress={launchWebCamera}>
+                            <Camera size={20} color={COLORS.white} style={styles.buttonIcon} />
+                            <Text style={styles.buttonText}>Take Photo</Text>
+                        </TouchableOpacity>
+                    </View>
                  ) : (
                     <TouchableOpacity style={styles.imagePicker} onPress={selectImageSource}>
                         {imageUri ? (
@@ -981,5 +1015,28 @@ const styles = StyleSheet.create({
         shadowOffset: { width: 0, height: 1 },
         shadowOpacity: 0.2,
         shadowRadius: 1,
+    },
+    webImagePickerContainer: {
+        width: '100%',
+        maxWidth: 400,
+        alignItems: 'center',
+        marginBottom: 20,
+    },
+    imagePickerWebMain: {
+        width: '100%',
+        aspectRatio: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: '#f0f2f5',
+        borderRadius: 10,
+        borderWidth: 2,
+        borderColor: '#ddd',
+        borderStyle: 'dashed',
+    },
+    takePhotoButtonWeb: {
+        backgroundColor: COLORS.primary,
+        marginTop: 10,
+        width: '100%',
+        maxWidth: 400,
     },
 });
