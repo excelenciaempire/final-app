@@ -103,7 +103,9 @@ const InspectionList: React.FC = () => {
         }
     }, [getToken, debouncedSearchQuery, sortBy, sortOrder]);
 
-    useEffect(() => { fetchData(1); }, [fetchData]);
+    useEffect(() => {
+        fetchData(1);
+    }, []);
 
     useEffect(() => {
         if (debouncedSearchQuery !== undefined || sortBy !== 'created_at' || sortOrder !== 'desc') {
@@ -290,7 +292,9 @@ const UserList: React.FC = () => {
         }
     }, [getToken, debouncedUserSearch]);
 
-    useEffect(() => { fetchUsers(1); }, [fetchUsers]);
+    useEffect(() => {
+        fetchUsers(1);
+    }, []);
 
     useEffect(() => {
         if (debouncedUserSearch !== undefined) {
