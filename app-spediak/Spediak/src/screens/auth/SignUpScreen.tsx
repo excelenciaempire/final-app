@@ -39,7 +39,9 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
 
   // Start the sign up process.
   const onSignUpPress = async () => {
+    console.log("[SignUpScreen] onSignUpPress called");
     if (!isLoaded || loading) {
+      console.log("[SignUpScreen] SignUp not loaded or already loading, returning.");
       return;
     }
     if (password !== confirmPassword) {
