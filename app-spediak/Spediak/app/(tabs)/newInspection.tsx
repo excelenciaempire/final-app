@@ -532,7 +532,10 @@ export default function NewInspectionScreen() {
             const response = await axios.post(`${BASE_URL}/api/transcribe`, {
                 audioBase64: audioBase64,
             }, {
-                headers: { Authorization: `Bearer ${token}` },
+                headers: { 
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
                 timeout: 60000,
             });
             console.log('[Transcribe] Backend response status:', response.status);

@@ -2,9 +2,13 @@ const { createClient } = require('@deepgram/sdk');
 const deepgram = createClient(process.env.DEEPGRAM_API_KEY);
 
 const transcribeAudioController = async (req, res) => {
+  // Log the entire request body first
+  console.log('[TranscribeController] Received req.body:', JSON.stringify(req.body, null, 2));
+
   const { audioBase64 } = req.body;
 
   if (!audioBase64) {
+    console.error('[TranscribeController] audioBase64 is missing or undefined in req.body.');
     return res.status(400).json({ message: 'Missing audioBase64 in request body' });
   }
 
