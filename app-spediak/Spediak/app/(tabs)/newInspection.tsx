@@ -188,6 +188,29 @@ export default function NewInspectionScreen() {
         }
     };
 
+    // --- NEW: Function to let user choose image source on native ---
+    const selectImageSource = async () => {
+        // Permissions are requested inside launchCamera/launchLibrary already if needed for native
+        Alert.alert(
+            "Select Image Source",
+            "Choose an option to select your image:",
+            [
+                {
+                    text: "Take Photo",
+                    onPress: launchCamera // Call launchCamera
+                },
+                {
+                    text: "Choose from Library",
+                    onPress: launchLibrary // Call launchLibrary
+                },
+                {
+                    text: "Cancel",
+                    style: "cancel"
+                }
+            ]
+        );
+    };
+
     // Helper function to handle result from either picker or drag/drop
     const handleImageResult = (result: ImagePicker.ImagePickerResult | { assets: { uri: string; base64?: string }[] }) => {
          if (!('canceled' in result && result.canceled) && result.assets && result.assets.length > 0) {
@@ -682,7 +705,7 @@ export default function NewInspectionScreen() {
                         </TouchableOpacity>
                     </div>
                  ) : (
-                    <TouchableOpacity style={styles.imagePicker} onPress={launchLibrary}>
+                    <TouchableOpacity style={styles.imagePicker} onPress={selectImageSource}>
                         {imageUri ? (
                             <Image source={{ uri: imageUri }} style={styles.imagePreview} />
                         ) : (
