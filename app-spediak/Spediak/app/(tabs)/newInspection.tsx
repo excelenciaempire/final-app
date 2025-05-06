@@ -93,7 +93,7 @@ const PreDescriptionModal: React.FC<PreDescriptionModalProps> = ({
             </TouchableOpacity>
           </View>
           <TouchableOpacity style={styles.closeModalButton} onPress={onClose}>
-            <Text style={styles.closeModalButtonTextBlack}>Close</Text>
+            <Text style={styles.closeModalButtonTextSuccess}>Confirm Description</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -710,11 +710,11 @@ export default function NewInspectionScreen() {
     return (
         <ScrollView
             style={styles.container}
-            contentContainerStyle={styles.contentContainer}
+            contentContainerStyle={[styles.contentContainer, Platform.OS === 'web' && styles.contentContainerWeb]}
             keyboardShouldPersistTaps="handled"
         >
             <KeyboardAvoidingView
-                style={{ width: '100%' }}
+                style={{ width: '100%', maxWidth: 700 }}
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
                 keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
                 enabled
@@ -778,24 +778,23 @@ export default function NewInspectionScreen() {
                     </TouchableOpacity>
                 </View>
 
-                <TouchableOpacity
-                    style={[styles.button, styles.analyzeButton, (!imageBase64 || !initialDescription.trim() || isLoading) && styles.buttonDisabled]}
-                    onPress={handleAnalyze}
-                    disabled={!imageBase64 || !initialDescription.trim() || isLoading}
-                >
-                    <Text style={styles.buttonText}>
-                         {'Analyze Defect'}
-                    </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                    style={[styles.button, styles.newChatButton, isLoading && styles.buttonDisabled]}
-                    onPress={resetInspection}
-                    disabled={isLoading}
-                >
-                    <RefreshCcw size={20} color={COLORS.darkText} style={styles.buttonIcon} />
-                    <Text style={styles.buttonTextSecondary}>New Defect</Text>
-                </TouchableOpacity>
+                <View style={styles.actionButtonsRow}>
+                    <TouchableOpacity
+                        style={[styles.button, styles.analyzeButton, styles.actionButtonHalf, (!imageBase64 || !initialDescription.trim() || isLoading) && styles.buttonDisabled]}
+                        onPress={handleAnalyze}
+                        disabled={!imageBase64 || !initialDescription.trim() || isLoading}
+                    >
+                        <Text style={styles.buttonText}>Analyze Defect</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={[styles.button, styles.newChatButton, styles.actionButtonHalf, isLoading && styles.buttonDisabled]}
+                        onPress={resetInspection}
+                        disabled={isLoading}
+                    >
+                        <RefreshCcw size={20} color={COLORS.darkText} style={styles.buttonIcon} />
+                        <Text style={styles.buttonTextSecondary}>New Defect</Text>
+                    </TouchableOpacity>
+                </View>
 
                 {error && <Text style={styles.errorText}>{error}</Text>}
             </KeyboardAvoidingView>
@@ -851,7 +850,11 @@ const styles = StyleSheet.create({
     },
     contentContainer: {
         padding: 20,
+    },
+    contentContainerWeb: {
         alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '100%',
     },
     userStateText: {
         fontSize: 16,
@@ -878,7 +881,11 @@ const styles = StyleSheet.create({
          }),
         position: 'relative',
     },
-    imagePreview: { width: '100%', height: '100%', borderRadius: 8, },
+    imagePreview: {
+        width: '100%',
+        height: '100%',
+        borderRadius: 8,
+    },
     imagePlaceholder: { justifyContent: 'center', alignItems: 'center', },
     imagePlaceholderText: { marginTop: 10, color: '#6c757d', },
     inputContainer: {
@@ -995,12 +1002,16 @@ const styles = StyleSheet.create({
     },
     closeModalButton: {
          marginTop: 10,
-         padding: 10,
+         paddingVertical: 12,
+         paddingHorizontal: 20,
+         backgroundColor: '#28a745',
+         borderRadius: 8,
+         alignItems: 'center',
     },
-    closeModalButtonTextBlack: {
-        color: COLORS.darkText,
+    closeModalButtonTextSuccess: {
+        color: COLORS.white,
         fontSize: 15,
-        fontWeight: '500',
+        fontWeight: 'bold',
         textAlign: 'center',
     },
     cameraIconTouchable: {
@@ -1038,5 +1049,18 @@ const styles = StyleSheet.create({
         marginTop: 10,
         width: '100%',
         maxWidth: 400,
+    },
+    actionButtonsRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        width: '100%',
+        maxWidth: 500,
+        alignSelf: 'center',
+        marginTop: 10,
+        marginBottom: 10,
+    },
+    actionButtonHalf: {
+        flex: 1,
+        marginHorizontal: 5,
     },
 });

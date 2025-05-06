@@ -19,9 +19,10 @@ import WelcomeScreen from '../screens/WelcomeScreen';
 
 // Define Drawer Param List
 export type RootDrawerParamList = {
-  NewInspection: undefined;
+  NewStatement: undefined;
   InspectionHistory: undefined;
   ProfileSettings: undefined;
+  // AdminDashboard is not a direct route in this navigator for mobile/small screens
 };
 
 const Drawer = createDrawerNavigator<RootDrawerParamList>();
@@ -43,8 +44,8 @@ const SidebarContent: React.FC<SidebarContentProps> = ({ onNavigate, activeScree
   }
 
   const drawerItems: { name: keyof RootDrawerParamList | 'AdminDashboard'; label: string; icon: keyof typeof Ionicons.glyphMap, adminOnly?: boolean }[] = [
-    { name: 'NewInspection', label: 'New Inspection', icon: 'add-circle-outline' },
-    { name: 'InspectionHistory', label: 'Inspection History', icon: 'time-outline' },
+    { name: 'NewStatement', label: 'New Statement', icon: 'add-circle-outline' },
+    { name: 'InspectionHistory', label: 'Statement History', icon: 'time-outline' },
     { name: 'ProfileSettings', label: 'Profile', icon: 'person-circle-outline' },
     { name: 'AdminDashboard', label: 'Admin Dashboard', icon: 'shield-checkmark-outline', adminOnly: true },
   ];
@@ -117,7 +118,7 @@ const CustomDrawerContent: React.FC<DrawerContentComponentProps> = (props) => {
 const RootNavigator: React.FC = () => {
   const { user, isLoaded } = useUser();
   const { width } = useWindowDimensions(); // Use hook for dynamic width
-  const [activeScreen, setActiveScreen] = useState<keyof RootDrawerParamList | 'AdminDashboard'>('NewInspection');
+  const [activeScreen, setActiveScreen] = useState<keyof RootDrawerParamList | 'AdminDashboard'>('NewStatement');
 
   // Check for admin role using unsafeMetadata for frontend visibility
   const isAdmin = useMemo(() => user?.unsafeMetadata?.role === 'admin', [user]);
@@ -144,7 +145,7 @@ const RootNavigator: React.FC = () => {
   if (isWebLarge) {
     let CurrentScreenComponent: React.ComponentType<any> | null = null; // Initialize as null
 
-    if (activeScreen === 'NewInspection') {
+    if (activeScreen === 'NewStatement') {
         CurrentScreenComponent = NewInspectionScreen;
     } else if (activeScreen === 'InspectionHistory') {
         CurrentScreenComponent = InspectionHistoryScreen;
@@ -172,7 +173,7 @@ const RootNavigator: React.FC = () => {
   // --- Mobile/Small Web Drawer Layout ---
   return (
     <Drawer.Navigator
-        initialRouteName="NewInspection"
+        initialRouteName="NewStatement"
         drawerContent={(props: DrawerContentComponentProps) => <CustomDrawerContent {...props} />}
         screenOptions={({ navigation }) => ({ // Keep hamburger menu for drawer
             headerStyle: { backgroundColor: COLORS.primary },
@@ -189,9 +190,10 @@ const RootNavigator: React.FC = () => {
         })}
         >
         {/* Regular Screens */}
-         <Drawer.Screen name="NewInspection" component={NewInspectionScreen} options={{ title: 'New Inspection' }} />
-         <Drawer.Screen name="InspectionHistory" component={InspectionHistoryScreen} options={{ title: 'Inspection History' }} />
+         <Drawer.Screen name="NewStatement" component={NewInspectionScreen} options={{ title: 'New Statement' }} />
+         <Drawer.Screen name="InspectionHistory" component={InspectionHistoryScreen} options={{ title: 'Statement History' }} />
          <Drawer.Screen name="ProfileSettings" component={ProfileSettingsScreen} options={{ title: 'Profile Settings' }} />
+         {/* Admin Dashboard screen conditionally added for web by the web layout part */}
     </Drawer.Navigator>
   );
 };
