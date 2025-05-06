@@ -31,12 +31,12 @@ app.use(cors({
   credentials: true // Permitir credenciales (cookies, headers de autenticación)
 }));
 
-// Routes
-app.use('/api', apiRoutes);
-
 // Standard Body Parsers
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
+
+// Routes
+app.use('/api', apiRoutes);
 
 // Root route
 app.get('/', (req, res) => {
