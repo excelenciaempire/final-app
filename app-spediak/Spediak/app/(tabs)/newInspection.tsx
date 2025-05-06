@@ -73,6 +73,7 @@ const PreDescriptionModal: React.FC<PreDescriptionModalProps> = ({
               onChangeText={setEditableDescription}
               multiline
               editable={isEditing}
+              numberOfLines={5}
             />
           </ScrollView>
           <View style={styles.preDescButtonRow}>
@@ -88,12 +89,11 @@ const PreDescriptionModal: React.FC<PreDescriptionModalProps> = ({
               </TouchableOpacity>
             )}
             <TouchableOpacity style={[styles.preDescButton, styles.generateButton]} onPress={handleGenerate} disabled={isEditing}>
-               <BotMessageSquare size={18} color={isEditing ? '#aaa' : COLORS.white} />
                <Text style={[styles.preDescButtonText, styles.generateButtonText, isEditing && styles.buttonDisabledText]}>Generate Statement</Text>
             </TouchableOpacity>
           </View>
           <TouchableOpacity style={styles.closeModalButton} onPress={onClose}>
-            <Text style={styles.closeModalButtonText}>Close</Text>
+            <Text style={styles.closeModalButtonTextBlack}>Close</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -889,6 +889,7 @@ const styles = StyleSheet.create({
         lineHeight: 22,
         color: '#333',
         backgroundColor: '#f8f9fa',
+        minHeight: 100,
     },
     preDescInputEditing: {
         backgroundColor: '#fff',
@@ -939,8 +940,8 @@ const styles = StyleSheet.create({
          marginTop: 10,
          padding: 10,
     },
-    closeModalButtonText: {
-        color: COLORS.secondary,
+    closeModalButtonTextBlack: {
+        color: COLORS.darkText,
         fontSize: 15,
         fontWeight: '500',
         textAlign: 'center',
