@@ -482,13 +482,20 @@ export default function NewInspectionScreen() {
                         const reader = new FileReader();
                         reader.onloadend = () => {
                             const result = reader.result as string;
-                            if (!result || !result.includes(',')) {
-                                reject(new Error("FileReader failed to produce a valid Data URL."));
+                            if (!result) {
+                                reject(new Error("FileReader result is null."));
                                 return;
                             }
-                            resolve(result.split(',')[1]);
+                            // Find the start of the base64 data
+                            const base64Marker = ';base64,';
+                            const markerIndex = result.indexOf(base64Marker);
+                            if (markerIndex === -1) {
+                                reject(new Error("Invalid Data URL format: base64 marker not found."));
+                                return;
+                            }
+                            resolve(result.substring(markerIndex + base64Marker.length));
                         };
-                        reader.onerror = (error) => reject(new Error(`FileReader error: ${error}`));
+                        reader.onerror = (error) => reject(new Error(`FileReader error: ${error.toString()}`)); // Add .toString()
                         reader.readAsDataURL(blob);
                     });
                     console.log("[Transcribe] Web audio read successfully.");
