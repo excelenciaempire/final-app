@@ -1,0 +1,23 @@
+# Node.js
+node_modules/
+npm-debug.log
+yarn-error.log
+package-lock.json
+
+# Entornos
+.env
+*.env.*
+!*.env.example
+
+# Backend especifico
+backend/.env
+backend/node_modules/
+
+# Frontend especifico (Expo)
+Spediak/.expo/
+Spediak/node_modules/
+Spediak/.env
+
+# Archivos del SO
+.DS_Store
+Thumbs.db 

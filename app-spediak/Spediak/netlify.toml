@@ -1,0 +1,9 @@
+[build]
+  base = "Spediak/"
+  publish = "web-build"
+  command = "npm install && npx expo export -p web"
+ 
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200 
