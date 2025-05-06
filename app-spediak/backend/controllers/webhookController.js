@@ -65,12 +65,18 @@ const handleClerkWebhook = async (req, res) => {
   switch (eventType) {
     case 'user.created':
     case 'user.updated': // Handle updates too, to keep data fresh
-      const { id: clerk_id, email_addresses, first_name, last_name, image_url, unsafe_metadata, created_at, updated_at } = evt.data;
+      // Destructure potentially available fields
+      const { id: clerk_id, email_addresses, primary_email_address_id, first_name, last_name, image_url, unsafe_metadata, created_at, updated_at, username: topLevelUsername } = evt.data;
       
-      const primaryEmail = email_addresses?.find(e => e.id === evt.data.primary_email_address_id)?.email_address || email_addresses?.[0]?.email_address;
-      const fullName = `${first_name || ''} ${last_name || ''}`.trim();
-      const username = unsafe_metadata?.username || null; // Get username we stored
-      const userState = unsafe_metadata?.inspectionState || null; // Get state if set
+      // Robust email extraction
+      let primaryEmail = email_addresses?.find(e => e.id === primary_email_address_id)?.email_address;
+      if (!primaryEmail) primaryEmail = email_addresses?.find(e => e.verification?.status === 'verified')?.email_address;
+      if (!primaryEmail) primaryEmail = email_addresses?.[0]?.email_address;
+      
+      const fullName = `${first_name || ''} ${last_name || ''}`.trim() || null;
+      // Prefer top-level username, fallback to metadata if needed (though metadata shouldn't be primary source)
+      const username = topLevelUsername || unsafe_metadata?.username || null;
+      const userState = unsafe_metadata?.inspectionState || null;
 
       if (!clerk_id || !primaryEmail) {
         console.error('[Webhook] Missing required user data (ID or Email) in event:', evt.data);
@@ -82,30 +88,27 @@ const handleClerkWebhook = async (req, res) => {
       // Use INSERT ... ON CONFLICT ... DO UPDATE (UPSERT) to handle both creation and updates
       const query = `
         INSERT INTO users (clerk_id, email, name, username, profile_photo_url, state, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        VALUES ($1, $2, $3, $4, $5, $6, TO_TIMESTAMP($7 / 1000.0), TO_TIMESTAMP($8 / 1000.0))
         ON CONFLICT (clerk_id) 
         DO UPDATE SET
           email = EXCLUDED.email,
           name = EXCLUDED.name,
-          username = EXCLUDED.username,
+          username = EXCLUDED.username, 
           profile_photo_url = EXCLUDED.profile_photo_url,
           state = EXCLUDED.state,
-          updated_at = $9; -- Use the event timestamp for updated_at
-      `;
-      // Convert Unix timestamps (ms) from Clerk event to SQL Timestamps
-      const createdAtTimestamp = new Date(created_at);
-      const updatedAtTimestamp = new Date(updated_at);
-
+          updated_at = TO_TIMESTAMP($9 / 1000.0);
+      `; // Removed RETURNING xmax, not needed for webhook response
+      
       const values = [
         clerk_id,
         primaryEmail,
         fullName,
-        username,
-        image_url,
+        username, // Use corrected username variable
+        image_url, // Clerk's image_url maps to our profile_photo_url
         userState,
-        createdAtTimestamp, // Use converted timestamp
-        updatedAtTimestamp, // Use converted timestamp for initial insert
-        updatedAtTimestamp  // Use converted timestamp for update case ($9)
+        created_at, 
+        updated_at,
+        updated_at
       ];
 
       try {

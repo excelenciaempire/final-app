@@ -59,30 +59,10 @@ async function syncClerkUsers() {
 
         const { id: clerk_id, primary_email_address_id, first_name, last_name, image_url, unsafe_metadata, created_at, updated_at } = user;
 
-        let primaryEmail = null;
-        // --- Detailed logging for the condition - access directly from user object ---
-        console.log(`User ${clerk_id} - Checking user.emailAddresses:`, user.emailAddresses);
-        if (user.emailAddresses) {
-            console.log(`User ${clerk_id} - user.emailAddresses.length:`, user.emailAddresses.length);
-            if (user.emailAddresses.length > 0) {
-                console.log(`User ${clerk_id} - user.emailAddresses[0]:`, user.emailAddresses[0]);
-                if (user.emailAddresses[0]) {
-                    console.log(`User ${clerk_id} - typeof user.emailAddresses[0].emailAddress:`, typeof user.emailAddresses[0].emailAddress);
-                    console.log(`User ${clerk_id} - user.emailAddresses[0].emailAddress value:`, user.emailAddresses[0].emailAddress);
-                }
-            }
-        }
-        // --- End detailed logging ---
-
-        if (user.emailAddresses && user.emailAddresses.length > 0 && user.emailAddresses[0] && typeof user.emailAddresses[0].emailAddress === 'string') {
-            primaryEmail = user.emailAddresses[0].emailAddress;
-            console.log(` -> Extracted email for ${clerk_id}: ${primaryEmail}`);
-        } else {
-            console.warn(` -> Could not extract emailAddress from user.emailAddresses array for user ${clerk_id}`);
-        }
+        const primaryEmail = user.emailAddresses?.[0]?.emailAddress;
 
         const fullName = `${first_name || ''} ${last_name || ''}`.trim() || null;
-        const username = unsafe_metadata?.username || null;
+        const username = user.username || null;
         const userState = unsafe_metadata?.inspectionState || null;
 
         if (!clerk_id || !primaryEmail) {
@@ -111,9 +91,9 @@ async function syncClerkUsers() {
           username,
           image_url,
           userState,
-          created_at, // Pass raw number
-          updated_at, // Pass raw number
-          updated_at  // Pass raw number for update case ($9)
+          created_at,
+          updated_at,
+          updated_at
         ];
 
         try {
