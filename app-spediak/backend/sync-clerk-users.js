@@ -53,17 +53,24 @@ async function syncClerkUsers() {
       let updatedCount = 0;
 
       for (const user of clerkUsers) {
+        // Log first
         console.log("--- Raw User Object Start ---");
         console.log(JSON.stringify(user, null, 2)); 
         console.log("--- Raw User Object End ---");
 
-        const { id: clerk_id, primary_email_address_id, first_name, last_name, image_url, unsafe_metadata, created_at, updated_at } = user;
+        // Destructure only the ID, access others directly
+        const { id: clerk_id } = user;
 
+        // Access email directly
         const primaryEmail = user.emailAddresses?.[0]?.emailAddress;
 
-        const fullName = `${first_name || ''} ${last_name || ''}`.trim() || null;
-        const username = user.username || null;
-        const userState = unsafe_metadata?.inspectionState || null;
+        // Access other fields directly from the user object
+        const fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || null;
+        const username = user.username || null; 
+        const userState = user.unsafeMetadata?.inspectionState || null;
+        const imageUrl = user.imageUrl || null;
+        const createdAt = user.createdAt; // Raw timestamp number
+        const updatedAt = user.updatedAt; // Raw timestamp number
 
         if (!clerk_id || !primaryEmail) {
           console.warn(`Skipping user ${clerk_id || '(no ID)'} due to missing ID or final Email:`, { id: clerk_id, email: primaryEmail });
@@ -72,7 +79,7 @@ async function syncClerkUsers() {
 
         const query = `
           INSERT INTO users (clerk_id, email, name, username, profile_photo_url, state, created_at, updated_at)
-          VALUES ($1, $2, $3, $4, $5, $6, TO_TIMESTAMP($7 / 1000.0), TO_TIMESTAMP($8 / 1000.0)) -- Convert epoch ms to timestamp
+          VALUES ($1, $2, $3, $4, $5, $6, TO_TIMESTAMP($7 / 1000.0), TO_TIMESTAMP($8 / 1000.0))
           ON CONFLICT (clerk_id) 
           DO UPDATE SET
             email = EXCLUDED.email,
@@ -80,25 +87,27 @@ async function syncClerkUsers() {
             username = EXCLUDED.username,
             profile_photo_url = EXCLUDED.profile_photo_url,
             state = EXCLUDED.state,
-            updated_at = TO_TIMESTAMP($9 / 1000.0) -- Convert epoch ms to timestamp
-          RETURNING xmax; -- xmax is 0 for INSERT, non-zero for UPDATE
+            updated_at = TO_TIMESTAMP($9 / 1000.0)
+          RETURNING xmax;
         `;
 
+        // Build values array using directly accessed properties
         const values = [
           clerk_id,
           primaryEmail,
           fullName,
           username,
-          image_url,
-          userState,
-          created_at,
-          updated_at,
-          updated_at
+          imageUrl,      // Use directly accessed imageUrl
+          userState,     // Use directly accessed userState
+          createdAt,     // Use directly accessed createdAt
+          updatedAt,     // Use directly accessed updatedAt
+          updatedAt      // Use directly accessed updatedAt for update case ($9)
         ];
+
+        console.log(` -> Preparing to UPSERT user ${clerk_id} with values:`, values);
 
         try {
           const result = await client.query(query, values);
-          // Check if it was an insert (xmax=0) or update (xmax!=0)
           if (result.rows[0]?.xmax === '0') {
             insertedCount++;
              console.log(` -> INSERTED user ${clerk_id}`);
@@ -108,7 +117,6 @@ async function syncClerkUsers() {
           }
         } catch (dbErr) {
           console.error(`Error upserting user ${clerk_id}:`, dbErr);
-          // Continue with the next user if one fails
         }
       }
       console.log(`Sync finished. Inserted: ${insertedCount}, Updated: ${updatedCount}`);
