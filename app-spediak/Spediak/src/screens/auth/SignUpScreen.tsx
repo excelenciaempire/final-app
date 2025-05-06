@@ -58,6 +58,7 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
         lastName,
         emailAddress,
         password,
+        username: username.trim(),
         unsafeMetadata: { username: username.trim() },
       });
 
@@ -94,7 +95,17 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
          Alert.alert('Verification Error', 'Could not complete sign up.');
       }
     } catch (err: any) {
-        Alert.alert('Verification Error', err.errors ? err.errors[0].message : 'Verification failed');
+        // Check for specific incorrect code error
+        let errorMessage = 'Verification failed';
+        if (err.errors && err.errors[0]) {
+            if (err.errors[0].code === 'form_code_incorrect') {
+                errorMessage = 'Incorrect verification code. Please try again.';
+            } else {
+                errorMessage = err.errors[0].message; // Use Clerk's message for other errors
+            }
+        }
+        console.error(JSON.stringify(err, null, 2)); // Log the full error
+        Alert.alert('Verification Error', errorMessage);
     } finally {
         setLoading(false);
     }
