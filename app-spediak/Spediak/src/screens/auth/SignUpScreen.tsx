@@ -206,7 +206,7 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView
         style={styles.keyboardAvoidingContainer}
         behavior={'padding'}
@@ -340,10 +340,10 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
             </>
           )}
 
-          <View style={styles.signInContainer}>
-            <Text style={styles.signInText}>Already have an account? </Text>
+          <View style={styles.signUpContainer}>
+            <Text style={styles.signUpText}>Already have an account? </Text>
             <TouchableOpacity onPress={() => navigation.navigate('Login')}>
-              <Text style={styles.signInLink}>Log In</Text>
+              <Text style={styles.signUpLink}>Log In</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
@@ -354,25 +354,28 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
 
 // Reuse or adapt styles from LoginScreen, making necessary adjustments
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
     flex: 1,
     backgroundColor: COLORS.white,
   },
   keyboardAvoidingContainer: {
       flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
   },
   scrollContentContainer: {
     flexGrow: 1,
     justifyContent: 'center',
     paddingHorizontal: 20,
-    paddingVertical: 30, // Add padding for scroll view
+    width: '100%',
+    maxWidth: 500, // Match LoginScreen max width
   },
   spediakTitle: {
     fontSize: 36,
     fontWeight: 'bold',
     color: COLORS.primary,
     textAlign: 'center',
-    marginBottom: 30,
+    marginBottom: 40,
   },
   title: {
     fontSize: 24,
@@ -385,7 +388,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: COLORS.darkText,
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: 30,
   },
   inputContainer: {
     flexDirection: 'row',
@@ -413,24 +416,24 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: 'center',
     marginBottom: 20,
-    marginTop: 10, // Add some margin top
+    marginTop: 10,
   },
   buttonText: {
     color: COLORS.white,
     fontSize: 18,
     fontWeight: 'bold',
   },
-  signInContainer: {
+  signUpContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 10, // Add margin top
+    marginTop: 10,
   },
-  signInText: {
+  signUpText: {
     color: COLORS.darkText,
     fontSize: 14,
   },
-  signInLink: {
+  signUpLink: {
     color: COLORS.primary,
     fontSize: 14,
     fontWeight: 'bold',
@@ -439,13 +442,14 @@ const styles = StyleSheet.create({
         backgroundColor: '#a0a0a0',
   },
   errorText: {
-        color: 'red',       // Standard error color
-        fontSize: 13,       // Slightly smaller
-        marginTop: -10,     // Negative margin to pull it closer to the input above
-        marginBottom: 10,   // Space before the next element
-        width: '100%',      // Ensure it takes full width
-        paddingLeft: 15,    // Align with input text padding
-    },
+    color: 'red',
+    fontSize: 14,
+    marginBottom: 15,
+    paddingHorizontal: 5,
+    textAlign: 'left',
+    width: '100%',
+    paddingLeft: 15,
+  },
 });
 
 export default SignUpScreen; 
