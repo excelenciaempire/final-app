@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const apiRoutes = require('./routes/api');
+const { handleClerkWebhook } = require('./controllers/webhookController');
 
 dotenv.config();
 
@@ -30,6 +31,9 @@ app.use(cors({
   },
   credentials: true // Permitir credenciales (cookies, headers de autenticación)
 }));
+
+// Webhook Route
+app.post('/api/webhooks/clerk', express.raw({ type: 'application/json' }), handleClerkWebhook);
 
 // Standard Body Parsers
 app.use(express.json({ limit: '10mb' }));

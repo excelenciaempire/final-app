@@ -9,11 +9,9 @@ const { generateDdidController } = require('../controllers/ddidController');
 const { uploadImageController } = require('../controllers/uploadController');
 const { getAllInspectionsWithUserDetails, getAllUsers } = require('../controllers/adminController');
 const { generatePreDescriptionController } = require('../controllers/preDescriptionController');
-const { handleClerkWebhook } = require('../controllers/webhookController');
 
-// --- Webhook Route (MUST come BEFORE any middleware that requires auth or parses body differently) ---
-// Use express.raw() to get the raw body needed for Svix verification
-router.post('/webhooks/clerk', express.raw({ type: 'application/json' }), handleClerkWebhook);
+// --- Webhook Route (REMOVED - Handled directly in server.js) ---
+// router.post('/webhooks/clerk', express.raw({ type: 'application/json' }), handleClerkWebhook);
 
 // --- Auth Middleware (Applied to all routes BELOW this line) ---
 router.use(requireAuth);

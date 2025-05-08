@@ -77,6 +77,9 @@ const handleClerkWebhook = async (req, res) => {
       // Prefer top-level username, fallback to metadata if needed (though metadata shouldn't be primary source)
       const username = topLevelUsername || unsafe_metadata?.username || null;
       const userState = unsafe_metadata?.inspectionState || null;
+      const imageUrl = image_url || null;
+      const createdAt = created_at;
+      const updatedAt = updated_at;
 
       if (!clerk_id || !primaryEmail) {
         console.error('[Webhook] Missing required user data (ID or Email) in event:', evt.data);
@@ -85,41 +88,78 @@ const handleClerkWebhook = async (req, res) => {
 
       console.log(`[Webhook] User data extracted: ID=${clerk_id}, Email=${primaryEmail}, Name=${fullName}, Username=${username}, State=${userState}`);
       
-      // Use INSERT ... ON CONFLICT ... DO UPDATE (UPSERT) to handle both creation and updates
-      const query = `
-        INSERT INTO users (clerk_id, email, name, username, profile_photo_url, state, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, TO_TIMESTAMP($7 / 1000.0), TO_TIMESTAMP($8 / 1000.0))
-        ON CONFLICT (clerk_id) 
-        DO UPDATE SET
-          email = EXCLUDED.email,
-          name = EXCLUDED.name,
-          username = EXCLUDED.username, 
-          profile_photo_url = EXCLUDED.profile_photo_url,
-          state = EXCLUDED.state,
-          updated_at = TO_TIMESTAMP($9 / 1000.0);
-      `; // Removed RETURNING xmax, not needed for webhook response
-      
-      const values = [
-        clerk_id,
-        primaryEmail,
-        fullName,
-        username, // Use corrected username variable
-        image_url, // Clerk's image_url maps to our profile_photo_url
-        userState,
-        created_at, 
-        updated_at,
-        updated_at
-      ];
-
+      // --- NEW Logic: Try UPDATE first, then INSERT if needed ---
       try {
-        await pool.query(query, values);
-        console.log(`[Webhook] Successfully UPSERTED user ${clerk_id} for event ${eventType}`);
+        // 1. Attempt to UPDATE first based on clerk_id
+        const updateQuery = `
+          UPDATE users SET
+            email = $1,
+            name = $2,
+            username = $3,
+            profile_photo_url = $4,
+            state = $5,
+            updated_at = TO_TIMESTAMP($6 / 1000.0)
+          WHERE clerk_id = $7;
+        `;
+        const updateValues = [
+          primaryEmail,
+          fullName,
+          username,
+          imageUrl,
+          userState,
+          updatedAt,
+          clerk_id
+        ];
+
+        const updateResult = await pool.query(updateQuery, updateValues);
+
+        // 2. If no rows were updated, the user doesn't exist, so INSERT
+        if (updateResult.rowCount === 0 && eventType === 'user.created') { // Only insert on 'user.created' if update failed
+            console.log(`[Webhook] User ${clerk_id} not found for update, attempting INSERT...`);
+            const insertQuery = `
+                INSERT INTO users (clerk_id, email, name, username, profile_photo_url, state, created_at, updated_at)
+                VALUES ($1, $2, $3, $4, $5, $6, TO_TIMESTAMP($7 / 1000.0), TO_TIMESTAMP($8 / 1000.0));
+            `;
+            const insertValues = [
+                clerk_id,
+                primaryEmail,
+                fullName,
+                username,
+                imageUrl,
+                userState,
+                createdAt,
+                updatedAt
+            ];
+            try {
+                 await pool.query(insertQuery, insertValues);
+                 console.log(`[Webhook] Successfully INSERTED user ${clerk_id}`);
+            } catch (insertErr) {
+                 // Handle potential INSERT error (e.g., maybe email conflict if logic is complex)
+                 console.error(`[Webhook] Database error INSERTING user ${clerk_id} after update attempt failed:`, insertErr);
+                 // Decide if this should be a 500 or if it's an expected conflict
+                 if (insertErr.code !== '23505') { // Only error out if it's not a duplicate key error
+                     return res.status(500).json({ error: 'Database insert operation failed.' });
+                 } else {
+                      console.warn(`[Webhook] INSERT failed for ${clerk_id}, likely due to pre-existing email/username. Update should handle.`);
+                 }
+            }
+        } else if (updateResult.rowCount > 0) {
+            console.log(`[Webhook] Successfully UPDATED user ${clerk_id} via webhook.`);
+        } else {
+             console.log(`[Webhook] User ${clerk_id} not found for update, and event type was not user.created. No action taken.`);
+        }
+
       } catch (dbErr) {
-        console.error('[Webhook] Database error upserting user:', dbErr);
-        // Don't send detailed DB errors back to Clerk
-        return res.status(500).json({ error: 'Database operation failed.' });
+        // Catch potential errors during UPDATE (like email conflict if UPDATE tries to change email)
+        console.error('[Webhook] Database error during UPDATE attempt:', dbErr);
+        if (dbErr.code === '23505') { // Specifically handle duplicate key on update
+             console.warn(`[Webhook] UPDATE failed for ${clerk_id}, likely due to conflicting email/username.`);
+             // Don't return 500, just acknowledge webhook potentially
+        } else {
+            return res.status(500).json({ error: 'Database update operation failed.' });
+        }
       }
-      break;
+      break; // End of user.created / user.updated case
     // TODO: Handle user.deleted event if necessary (remove user from your DB)
     // case 'user.deleted':
     //    const { id: deleted_id } = evt.data;

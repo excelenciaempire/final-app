@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { View, Text, Button, Image, TextInput, StyleSheet, Alert, ScrollView, ActivityIndicator, TouchableOpacity, Platform, Dimensions, Modal, KeyboardAvoidingView } from 'react-native';
+import { View, Text, Button, Image, TextInput, StyleSheet, Alert, ScrollView, ActivityIndicator, TouchableOpacity, Platform, Dimensions, Modal, KeyboardAvoidingView, useWindowDimensions } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuth, useUser } from "@clerk/clerk-expo";
 import axios from 'axios';
@@ -39,30 +39,23 @@ const PreDescriptionModal: React.FC<PreDescriptionModalProps> = ({
   const [editableDescription, setEditableDescription] = useState(preDescription);
   const [isEditing, setIsEditing] = useState(false);
 
-  // Update editable text if the initial preDescription changes
   useEffect(() => {
     setEditableDescription(preDescription);
-    setIsEditing(false); // Reset editing state when modal reopens with new data
+    setIsEditing(false);
   }, [preDescription, visible]);
 
   const handleSaveEdit = () => {
     setIsEditing(false);
-    // The state `editableDescription` already holds the edited value
-    Alert.alert("Saved", "Description updated."); // Optional feedback
+    // We don't need an alert here, just exiting edit mode is enough
+    // Alert.alert("Saved", "Description updated."); 
   };
 
   const handleGenerate = () => {
-    // Use the current value in the text field
     onGenerateDdid(editableDescription);
   };
 
   return (
-    <Modal
-      animationType="slide"
-      transparent={true}
-      visible={visible}
-      onRequestClose={onClose}
-    >
+    <Modal animationType="slide" transparent={true} visible={visible} onRequestClose={onClose}>
       <View style={styles.popupOverlay}>
         <View style={styles.popupContainer}>
           <Text style={styles.popupTitle}>Preliminary Description</Text>
@@ -73,27 +66,31 @@ const PreDescriptionModal: React.FC<PreDescriptionModalProps> = ({
               onChangeText={setEditableDescription}
               multiline
               editable={isEditing}
-              numberOfLines={5}
+              numberOfLines={5} 
             />
           </ScrollView>
           <View style={styles.preDescButtonRow}>
+            {/* Edit / Save Edit Button */}
             {!isEditing ? (
               <TouchableOpacity style={[styles.preDescButton, styles.editButton]} onPress={() => setIsEditing(true)}>
                 <Edit3 size={18} color={COLORS.primary} />
                 <Text style={[styles.preDescButtonText, styles.editButtonText]}>Edit</Text>
               </TouchableOpacity>
             ) : (
-              <TouchableOpacity style={[styles.preDescButton, styles.saveButton]} onPress={handleSaveEdit}>
+              // Use Green button style for Save Edit
+              <TouchableOpacity style={[styles.preDescButton, styles.saveButton]} onPress={handleSaveEdit}> 
                 <Check size={18} color={COLORS.white} />
                 <Text style={[styles.preDescButtonText, styles.saveButtonText]}>Save Edit</Text>
               </TouchableOpacity>
             )}
+            {/* Generate Statement Button (No icon) */}
             <TouchableOpacity style={[styles.preDescButton, styles.generateButton]} onPress={handleGenerate} disabled={isEditing}>
                <Text style={[styles.preDescButtonText, styles.generateButtonText, isEditing && styles.buttonDisabledText]}>Generate Statement</Text>
             </TouchableOpacity>
           </View>
-          <TouchableOpacity style={styles.closeModalButton} onPress={onClose}>
-            <Text style={styles.closeModalButtonTextSuccess}>Confirm Description</Text>
+          {/* Restore simple Close button */}
+          <TouchableOpacity style={styles.plainCloseButton} onPress={onClose}>
+            <Text style={styles.plainCloseButtonText}>Close</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -118,6 +115,8 @@ export default function NewInspectionScreen() {
     const [userState, setUserState] = useState<string>('NC'); // Default to NC
     const [isUploading, setIsUploading] = useState<boolean>(false);
     const recordingInstance = useRef<Audio.Recording | null>(null);
+    const { width } = useWindowDimensions(); // Get width for responsive logic
+    const isWebLarge = Platform.OS === 'web' && width > 768; // Define isWebLarge
 
     // --- New States ---
     const [preDescription, setPreDescription] = useState<string>('');
@@ -714,7 +713,7 @@ export default function NewInspectionScreen() {
             keyboardShouldPersistTaps="handled"
         >
             <KeyboardAvoidingView
-                style={{ width: '100%', maxWidth: 700 }}
+                style={{ width: '100%', maxWidth: 700, alignItems: 'center' }}
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
                 keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
                 enabled
@@ -722,8 +721,12 @@ export default function NewInspectionScreen() {
                 <Text style={styles.userStateText}>State: {userState}</Text>
 
                 {Platform.OS === 'web' ? (
-                    <View style={styles.webImagePickerContainer}>
-                        <TouchableOpacity style={styles.imagePickerWebMain} onPress={launchLibrary}>
+                    <div 
+                        onDragOver={handleDragOver as any} 
+                        onDrop={handleDrop as any} 
+                        style={webDropZoneStyle}
+                    >
+                        <TouchableOpacity style={styles.imagePickerWebMain} onPress={launchLibrary}> 
                             {imageUri ? (
                                 <Image source={{ uri: imageUri }} style={styles.imagePreview} />
                             ) : (
@@ -733,11 +736,13 @@ export default function NewInspectionScreen() {
                                 </View>
                             )}
                         </TouchableOpacity>
-                        <TouchableOpacity style={[styles.button, styles.takePhotoButtonWeb]} onPress={launchWebCamera}>
-                            <Camera size={20} color={COLORS.white} style={styles.buttonIcon} />
-                            <Text style={styles.buttonText}>Take Photo</Text>
-                        </TouchableOpacity>
-                    </View>
+                        {!isWebLarge && (
+                            <TouchableOpacity style={[styles.button, styles.takePhotoButtonWeb]} onPress={launchWebCamera}>
+                                <Camera size={20} color={COLORS.white} style={styles.buttonIcon} />
+                                <Text style={styles.buttonText}>Take Photo</Text>
+                            </TouchableOpacity>
+                        )}
+                    </div>
                  ) : (
                     <TouchableOpacity style={styles.imagePicker} onPress={selectImageSource}>
                         {imageUri ? (
@@ -834,13 +839,11 @@ export default function NewInspectionScreen() {
 const webDropZoneStyle: React.CSSProperties = {
     width: '100%',
     maxWidth: 400,
-    aspectRatio: 1,
-    padding: 10,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'transparent',
     marginBottom: 20,
     alignSelf: 'center',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
 };
 
 const styles = StyleSheet.create({
@@ -1000,19 +1003,15 @@ const styles = StyleSheet.create({
     generateButtonText: {
         color: COLORS.white,
     },
-    closeModalButton: {
-         marginTop: 10,
-         paddingVertical: 12,
-         paddingHorizontal: 20,
-         backgroundColor: '#28a745',
-         borderRadius: 8,
-         alignItems: 'center',
+    plainCloseButton: {
+         marginTop: 15,
+         padding: 10,
     },
-    closeModalButtonTextSuccess: {
-        color: COLORS.white,
+    plainCloseButtonText: {
+        color: COLORS.darkText,
         fontSize: 15,
-        fontWeight: 'bold',
         textAlign: 'center',
+        textDecorationLine: 'underline',
     },
     cameraIconTouchable: {
         position: 'absolute',
@@ -1026,12 +1025,6 @@ const styles = StyleSheet.create({
         shadowOffset: { width: 0, height: 1 },
         shadowOpacity: 0.2,
         shadowRadius: 1,
-    },
-    webImagePickerContainer: {
-        width: '100%',
-        maxWidth: 400,
-        alignItems: 'center',
-        marginBottom: 20,
     },
     imagePickerWebMain: {
         width: '100%',

@@ -13,14 +13,22 @@ const generatePreDescriptionController = async (req, res) => {
   }
 
   const prompt = `
-You are an AI assistant observing an image provided by a building inspector.
-Your task is to provide a brief, one-sentence preliminary description of the main subject or defect visible in the image, incorporating the inspector's initial notes if provided.
+You are an AI assistant supporting a building inspector by reviewing images and their accompanying notes.
+Your task is to provide a concise and short preliminary description of the main visible subject, defect, or condition in the image.
 
 Instructions:
-- Start your response directly with the observation (e.g., "Water staining observed on the ceiling.", "Crack noted on the foundation wall.", "Appliance appears to be...", "General view of a kitchen.").
-- Be concise and objective.
-- **Do not** use Markdown. Output plain text only.
-- **Do not** analyze implications or suggest actions yet. Just describe what you see.
+
+Begin your response directly with the observation (e.g., "Crack observed in the ceiling near vent.", "Corrosion visible on water heater pipe.", "General view of laundry area.").
+
+Use objective and neutral language.
+
+Incorporate any relevant inspector notes provided.
+
+Do not suggest causes, implications, or remedies.
+
+Do not use Markdown or special formatting—output plain text only.
+
+This description will be used to generate a formal DDID statement, so accuracy and clarity are critical.
 
 Inspector Data:
 - Analyze the image and the inspector's notes (${description || 'None provided'}).

@@ -235,8 +235,8 @@ export default function InspectionHistoryScreen() {
 
     return (
         <View style={styles.container}>
-            {/* Step 36: Header */}
-            <Text style={styles.headerTitle}>Inspection History</Text>
+            {/* CHANGE 1: Update Header Title */}
+            <Text style={styles.headerTitle}>Statement History</Text>
 
             {/* Step 36: Search Input */}
             <View style={styles.searchContainer}>
@@ -300,17 +300,19 @@ export default function InspectionHistoryScreen() {
                             {/* Action Buttons Row */}
                             <View style={styles.modalActionsRow}>
                                 <TouchableOpacity
-                                    style={[styles.modalButton, styles.copyHistoryButton]} // Style for copy button
+                                    style={[styles.modalButton, styles.copyHistoryButton]}
                                     onPress={() => handleCopyToClipboard(selectedInspection.ddid)}
                                 >
                                     <Copy size={18} color={COLORS.white} style={styles.modalButtonIcon} />
                                     <Text style={styles.modalButtonText}>Copy Statement</Text>
                                 </TouchableOpacity>
+                                {/* CHANGE 2: Apply updated style to Close button */}
                                 <TouchableOpacity
-                                    style={[styles.modalButton, styles.closeButton]} // Style for close button
+                                    style={[styles.modalButton, styles.closeButton]} 
                                     onPress={() => setSelectedInspection(null)}
                                 >
-                                    <Text style={styles.modalButtonText}>Close</Text>
+                                    {/* Keep text white for contrast on grey */}
+                                    <Text style={styles.modalButtonText}>Close</Text> 
                                 </TouchableOpacity>
                             </View>
                         </View>
@@ -332,8 +334,13 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         color: '#333',
         paddingHorizontal: 20,
-        paddingTop: 20, // Adjust as needed for status bar/header
+        paddingTop: Platform.OS === 'ios' ? 10 : 20,
         paddingBottom: 10,
+        // Match sidebar header style maybe?
+        // color: COLORS.primary, 
+        // backgroundColor: 'white',
+        // borderBottomColor: '#eee',
+        // borderBottomWidth: 1,
     },
     searchContainer: {
         flexDirection: 'row',
@@ -500,7 +507,9 @@ const styles = StyleSheet.create({
         backgroundColor: COLORS.primary, // Or another distinct color
     },
     closeButton: {
-        backgroundColor: COLORS.secondary, // Use secondary color or gray
+        // CHANGE 2: Update close button background color
+        backgroundColor: '#6c757d', // Bootstrap secondary/gray color
+        // Optionally change text color if needed for contrast, but white should be ok
     },
 });
 
