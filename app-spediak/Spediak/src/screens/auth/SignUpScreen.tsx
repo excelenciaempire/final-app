@@ -37,6 +37,23 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
   const [confirmPasswordVisible, setConfirmPasswordVisible] = useState(false);
   const [username, setUsername] = useState('');
 
+  // --- NEW: State for inline error messages ---
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [usernameError, setUsernameError] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [confirmPasswordError, setConfirmPasswordError] = useState<string | null>(null);
+  const [generalError, setGeneralError] = useState<string | null>(null); // For non-field specific errors
+  // --------------------------------------------
+
+  // Function to clear errors
+  const clearErrors = () => {
+      setEmailError(null);
+      setUsernameError(null);
+      setPasswordError(null);
+      setConfirmPasswordError(null);
+      setGeneralError(null);
+  };
+
   // Start the sign up process.
   const onSignUpPress = async () => {
     console.log("[SignUpScreen] onSignUpPress called");
@@ -45,43 +62,37 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
       return;
     }
 
+    clearErrors(); // Clear previous errors first
+    let isValid = true;
+
     // --- Password Validation --- 
     if (password.length < 8) {
-        console.log("[SignUpScreen] EXITING: Password too short."); 
-        Alert.alert('Password Too Short', 'Password must be at least 8 characters long.');
-        return;
+        setPasswordError('Password must be at least 8 characters long.');
+        isValid = false;
+    }
+    if (!/[A-Z]/.test(password)) {
+        setPasswordError((prev) => (prev ? prev + ' Must contain uppercase.' : 'Must contain uppercase.'));
+        isValid = false;
+    }
+    if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
+        setPasswordError((prev) => (prev ? prev + ' Must contain symbol.' : 'Must contain symbol.'));
+        isValid = false;
     }
     
-    // Check for uppercase
-    const hasUppercase = /[A-Z]/.test(password);
-    console.log(`[SignUpScreen] Password Uppercase Test Result: ${hasUppercase}`); // Log test result
-    if (!hasUppercase) {
-         console.log("[SignUpScreen] EXITING: Password missing uppercase."); 
-         Alert.alert('Password Weak', 'Password must contain at least one uppercase letter.');
-         return;
-    }
-
-    // Check for symbol (using a common set)
-    const hasSymbol = /[!@#$%^&*(),.?":{}|<>]/.test(password); // Use slightly modified regex just in case
-    console.log(`[SignUpScreen] Password Symbol Test Result: ${hasSymbol}`); // Log test result
-    if (!hasSymbol) {
-         console.log("[SignUpScreen] EXITING: Password missing symbol."); 
-         Alert.alert('Password Weak', 'Password must contain at least one symbol (e.g., !@#$%^&*).');
-         return;
-    }
-    // --- End Password Validation ---
-
     // Check for matching passwords
     if (password !== confirmPassword) {
-        console.log("[SignUpScreen] EXITING: Passwords do not match."); 
-        Alert.alert('Error', 'Passwords do not match.');
-        return;
+        setConfirmPasswordError('Passwords do not match.');
+        isValid = false;
     }
 
-    // Check for other missing fields
+    // Check for other missing fields (could add individual errors if needed)
     if (!firstName || !lastName || !emailAddress || !password || !username || !confirmPassword) { 
-        console.log("[SignUpScreen] EXITING: Missing required fields."); 
-        Alert.alert("Missing Information", "Please fill in all fields.");
+        setGeneralError("Please fill in all required fields."); 
+        isValid = false;
+    }
+
+    // If client-side validation fails, stop here
+    if (!isValid) {
         return;
     }
 
@@ -108,10 +119,9 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
       console.log("[SignUpScreen] Set pendingVerification to true.");
 
     } catch (err: any) {
+      clearErrors(); // Clear previous before setting new ones
       console.error("[SignUpScreen] ERROR in try block:", JSON.stringify(err, null, 2));
-      
       let userMessage = "An unexpected error occurred during sign up.";
-      // DEFENSIVE CHECK: Only proceed if err.errors exists and has content
       if (err.errors && Array.isArray(err.errors) && err.errors.length > 0) {
           const firstError = err.errors[0];
           console.error("Clerk SignUp Error Code:", firstError.code);
@@ -121,33 +131,30 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
           switch (firstError.code) {
               case 'form_identifier_exists':
                   if (firstError.meta?.paramName === 'email_address') {
-                      userMessage = "This email address is already taken. Please use a different email or log in.";
+                      setEmailError("This email address is already taken.");
                   } else if (firstError.meta?.paramName === 'username') {
-                      userMessage = "This username is already taken. Please choose another one.";
+                      setUsernameError("This username is already taken.");
                   } else {
-                      userMessage = "This email or username is already taken.";
+                      setGeneralError("This email or username is already taken.");
                   }
                   break;
               case 'form_password_pwned':
-                  userMessage = "This password has been exposed in data breaches. Please choose a stronger, unique password.";
+                  setPasswordError("This password is too common or known to be compromised. Please choose another.");
                   break;
               case 'form_password_length_too_short':
-                  userMessage = `Password is too short. Minimum length is ${firstError.meta?.minimumLength || 8} characters.`;
-                  break;
-              case 'form_password_complexity':
-                   userMessage = "Password does not meet complexity requirements (e.g., uppercase, symbol)." ;
+                   setPasswordError(`Password too short. Minimum ${firstError.meta?.minimumLength || 8} characters.`);
+                   break;
+              case 'form_password_complexity': 
+                   setPasswordError("Password doesn't meet complexity requirements (uppercase, symbol, etc.).");
                    break;
               default:
-                  // Use Clerk's message if available, otherwise keep the generic one
-                  userMessage = firstError.longMessage || firstError.message || userMessage;
+                  setGeneralError(firstError.longMessage || firstError.message || userMessage);
                   break;
           }
       } else if (err.message) {
-           // If no .errors array, maybe it's a network error or different structure
-           userMessage = err.message; // Use the top-level error message if possible
+           setGeneralError(err.message);
       }
-      // Always show an alert
-      Alert.alert('Sign Up Error', userMessage);
+      // No Alert needed here now, errors are in state
     } finally {
       console.log("[SignUpScreen] Setting loading to false in finally block.");
       setLoading(false);
@@ -160,6 +167,7 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
       return;
     }
     setLoading(true);
+    clearErrors(); // Clear previous errors
     try {
       const completeSignUp = await signUp.attemptEmailAddressVerification({
         code,
@@ -175,19 +183,25 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
          Alert.alert('Verification Error', 'Could not complete sign up.');
       }
     } catch (err: any) {
-        // Check for specific incorrect code error
-        let errorMessage = 'Verification failed';
-        if (err.errors && err.errors[0]) {
-            if (err.errors[0].code === 'form_code_incorrect') {
-                errorMessage = 'Incorrect verification code. Please try again.';
-            } else {
-                errorMessage = err.errors[0].message; // Use Clerk's message for other errors
-            }
-        }
-        console.error(JSON.stringify(err, null, 2)); // Log the full error
-        Alert.alert('Verification Error', errorMessage);
+      let errorMessage = 'Verification failed.';
+      let isCodeError = false;
+      if (err.errors && err.errors[0]) {
+          if (err.errors[0].code === 'form_code_incorrect') {
+              errorMessage = 'Incorrect verification code. Please try again.';
+              isCodeError = true;
+          } else {
+              errorMessage = err.errors[0].message;
+          }
+      }
+      console.error(JSON.stringify(err, null, 2)); 
+      if (isCodeError) {
+          // Set specific state for code error if needed, or use general
+          setGeneralError(errorMessage); // Display error near the code input ideally
+      } else {
+           Alert.alert('Verification Error', errorMessage); // Keep alert for other verification errors
+      }
     } finally {
-        setLoading(false);
+      setLoading(false);
     }
   };
 
@@ -240,9 +254,10 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
                   value={emailAddress}
                   autoCapitalize="none"
                   keyboardType="email-address"
-                  onChangeText={setEmailAddress}
+                  onChangeText={(text) => { setEmailAddress(text); setEmailError(null); }}
                   />
               </View>
+              {emailError && <Text style={styles.errorText}>{emailError}</Text>}
                <View style={styles.inputContainer}>
                    <Ionicons name="lock-closed-outline" size={20} color={COLORS.darkText} style={styles.inputIcon} />
                   <TextInput
@@ -251,12 +266,13 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
                   placeholderTextColor={COLORS.darkText}
                   value={password}
                   secureTextEntry={!passwordVisible}
-                  onChangeText={setPassword}
+                  onChangeText={(text) => { setPassword(text); setPasswordError(null); }}
                   />
                    <TouchableOpacity onPress={() => setPasswordVisible(!passwordVisible)} style={styles.eyeIconContainer}>
                       <Ionicons name={passwordVisible ? "eye-off-outline" : "eye-outline"} size={20} color={COLORS.darkText} />
                   </TouchableOpacity>
               </View>
+              {passwordError && <Text style={styles.errorText}>{passwordError}</Text>}
                <View style={styles.inputContainer}>
                    <Ionicons name="lock-closed-outline" size={20} color={COLORS.darkText} style={styles.inputIcon} />
                   <TextInput
@@ -265,12 +281,13 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
                       placeholderTextColor={COLORS.darkText}
                       value={confirmPassword}
                       secureTextEntry={!confirmPasswordVisible}
-                      onChangeText={setConfirmPassword}
+                      onChangeText={(text) => { setConfirmPassword(text); setConfirmPasswordError(null); }}
                   />
                    <TouchableOpacity onPress={() => setConfirmPasswordVisible(!confirmPasswordVisible)} style={styles.eyeIconContainer}>
                       <Ionicons name={confirmPasswordVisible ? "eye-off-outline" : "eye-outline"} size={20} color={COLORS.darkText} />
                   </TouchableOpacity>
               </View>
+              {confirmPasswordError && <Text style={styles.errorText}>{confirmPasswordError}</Text>}
                <View style={styles.inputContainer}>
                    <Ionicons name="person-outline" size={20} color={COLORS.darkText} style={styles.inputIcon} />
                   <TextInput
@@ -278,9 +295,14 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
                       placeholder="Username"
                       placeholderTextColor={COLORS.darkText}
                       value={username}
-                      onChangeText={setUsername}
+                      onChangeText={(text) => { setUsername(text); setUsernameError(null); }}
+                      autoCapitalize="none"
                   />
               </View>
+              {usernameError && <Text style={styles.errorText}>{usernameError}</Text>}
+
+              {/* Display general errors here */}
+              {generalError && <Text style={styles.errorText}>{generalError}</Text>}
 
               <TouchableOpacity 
                   style={[styles.button, (!isLoaded || loading) && styles.buttonDisabled]}
@@ -303,9 +325,11 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
                       placeholder="Verification Code"
                       placeholderTextColor={COLORS.darkText}
                       keyboardType="numeric"
-                      onChangeText={setCode}
+                      onChangeText={(text) => { setCode(text); setGeneralError(null); }}
                   />
               </View>
+              {/* Display general errors (like incorrect code) here */}
+              {generalError && <Text style={styles.errorText}>{generalError}</Text>}
               <TouchableOpacity 
                   style={[styles.button, (!isLoaded || loading) && styles.buttonDisabled]}
                   onPress={onPressVerify} 
@@ -414,6 +438,14 @@ const styles = StyleSheet.create({
   buttonDisabled: {
         backgroundColor: '#a0a0a0',
   },
+  errorText: {
+        color: 'red',       // Standard error color
+        fontSize: 13,       // Slightly smaller
+        marginTop: -10,     // Negative margin to pull it closer to the input above
+        marginBottom: 10,   // Space before the next element
+        width: '100%',      // Ensure it takes full width
+        paddingLeft: 15,    // Align with input text padding
+    },
 });
 
 export default SignUpScreen; 
