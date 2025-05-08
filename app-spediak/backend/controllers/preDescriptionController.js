@@ -14,7 +14,7 @@ const generatePreDescriptionController = async (req, res) => {
 
   const prompt = `
 You are an AI assistant supporting a building inspector by reviewing images and their accompanying notes.
-Your task is to provide a concise and short preliminary description of the main visible subject, defect, or condition in the image.
+Your task is to provide a concise and detailed preliminary description of the main visible subject, defect, or condition in the image.
 
 Instructions:
 

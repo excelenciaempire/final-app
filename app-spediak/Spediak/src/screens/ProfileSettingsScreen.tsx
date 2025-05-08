@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, Image, Button, TextInput, TouchableOpacity, Alert, ActivityIndicator, ScrollView, Platform } from 'react-native';
+import { View, Text, StyleSheet, Image, Button, TextInput, TouchableOpacity, Alert, ActivityIndicator, ScrollView, Platform, SafeAreaView } from 'react-native';
 import { useUser, useAuth } from '@clerk/clerk-expo';
 import { Picker } from '@react-native-picker/picker';
 import * as ImagePicker from 'expo-image-picker';
@@ -15,7 +15,7 @@ const availableStates = [
     // Add other states as needed
 ];
 
-export default function ProfileSettingsScreen() {
+const ProfileSettingsScreen: React.FC = () => {
     const { isLoaded, isSignedIn, user } = useUser();
     const { signOut } = useAuth();
     const [isEditing, setIsEditing] = useState<boolean>(false);
@@ -38,20 +38,9 @@ export default function ProfileSettingsScreen() {
         if (user) {
             setFirstName(user.firstName || '');
             setLastName(user.lastName || '');
-
-            let stateToSet: string | null = null;
-            const inspectionStateFromMeta = user.unsafeMetadata?.inspectionState;
-            if (typeof inspectionStateFromMeta === 'string' && availableStates.some(s => s.value === inspectionStateFromMeta)) {
-                stateToSet = inspectionStateFromMeta;
-            } else {
-                 // Default to first available state if not set or invalid
-                 stateToSet = availableStates.length > 1 ? availableStates[1].value : null; // Assuming first is placeholder
-            }
-            setSelectedState(stateToSet);
-
-            const initialUri = user.imageUrl || null;
-            setProfileImageUri(initialUri);
-            setInitialImageUri(initialUri);
+            setSelectedState(user.unsafeMetadata?.inspectionState as string || null);
+            setProfileImageUri(user.imageUrl || null);
+            setInitialImageUri(user.imageUrl || null);
             setProfileImageBase64(null); // Ensure base64 is cleared on load/mode switch
         }
     }, [user, isEditing]); // Rerun when user loads OR when switching to edit mode
@@ -162,9 +151,8 @@ export default function ProfileSettingsScreen() {
         // No finally block, as successful signout unmounts the component
     };
 
-
     if (!isLoaded) {
-        return <View style={styles.container}><ActivityIndicator size="large" color="#007bff" /></View>;
+        return <ActivityIndicator style={styles.loader} size="large" color={COLORS.primary} />;
     }
 
     if (!isSignedIn || !user) {
@@ -173,258 +161,169 @@ export default function ProfileSettingsScreen() {
     }
 
     return (
-        <ScrollView style={styles.scrollView} contentContainerStyle={styles.container}>
-            {/* Header */}
-            <View style={styles.header}>
-                <Text style={styles.headerTitle}>Profile</Text>
-                {/* Always show Edit/Close icon */}
-                 <TouchableOpacity onPress={() => setIsEditing(!isEditing)} style={styles.iconButton}>
-                     {isEditing ? <X size={24} color="#333" /> : <Pencil size={24} color="#333" />}
-                 </TouchableOpacity>
-            </View>
+        <SafeAreaView style={styles.safeArea}>
+            <ScrollView 
+                style={styles.safeArea}
+                contentContainerStyle={styles.scrollContentContainer}
+                keyboardShouldPersistTaps="handled"
+            >
+                <Text style={styles.title}>Edit Profile</Text>
+                <Text style={styles.description}>Update your details below.</Text>
 
-            {error && <Text style={styles.errorText}>{error}</Text>}
+                <TouchableOpacity onPress={pickImage} style={styles.profileImageContainer}>
+                    <Image 
+                        source={{ uri: newImageUri || user.imageUrl || 'https://via.placeholder.com/150' }}
+                        style={styles.avatar}
+                    />
+                    <View style={styles.editIconOverlay}> 
+                        <Edit2 size={16} color={COLORS.white} />
+                    </View>
+                </TouchableOpacity>
 
-            {/* Step 45 & 46: Conditional Rendering */}
-            {isEditing ? (
-                // --- Edit Mode UI (Step 46) ---
-                <View style={styles.content}>
-                    <TouchableOpacity onPress={pickImage} style={styles.profileImageContainer}>
-                        <Image
-                            source={{ uri: newImageUri || profileImageUri || 'https://via.placeholder.com/150' }}
-                            style={styles.profileImage}
-                        />
-                        <View style={styles.cameraOverlay}>
-                            <Camera size={24} color="#fff" />
-                        </View>
-                    </TouchableOpacity>
-
+                <View style={styles.inputContainer}>
+                    <Ionicons name="person-outline" size={20} color={COLORS.darkText} style={styles.inputIcon} />
                     <TextInput
-                        style={styles.input}
                         placeholder="First Name"
                         value={firstName}
                         onChangeText={setFirstName}
-                    />
-                    <TextInput
                         style={styles.input}
+                        placeholderTextColor={COLORS.darkText}
+                    />
+                </View>
+                <View style={styles.inputContainer}>
+                    <Ionicons name="person-outline" size={20} color={COLORS.darkText} style={styles.inputIcon} />
+                    <TextInput
                         placeholder="Last Name"
                         value={lastName}
                         onChangeText={setLastName}
+                        style={styles.input}
+                        placeholderTextColor={COLORS.darkText}
                     />
-
-                    {/* State Picker */}
-                    <Text style={styles.label}>Inspection State:</Text>
-                    {/* Wrap Picker in the styled View */}
-                     <View style={styles.pickerContainer}>
-                        <Picker
-                            selectedValue={selectedState ?? availableStates[0].value}
-                            onValueChange={(itemValue) => setSelectedState(itemValue)}
-                            style={styles.picker} // Use existing picker style
-                            itemStyle={styles.pickerItem}
-                            prompt="Select Inspection State"
-                        >
-                            {availableStates.map(state => (
-                                <Picker.Item key={state.value} label={state.label} value={state.value} />
-                            ))}
-                        </Picker>
-                     </View>
-
-                    <TouchableOpacity
-                         style={[styles.button, styles.saveButton, isLoading && styles.buttonDisabled]}
-                         onPress={handleSaveChanges}
-                         disabled={isLoading} >
-                         {isLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Save Changes</Text>}
-                     </TouchableOpacity>
-
                 </View>
-            ) : (
-                // --- View Mode UI (Step 45) ---
-                <View style={styles.content}>
-                    <View style={styles.profileImageContainer}>
-                         <Image
-                            source={{ uri: user.imageUrl || 'https://via.placeholder.com/150' }}
-                            style={styles.profileImage}
-                        />
-                    </View>
-
-                    <Text style={styles.nameText}>{user.fullName || 'User Name'}</Text>
-                    <Text style={styles.emailText}>{user.primaryEmailAddress?.emailAddress || 'No email'}</Text>
-                    <Text style={styles.infoText}>
-                        Default State: {availableStates.find(s => s.value === user.unsafeMetadata?.inspectionState)?.label || 'Not Set'}
-                    </Text>
-
-                     {/* Step 52: Log Out Button */}
-                     <TouchableOpacity
-                         style={[styles.button, styles.logoutButton, isLoading && styles.buttonDisabled]}
-                         onPress={handleLogout}
-                         disabled={isLoading} >
-                         {isLoading ? <ActivityIndicator color="#dc3545" /> :
-                             <>
-                                <LogOut size={18} color="#dc3545" style={styles.buttonIcon} />
-                                <Text style={styles.logoutButtonText}>Log Out</Text>
-                             </>
-                         }
-                     </TouchableOpacity>
+                
+                <View style={styles.inputContainer}> 
+                    <Ionicons name="map-outline" size={20} color={COLORS.darkText} style={styles.inputIcon} />
+                    <Picker
+                        selectedValue={selectedState}
+                        onValueChange={(itemValue) => setSelectedState(itemValue)}
+                        style={styles.input}
+                        dropdownIconColor={COLORS.primary}
+                    >
+                        <Picker.Item label="Select State..." value={null} />
+                        {availableStates.map(state => (
+                            <Picker.Item key={state.value} label={state.label} value={state.value} />
+                        ))}
+                    </Picker>
                 </View>
-            )}
-        </ScrollView>
+
+                {error && <Text style={styles.errorText}>{error}</Text>}
+
+                <TouchableOpacity 
+                    style={[styles.button, isLoading && styles.buttonDisabled]}
+                    onPress={handleSaveChanges}
+                    disabled={isLoading}
+                >
+                    {isLoading ? (
+                        <ActivityIndicator color={COLORS.white} />
+                    ) : (
+                        <><Check size={20} color={COLORS.white} style={{marginRight: 8}} /><Text style={styles.buttonText}>Save Changes</Text></>
+                    )}
+                </TouchableOpacity>
+
+            </ScrollView>
+        </SafeAreaView>
     );
-}
+};
 
-// Styles (Combined for View & Edit)
 const styles = StyleSheet.create({
-    scrollView: {
+    safeArea: {
         flex: 1,
-        backgroundColor: '#f8f9fa',
+        backgroundColor: COLORS.white,
     },
-    container: {
+    scrollContentContainer: {
         flexGrow: 1,
-        alignItems: 'center',
-        padding: 20,
-    },
-    header: {
+        paddingHorizontal: 20,
+        paddingBottom: 30,
+        paddingTop: 30,
         width: '100%',
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 30,
-        marginTop: Platform.OS === 'android' ? 10 : 0, // Adjust for status bar
+        maxWidth: 500,
+        alignSelf: 'center',
     },
-    headerTitle: {
-        fontSize: 28,
+    loader: { marginTop: 50 },
+    title: {
+        fontSize: 24,
         fontWeight: 'bold',
-        color: '#333',
+        color: COLORS.darkText,
+        textAlign: 'center',
+        marginBottom: 10,
     },
-    iconButton: {
-        padding: 8,
-    },
-    content: {
-        width: '100%',
-        alignItems: 'center',
+    description: {
+        fontSize: 16,
+        color: COLORS.darkText,
+        textAlign: 'center',
+        marginBottom: 30,
     },
     profileImageContainer: {
-        marginBottom: 20,
-        position: 'relative', // For camera overlay positioning
+        marginBottom: 30,
+        position: 'relative',
+        alignSelf: 'center',
     },
-    profileImage: {
-        width: 150,
-        height: 150,
-        borderRadius: 75,
+    avatar: {
+        width: 120,
+        height: 120,
+        borderRadius: 60,
         borderWidth: 3,
-        borderColor: '#007bff',
+        borderColor: COLORS.primary, 
     },
-    cameraOverlay: {
+    editIconOverlay: {
         position: 'absolute',
         bottom: 5,
         right: 5,
-        backgroundColor: 'rgba(0, 0, 0, 0.6)',
-        padding: 8,
-        borderRadius: 20,
+        backgroundColor: COLORS.primary,
+        padding: 6,
+        borderRadius: 15,
     },
-    nameText: {
-        fontSize: 24,
-        fontWeight: '600',
-        color: '#333',
-        marginBottom: 5,
-    },
-    emailText: {
-        fontSize: 16,
-        color: '#6c757d',
+    inputContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: COLORS.secondary,
+        borderRadius: 10,
         marginBottom: 15,
+        paddingHorizontal: 15,
     },
-    infoText: {
-        fontSize: 16,
-        color: '#495057',
-        marginBottom: 30,
+    inputIcon: {
+        marginRight: 10,
     },
     input: {
-        width: '100%',
+        flex: 1,
         height: 50,
-        borderColor: '#ced4da',
-        borderWidth: 1,
-        borderRadius: 8,
-        paddingHorizontal: 15,
-        marginBottom: 15,
-        backgroundColor: '#ffffff',
+        color: COLORS.darkText,
         fontSize: 16,
-    },
-    label: {
-        fontSize: 16,
-        color: '#495057',
-        alignSelf: 'flex-start',
-        marginBottom: 8, // Consistent spacing
-        width: '100%', // Ensure label takes full width
-        paddingLeft: 5, // Slight indent similar to inputs
-    },
-    pickerContainer: {
-        width: '100%',
-        height: 50,
-        backgroundColor: '#ffffff',
-        borderRadius: 8,
-        borderWidth: 1,
-        borderColor: '#ced4da',
-        marginBottom: 20, // Consistent spacing
-        justifyContent: 'center',
-    },
-    picker: {
-        width: '100%',
-        height: '100%',
-        color: '#333',
-        ...(Platform.OS === 'web' && {
-             borderWidth: 0,
-             backgroundColor: 'transparent',
-             appearance: 'none',
-             paddingLeft: 15,
-             fontSize: 16,
-        })
-    },
-    pickerItem: {
-        // Optional styling
     },
     button: {
         flexDirection: 'row',
-        alignItems: 'center',
         justifyContent: 'center',
-        paddingVertical: 12,
-        paddingHorizontal: 25,
-        borderRadius: 25,
-        width: '80%',
-        marginTop: 10,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.2,
-        shadowRadius: 1.41,
-        elevation: 2,
-    },
-    saveButton: {
-        backgroundColor: '#28a745', // Green for save
-    },
-    logoutButton: {
-         marginTop: 40,
-         backgroundColor: 'transparent', // Transparent background
-         borderWidth: 1,
-         borderColor: '#dc3545', // Red border
-    },
-    buttonText: {
-        color: '#ffffff',
-        fontSize: 16,
-        fontWeight: 'bold',
-    },
-    logoutButtonText: {
-        color: '#dc3545', // Red text
-        fontSize: 16,
-        fontWeight: 'bold',
-    },
-     buttonIcon: {
-        marginRight: 8,
+        backgroundColor: COLORS.primary,
+        paddingVertical: 15,
+        borderRadius: 10,
+        alignItems: 'center',
+        marginTop: 20,
     },
     buttonDisabled: {
-        opacity: 0.6,
+        backgroundColor: '#a0a0a0',
+    },
+    buttonText: {
+        color: COLORS.white,
+        fontSize: 18,
+        fontWeight: 'bold',
     },
     errorText: {
         color: 'red',
-        marginTop: 10,
-        marginBottom: 10,
         textAlign: 'center',
+        marginBottom: 15,
+        fontSize: 14,
+        paddingHorizontal: 10,
     },
-}); 
+});
+
+export default ProfileSettingsScreen; 
