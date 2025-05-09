@@ -18,6 +18,7 @@ import { COLORS } from '../../styles/colors';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AuthStackParamList } from '../../navigation/AuthNavigator';
 import { useNavigation } from '@react-navigation/native';
+import Checkbox from 'expo-checkbox';
 
 type SignUpScreenProps = NativeStackScreenProps<AuthStackParamList, 'SignUp'>;
 
@@ -36,6 +37,7 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [confirmPasswordVisible, setConfirmPasswordVisible] = useState(false);
   const [username, setUsername] = useState('');
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
 
   // --- NEW: State for inline error messages ---
   const [emailError, setEmailError] = useState<string | null>(null);
@@ -64,6 +66,12 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
 
     clearErrors(); // Clear previous errors first
     let isValid = true;
+
+    // Add terms agreement check first
+    if (!agreedToTerms) {
+        setGeneralError('You must agree to the Terms and Conditions to create an account.');
+        isValid = false;
+    }
 
     // --- Password Validation --- 
     if (password.length < 8) {
@@ -301,13 +309,29 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
               </View>
               {usernameError && <Text style={styles.errorText}>{usernameError}</Text>}
 
+              {/* Terms and Conditions Checkbox and Link */}
+              <View style={styles.checkboxContainer}>
+                <Checkbox
+                  style={styles.checkbox}
+                  value={agreedToTerms}
+                  onValueChange={setAgreedToTerms}
+                  color={agreedToTerms ? COLORS.primary : undefined}
+                />
+                <View style={styles.termsTextContainer}>
+                    <Text style={styles.checkboxLabel}>I agree to the </Text>
+                    <TouchableOpacity onPress={() => navigation.navigate('TermsAndConditions')}>
+                        <Text style={styles.termsLink}>Terms and Conditions</Text>
+                    </TouchableOpacity>
+                </View>
+              </View>
+
               {/* Display general errors here */}
               {generalError && <Text style={styles.errorText}>{generalError}</Text>}
 
               <TouchableOpacity 
-                  style={[styles.button, (!isLoaded || loading) && styles.buttonDisabled]}
+                  style={[styles.button, (!isLoaded || loading || !agreedToTerms) && styles.buttonDisabled]}
                   onPress={onSignUpPress} 
-                  disabled={!isLoaded || loading}
+                  disabled={!isLoaded || loading || !agreedToTerms}
               >
                   {loading ? <ActivityIndicator color={COLORS.white} /> : <Text style={styles.buttonText}>Create Account</Text>}
               </TouchableOpacity>
@@ -449,6 +473,28 @@ const styles = StyleSheet.create({
     textAlign: 'left',
     width: '100%',
     paddingLeft: 15,
+  },
+  checkboxContainer: {
+    flexDirection: 'row',
+    marginBottom: 20,
+    alignItems: 'center',
+  },
+  checkbox: {
+    marginRight: 10,
+  },
+  termsTextContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+  },
+  checkboxLabel: {
+    fontSize: 14,
+    color: COLORS.darkText,
+  },
+  termsLink: {
+    fontSize: 14,
+    color: COLORS.primary,
+    textDecorationLine: 'underline',
   },
 });
 
