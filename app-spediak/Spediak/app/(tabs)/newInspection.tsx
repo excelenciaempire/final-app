@@ -838,7 +838,7 @@ export default function NewInspectionScreen() {
 
 const webDropZoneStyle: React.CSSProperties = {
     width: '100%',
-    maxWidth: 400,
+    maxWidth: 500,
     marginBottom: 20,
     alignSelf: 'center',
     display: 'flex',

@@ -57,6 +57,7 @@ const InspectionList: React.FC = () => {
     const [sortOrder, setSortOrder] = useState('desc');
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
+    const [totalInspectionsCount, setTotalInspectionsCount] = useState<number>(0);
     const [isLoadingMore, setIsLoadingMore] = useState(false);
     const [selectedInspection, setSelectedInspection] = useState<AdminInspectionData | null>(null);
     const [isModalVisible, setIsModalVisible] = useState(false);
@@ -86,11 +87,14 @@ const InspectionList: React.FC = () => {
                 params
             });
 
-            const { inspections: fetchedInspections = [], totalPages: fetchedTotalPages, page: fetchedPage } = response.data;
+            const { inspections: fetchedInspections = [], totalPages: fetchedTotalPages, page: fetchedPage, totalCount: fetchedTotalCount } = response.data;
 
             setInspections(prev => (page === 1 ? fetchedInspections : [...prev, ...fetchedInspections]));
             setTotalPages(fetchedTotalPages);
             setCurrentPage(fetchedPage);
+            if (fetchedTotalCount !== undefined) {
+                setTotalInspectionsCount(fetchedTotalCount);
+            }
 
         } catch (err: any) {
             console.error("[AdminInspections] Error fetching data:", err);
@@ -198,6 +202,12 @@ const InspectionList: React.FC = () => {
     return (
         <View style={{flex: 1}}>
             <View style={styles.controlsContainer}>
+                {/* Display Total Inspections Count */}
+                {(!isLoading || isRefreshing) && ( // Show when not in initial load or when refreshing
+                    <Text style={styles.totalCountText}>
+                        Total Inspections: {totalInspectionsCount}
+                    </Text>
+                )}
                 <View style={styles.searchWrapper}>
                      <Search size={18} color="#888" style={styles.searchIcon} />
                      <TextInput
@@ -434,8 +444,8 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontWeight: '500',
         color: '#555',
-        textAlign: 'center',
-        marginBottom: 15,
+        marginRight: 15, // Add some space to the right
+        alignSelf: 'center', // Vertically align in the row
     },
     controlsContainer: {
         flexDirection: 'row',

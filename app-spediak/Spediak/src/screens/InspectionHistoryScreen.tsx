@@ -243,7 +243,7 @@ export default function InspectionHistoryScreen() {
                  <Search size={20} color="#6c757d" style={styles.searchIcon} />
                  <TextInput
                     style={styles.searchInput}
-                    placeholder="Search inspections..."
+                    placeholder="Search statements..."
                     value={searchQuery}
                     onChangeText={setSearchQuery} // Step 40
                     placeholderTextColor="#6c757d"
