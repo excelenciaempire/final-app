@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { View, Text, Button, Image, TextInput, StyleSheet, Alert, ScrollView, ActivityIndicator, TouchableOpacity, Platform, Dimensions, Modal, KeyboardAvoidingView, useWindowDimensions } from 'react-native';
+import { View, Text, Button, Image, TextInput, StyleSheet, Alert, ScrollView, ActivityIndicator, TouchableOpacity, Platform, Dimensions, Modal, KeyboardAvoidingView, useWindowDimensions, Linking } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuth, useUser } from "@clerk/clerk-expo";
 import axios from 'axios';
@@ -719,11 +719,7 @@ export default function NewInspectionScreen() {
                 enabled
             >
                 <View style={styles.userInfoContainer}>
-                    <Text style={styles.userEmail}>{user?.primaryEmailAddress?.emailAddress}</Text>
-                    {/* Conditionally render State only on native platforms and ensure it's a string */}
-                    {Platform.OS !== 'web' && typeof user?.unsafeMetadata?.inspectionState === 'string' && user.unsafeMetadata.inspectionState && (
-                        <Text style={styles.userState}>State: {user.unsafeMetadata.inspectionState}</Text>
-                    )}
+                    {/* State display removed from here, now handled in RootNavigator header */}
                 </View>
 
                 {Platform.OS === 'web' ? (
@@ -808,6 +804,27 @@ export default function NewInspectionScreen() {
                 </View>
 
                 {error && <Text style={styles.errorText}>{error}</Text>}
+
+                {/* --- Send Feedback Link --- */}
+                <TouchableOpacity
+                    style={styles.feedbackLinkContainer}
+                    onPress={() => {
+                        const feedbackUrl = 'https://your-feedback-url.com'; // Replace with your actual feedback page URL
+                        Linking.canOpenURL(feedbackUrl).then(supported => {
+                            if (supported) {
+                                Linking.openURL(feedbackUrl);
+                            } else {
+                                Alert.alert("Error", "Could not open the feedback page.");
+                                console.log(`Don't know how to open this URL: ${feedbackUrl}`);
+                            }
+                        }).catch(err => {
+                            Alert.alert("Error", "An unexpected error occurred.");
+                            console.error('An error occurred', err)
+                        });
+                    }}
+                >
+                    <Text style={styles.feedbackLinkText}>Send Feedback</Text>
+                </TouchableOpacity>
             </KeyboardAvoidingView>
 
             <PreDescriptionModal
@@ -1071,5 +1088,15 @@ const styles = StyleSheet.create({
     actionButtonHalf: {
         flex: 1,
         marginHorizontal: 5,
+    },
+    feedbackLinkContainer: {
+        marginTop: 20,
+        marginBottom: 10, // Add some margin at the bottom
+        alignSelf: 'center',
+    },
+    feedbackLinkText: {
+        color: COLORS.primary,
+        fontSize: 15,
+        textDecorationLine: 'underline',
     },
 });
