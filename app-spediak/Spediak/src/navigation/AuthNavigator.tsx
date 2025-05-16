@@ -23,7 +23,7 @@ const AuthNavigator: React.FC = () => {
       <Stack.Screen name="SignUp" component={SignUpScreen} />
       <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
       <Stack.Screen name="TermsAndConditions" component={TermsScreen} />
-      {/* <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} /> */}
+      <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
     </Stack.Navigator>
   );
 };
