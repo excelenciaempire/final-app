@@ -7,7 +7,7 @@ const { transcribeAudioController } = require('../controllers/transcriptionContr
 const { getInspections, createInspection, deleteInspection } = require('../controllers/inspectionController');
 const { generateDdidController } = require('../controllers/ddidController');
 const { uploadImageController } = require('../controllers/uploadController');
-const { getAllInspectionsWithUserDetails, getAllUsers } = require('../controllers/adminController');
+const { getAllInspectionsWithUserDetails, getAllUsers, downloadDatabaseBackup } = require('../controllers/adminController');
 const { generatePreDescriptionController } = require('../controllers/preDescriptionController');
 
 // --- Webhook Route (REMOVED - Handled directly in server.js) ---
@@ -19,6 +19,7 @@ router.use(requireAuth);
 // --- Admin Routes ---
 router.get('/admin/all-inspections', requireAdmin, getAllInspectionsWithUserDetails);
 router.get('/admin/all-users', requireAdmin, getAllUsers);
+router.get('/admin/download-backup', requireAdmin, downloadDatabaseBackup);
 
 // --- Regular User Routes ---
 router.post('/upload-image', uploadImageController);

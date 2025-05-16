@@ -6,7 +6,7 @@ import { useAuth } from '@clerk/clerk-expo';
 import { BASE_URL } from '../config/api';
 import { COLORS } from '../styles/colors';
 import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
-import { Search, Eye, UserCircle } from 'lucide-react-native';
+import { Search, Eye, UserCircle, Download } from 'lucide-react-native';
 import DdidModal from '../components/DdidModal';
 import { useDebounce } from '../hooks/useDebounce';
 
@@ -396,9 +396,89 @@ const UserList: React.FC = () => {
 const Tab = createMaterialTopTabNavigator();
 
 const AdminDashboardScreen = () => {
+    const { getToken } = useAuth();
+    const [isDownloading, setIsDownloading] = useState(false);
+
+    const handleDownloadBackup = async () => {
+        setIsDownloading(true);
+        Alert.alert(
+            "Confirm Download", 
+            "Are you sure you want to download the database backup? This might take a moment.",
+            [
+                {
+                    text: "Cancel",
+                    style: "cancel",
+                    onPress: () => setIsDownloading(false)
+                },
+                {
+                    text: "Download",
+                    onPress: async () => {
+                        try {
+                            const token = await getToken();
+                            if (!token) {
+                                Alert.alert("Authentication Error", "Could not get authentication token.");
+                                setIsDownloading(false);
+                                return;
+                            }
+                            console.log('[AdminBackup] Requesting backup from:', `${BASE_URL}/api/admin/download-backup`);
+
+                            // For web, direct navigation or axios with blob handling
+                            if (Platform.OS === 'web') {
+                                const response = await axios.get(`${BASE_URL}/api/admin/download-backup`, {
+                                    headers: { Authorization: `Bearer ${token}` },
+                                    responseType: 'blob', // Important for file downloads
+                                });
+
+                                const blob = new Blob([response.data], { type: response.headers['content-type'] });
+                                const url = window.URL.createObjectURL(blob);
+                                const link = document.createElement('a');
+                                link.href = url;
+                                const contentDisposition = response.headers['content-disposition'];
+                                let fileName = 'spediak_database_backup.zip'; // Default filename
+                                if (contentDisposition) {
+                                    const fileNameMatch = contentDisposition.match(/filename="?(.+)"?/i);
+                                    if (fileNameMatch && fileNameMatch.length === 2) fileName = fileNameMatch[1];
+                                }
+                                link.setAttribute('download', fileName);
+                                document.body.appendChild(link);
+                                link.click();
+                                document.body.removeChild(link);
+                                window.URL.revokeObjectURL(url);
+                                console.log('[AdminBackup] Backup download initiated.');
+                            } else {
+                                // For native, linking might be an option or inform user about web for download
+                                Alert.alert("Download Not Supported", "Database download is currently supported on the web version only.");
+                            }
+                        } catch (err: any) {
+                            console.error('[AdminBackup] Error downloading database backup:', err);
+                            const errorMessage = err.response?.data?.message || err.message || "Failed to download database backup.";
+                            Alert.alert("Download Failed", errorMessage);
+                        } finally {
+                            setIsDownloading(false);
+                        }
+                    }
+                }
+            ]
+        );
+    };
+
     return (
         <SafeAreaView style={styles.safeAreaContainer}>
-             <Text style={styles.headerTitle}>Admin Dashboard</Text>
+             <View style={styles.headerContainer}> 
+                <Text style={styles.headerTitle}>Admin Dashboard</Text>
+                <TouchableOpacity 
+                    style={[styles.downloadButton, isDownloading && styles.buttonDisabled]} 
+                    onPress={handleDownloadBackup}
+                    disabled={isDownloading}
+                >
+                    {isDownloading ? (
+                        <ActivityIndicator size="small" color={COLORS.white} />
+                    ) : (
+                        <Download size={20} color={COLORS.white} />
+                    )}
+                    <Text style={styles.downloadButtonText}> {isDownloading ? 'Downloading...' : 'Download Backup'}</Text>
+                </TouchableOpacity>
+             </View>
              {/* TODO: Add totals here? */}
              <Tab.Navigator
                  screenOptions={{
@@ -432,9 +512,40 @@ const styles = StyleSheet.create({
         paddingTop: Platform.OS === 'ios' ? 10 : 20, // Adjust top padding
         paddingBottom: 15,
         color: COLORS.primary,
-        backgroundColor: 'white', // Give header a background
+        // backgroundColor: 'white', // Removed to allow headerContainer to manage background
+        // borderBottomColor: '#eee',
+        // borderBottomWidth: 1,
+        flex: 1, // Allow title to take space
+    },
+    headerContainer: { // New style for the header row
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        backgroundColor: 'white',
         borderBottomColor: '#eee',
         borderBottomWidth: 1,
+        // paddingHorizontal: 20, // Already in headerTitle, adjust as needed
+        // paddingTop: Platform.OS === 'ios' ? 10 : 20, // Already in headerTitle
+        // paddingBottom: 15, // Already in headerTitle
+    },
+    downloadButton: { // New style for download button
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#28a745', // Changed from COLORS.success to hex code
+        paddingVertical: 8,
+        paddingHorizontal: 12,
+        borderRadius: 5,
+        marginRight: 20, // Space from the edge or next element
+        height: 40, // Match search input height approx
+    },
+    downloadButtonText: { // New style for download button text
+        color: COLORS.white,
+        fontSize: 14,
+        fontWeight: '500',
+        marginLeft: 8,
+    },
+    buttonDisabled: {
+        backgroundColor: '#adb5bd',
     },
     loader: { marginTop: 50 },
     errorText: { color: 'red', textAlign: 'center', marginTop: 20, paddingHorizontal: 15 },

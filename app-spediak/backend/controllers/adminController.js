@@ -1,5 +1,7 @@
 const { Pool } = require('pg');
 const { clerkClient } = require('@clerk/clerk-sdk-node');
+const archiver = require('archiver');
+const { Parser } = require('json2csv');
 
 // Pool configuration (assuming it's defined elsewhere or here like in inspectionController)
 const pool = new Pool({
@@ -140,7 +142,64 @@ const getAllUsers = async (req, res) => {
   }
 };
 
+// NEW: Download Database Backup
+const downloadDatabaseBackup = async (req, res) => {
+  console.log('[Admin] Request to download database backup received.');
+  try {
+    const archive = archiver('zip', {
+      zlib: { level: 9 } // Sets the compression level.
+    });
+
+    // Set headers to trigger browser download
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', 'attachment; filename="spediak_database_backup.zip"');
+
+    // Pipe archive data to the response
+    archive.pipe(res);
+
+    // Fetch Inspections
+    const inspectionsResult = await pool.query('SELECT * FROM inspections ORDER BY created_at DESC');
+    if (inspectionsResult.rows.length > 0) {
+      const json2csvParserInspections = new Parser();
+      const inspectionsCsv = json2csvParserInspections.parse(inspectionsResult.rows);
+      archive.append(inspectionsCsv, { name: 'inspections.csv' });
+      console.log('[Admin] Added inspections.csv to archive.');
+    } else {
+      archive.append('No inspection data found.', { name: 'inspections.csv' });
+      console.log('[Admin] No inspection data, added empty inspections.csv placeholder.');
+    }
+
+    // Fetch Users
+    const usersResult = await pool.query('SELECT clerk_id, name, email, username, state, created_at, updated_at, profile_photo_url FROM users ORDER BY created_at DESC'); // Exclude sensitive fields if any not needed for backup
+    if (usersResult.rows.length > 0) {
+      const json2csvParserUsers = new Parser();
+      const usersCsv = json2csvParserUsers.parse(usersResult.rows);
+      archive.append(usersCsv, { name: 'users.csv' });
+      console.log('[Admin] Added users.csv to archive.');
+    } else {
+      archive.append('No user data found.', { name: 'users.csv' });
+      console.log('[Admin] No user data, added empty users.csv placeholder.');
+    }
+    
+    // Finalize the archive (this sends the response)
+    await archive.finalize();
+    console.log('[Admin] Archive finalized and sent.');
+
+  } catch (err) {
+    console.error('Error generating database backup:', err);
+    // Avoid sending partial response if headers already sent
+    if (!res.headersSent) {
+      res.status(500).json({ message: 'Error generating database backup' });
+    } else {
+      // If headers are sent, we can't change status or send JSON.
+      // The connection will likely be terminated by the client due to error during streaming.
+      console.error('[Admin] Headers already sent, could not send error status for backup generation.');
+    }
+  }
+};
+
 module.exports = {
   getAllInspectionsWithUserDetails,
   getAllUsers,
+  downloadDatabaseBackup,
 }; 
