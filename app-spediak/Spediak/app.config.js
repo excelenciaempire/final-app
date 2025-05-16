@@ -24,7 +24,7 @@ module.exports = {
     "web": {
       "name": "Spediak",
       "shortName": "Spediak",
-      "favicon": "/favicon.png",
+      "favicon": "./public/favicon.png",
       "bundler": "metro",
       "output": "static"
     },
