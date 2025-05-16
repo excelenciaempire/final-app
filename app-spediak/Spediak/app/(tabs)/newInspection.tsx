@@ -718,7 +718,13 @@ export default function NewInspectionScreen() {
                 keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
                 enabled
             >
-                <Text style={styles.userStateText}>State: {userState}</Text>
+                <View style={styles.userInfoContainer}>
+                    <Text style={styles.userEmail}>{user?.primaryEmailAddress?.emailAddress}</Text>
+                    {/* Conditionally render State only on native platforms and ensure it's a string */}
+                    {Platform.OS !== 'web' && typeof user?.unsafeMetadata?.inspectionState === 'string' && user.unsafeMetadata.inspectionState && (
+                        <Text style={styles.userState}>State: {user.unsafeMetadata.inspectionState}</Text>
+                    )}
+                </View>
 
                 {Platform.OS === 'web' ? (
                     <div 
@@ -859,11 +865,21 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         minHeight: '100%',
     },
-    userStateText: {
+    userInfoContainer: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        width: '100%',
+        maxWidth: 500,
+        alignSelf: 'center',
+        marginBottom: 10,
+    },
+    userEmail: {
         fontSize: 16,
         color: '#555',
-        marginBottom: 15,
-        alignSelf: 'flex-end',
+    },
+    userState: {
+        fontSize: 16,
+        color: '#555',
     },
     imagePicker: {
         width: '100%',

@@ -6,6 +6,7 @@ import LoginScreen from '../screens/auth/LoginScreen';
 import SignUpScreen from '../screens/auth/SignUpScreen';
 import ForgotPasswordScreen from '../screens/auth/ForgotPasswordScreen';
 import TermsScreen from '../screens/auth/TermsScreen';
+import PrivacyPolicyScreen from '../screens/legal/PrivacyPolicyScreen'; // Import new screen
 
 // Define the stack parameter list
 export type AuthStackParamList = {
@@ -13,6 +14,7 @@ export type AuthStackParamList = {
   SignUp: undefined;
   ForgotPassword: undefined;
   TermsAndConditions: undefined;
+  PrivacyPolicy: undefined; // Add new route
 };
 
 // const Stack = createStackNavigator<AuthStackParamList>(); // Remove this line
@@ -26,6 +28,7 @@ const AuthNavigator: React.FC = () => {
       <Stack.Screen name="SignUp" component={SignUpScreen} />
       <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
       <Stack.Screen name="TermsAndConditions" component={TermsScreen} />
+      <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} /> {/* Add new screen */}
     </Stack.Navigator>
     // No NavigationContainer here
   );

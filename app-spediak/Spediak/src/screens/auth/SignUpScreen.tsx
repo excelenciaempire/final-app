@@ -38,6 +38,7 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
   const [confirmPasswordVisible, setConfirmPasswordVisible] = useState(false);
   const [username, setUsername] = useState('');
   const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [agreedToPrivacy, setAgreedToPrivacy] = useState(false); // New state for Privacy Policy
 
   // --- NEW: State for inline error messages ---
   const [emailError, setEmailError] = useState<string | null>(null);
@@ -70,6 +71,11 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
     // Add terms agreement check first
     if (!agreedToTerms) {
         setGeneralError('You must agree to the Terms and Conditions to create an account.');
+        isValid = false;
+    }
+    // Add privacy policy agreement check
+    if (!agreedToPrivacy) {
+        setGeneralError(prev => prev ? 'You must agree to both the Terms and Conditions and the Privacy Policy.' : 'You must agree to the Privacy Policy to create an account.');
         isValid = false;
     }
 
@@ -309,29 +315,43 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
               </View>
               {usernameError && <Text style={styles.errorText}>{usernameError}</Text>}
 
-              {/* Terms and Conditions Checkbox and Link */}
+              {/* Terms and Conditions Checkbox */}
               <View style={styles.checkboxContainer}>
-                <Checkbox
-                  style={styles.checkbox}
-                  value={agreedToTerms}
-                  onValueChange={setAgreedToTerms}
-                  color={agreedToTerms ? COLORS.primary : undefined}
-                />
-                <View style={styles.termsTextContainer}>
-                    <Text style={styles.checkboxLabel}>I agree to the </Text>
-                    <TouchableOpacity onPress={() => navigation.navigate('TermsAndConditions')}>
-                        <Text style={styles.termsLink}>Terms and Conditions</Text>
-                    </TouchableOpacity>
-                </View>
+                  <Checkbox
+                      style={styles.checkbox}
+                      value={agreedToTerms}
+                      onValueChange={setAgreedToTerms}
+                      color={agreedToTerms ? COLORS.primary : undefined}
+                  />
+                  <TouchableOpacity onPress={() => navigation.navigate('TermsAndConditions')}>
+                      <Text style={styles.checkboxLabel}>
+                          I agree to the <Text style={styles.linkText}>Terms and Conditions</Text>
+                      </Text>
+                  </TouchableOpacity>
+              </View>
+
+              {/* Privacy Policy Checkbox */}
+              <View style={styles.checkboxContainer}>
+                  <Checkbox
+                      style={styles.checkbox}
+                      value={agreedToPrivacy}
+                      onValueChange={setAgreedToPrivacy}
+                      color={agreedToPrivacy ? COLORS.primary : undefined}
+                  />
+                  <TouchableOpacity onPress={() => navigation.navigate('PrivacyPolicy')}>
+                      <Text style={styles.checkboxLabel}>
+                          I agree to the <Text style={styles.linkText}>Privacy Policy</Text>
+                      </Text>
+                  </TouchableOpacity>
               </View>
 
               {/* Display general errors here */}
               {generalError && <Text style={styles.errorText}>{generalError}</Text>}
 
-              <TouchableOpacity 
-                  style={[styles.button, (!isLoaded || loading || !agreedToTerms) && styles.buttonDisabled]}
-                  onPress={onSignUpPress} 
-                  disabled={!isLoaded || loading || !agreedToTerms}
+              <TouchableOpacity
+                  style={[styles.button, (!isLoaded || loading || !agreedToTerms || !agreedToPrivacy) && styles.buttonDisabled]}
+                  onPress={onSignUpPress}
+                  disabled={!isLoaded || loading || !agreedToTerms || !agreedToPrivacy}
               >
                   {loading ? <ActivityIndicator color={COLORS.white} /> : <Text style={styles.buttonText}>Create Account</Text>}
               </TouchableOpacity>
@@ -482,16 +502,11 @@ const styles = StyleSheet.create({
   checkbox: {
     marginRight: 10,
   },
-  termsTextContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-  },
   checkboxLabel: {
     fontSize: 14,
     color: COLORS.darkText,
   },
-  termsLink: {
+  linkText: {
     fontSize: 14,
     color: COLORS.primary,
     textDecorationLine: 'underline',
