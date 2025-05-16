@@ -332,57 +332,44 @@ const UserList: React.FC = () => {
 
     const handleExportUsers = async () => {
         setIsExporting(true);
-        Alert.alert(
-            "Confirm Export",
-            "Are you sure you want to export all users as a CSV file?",
-            [
-                {
-                    text: "Cancel",
-                    style: "cancel",
-                    onPress: () => setIsExporting(false)
-                },
-                {
-                    text: "Export",
-                    onPress: async () => {
-                        try {
-                            const token = await getToken();
-                            if (!token) {
-                                Alert.alert("Authentication Error", "Could not get authentication token.");
-                                setIsExporting(false);
-                                return;
-                            }
-                            console.log('[AdminExportUsers] Requesting CSV from:', `${BASE_URL}/api/admin/export-users-csv`);
+        console.log('[AdminExportUsers] DEBUG: Bypassing alert, attempting export directly.'); // Debug log
 
-                            if (Platform.OS === 'web') {
-                                const response = await axios.get(`${BASE_URL}/api/admin/export-users-csv`, {
-                                    headers: { Authorization: `Bearer ${token}` },
-                                    responseType: 'blob',
-                                });
+        // Temporarily bypass Alert for debugging
+        try {
+            const token = await getToken();
+            if (!token) {
+                Alert.alert("Authentication Error", "Could not get authentication token.");
+                setIsExporting(false);
+                return;
+            }
+            console.log('[AdminExportUsers] Requesting CSV from:', `${BASE_URL}/api/admin/export-users-csv`);
 
-                                const blob = new Blob([response.data], { type: response.headers['content-type'] });
-                                const url = window.URL.createObjectURL(blob);
-                                const link = document.createElement('a');
-                                link.href = url;
-                                link.setAttribute('download', 'users.csv');
-                                document.body.appendChild(link);
-                                link.click();
-                                document.body.removeChild(link);
-                                window.URL.revokeObjectURL(url);
-                                console.log('[AdminExportUsers] Users CSV download initiated.');
-                            } else {
-                                Alert.alert("Export Not Supported", "User export is currently supported on the web version only.");
-                            }
-                        } catch (err: any) {
-                            console.error('[AdminExportUsers] Error exporting users CSV:', err);
-                            const errorMessage = err.response?.data?.message || err.message || "Failed to export users.";
-                            Alert.alert("Export Failed", errorMessage);
-                        } finally {
-                            setIsExporting(false);
-                        }
-                    }
-                }
-            ]
-        );
+            if (Platform.OS === 'web') {
+                const response = await axios.get(`${BASE_URL}/api/admin/export-users-csv`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                    responseType: 'blob',
+                });
+
+                const blob = new Blob([response.data], { type: response.headers['content-type'] });
+                const url = window.URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.setAttribute('download', 'users.csv');
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                window.URL.revokeObjectURL(url);
+                console.log('[AdminExportUsers] Users CSV download initiated.');
+            } else {
+                Alert.alert("Export Not Supported", "User export is currently supported on the web version only.");
+            }
+        } catch (err: any) {
+            console.error('[AdminExportUsers] Error exporting users CSV:', err);
+            const errorMessage = err.response?.data?.message || err.message || "Failed to export users.";
+            Alert.alert("Export Failed", errorMessage);
+        } finally {
+            setIsExporting(false);
+        }
     };
 
     const renderUserItem = ({ item }: { item: UserData }) => (
