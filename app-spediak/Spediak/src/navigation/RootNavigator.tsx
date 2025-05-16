@@ -19,13 +19,29 @@ import WelcomeScreen from '../screens/WelcomeScreen';
 
 // Define Drawer Param List
 export type RootDrawerParamList = {
-  NewStatement: undefined;
+  NewStatement: { userState?: string };
   InspectionHistory: undefined;
   ProfileSettings: undefined;
   // AdminDashboard is not a direct route in this navigator for mobile/small screens
 };
 
 const Drawer = createDrawerNavigator<RootDrawerParamList>();
+
+// --- Custom Header Title Component ---
+const CustomHeaderTitle: React.FC = () => {
+  const { user } = useUser();
+  const userState = user?.unsafeMetadata?.inspectionState as string || 'N/A';
+
+  return (
+    <View style={styles.customHeaderContainer}>
+      <Image 
+        source={require('../../assets/logo_header.png')} 
+        style={styles.headerLogo}
+      />
+      <Text style={styles.headerStateText}>State: {userState}</Text>
+    </View>
+  );
+};
 
 // --- Reusable Sidebar/Drawer Content ---
 interface SidebarContentProps {
@@ -37,7 +53,7 @@ interface SidebarContentProps {
 const SidebarContent: React.FC<SidebarContentProps> = ({ onNavigate, activeScreen, isAdmin }) => {
   const { signOut } = useAuth();
   const { user, isLoaded } = useUser();
-  const userState = user?.unsafeMetadata?.inspectionState as string || 'North Carolina';
+  const sidebarUserStateDisplay = user?.unsafeMetadata?.inspectionState as string || 'North Carolina';
 
   if (!isLoaded) {
     return <ActivityIndicator style={{ marginTop: 20 }} color={COLORS.primary} />;
@@ -60,7 +76,7 @@ const SidebarContent: React.FC<SidebarContentProps> = ({ onNavigate, activeScree
         />
         <Text style={styles.userName}>{user?.fullName || 'User Name'}</Text>
         <Text style={styles.userEmail}>{user?.primaryEmailAddress?.emailAddress || 'Email Address'}</Text>
-        <Text style={styles.userState}>{`State: ${userState}`}</Text>
+        <Text style={styles.userState}>{`State: ${sidebarUserStateDisplay}`}</Text>
       </View>
 
       {/* Navigation Items */}
@@ -103,12 +119,22 @@ const SidebarContent: React.FC<SidebarContentProps> = ({ onNavigate, activeScree
 const CustomDrawerContent: React.FC<DrawerContentComponentProps> = (props) => {
   // Extract active route name for potential highlighting (less critical in drawer)
   const activeRouteName = props.state?.routes[props.state.index]?.name as keyof RootDrawerParamList | undefined;
+  const { user } = useUser(); // Get user here to pass state if needed, or let CustomHeaderTitle fetch it
+  const isAdmin = useMemo(() => user?.unsafeMetadata?.role === 'admin', [user]);
 
   return (
     <DrawerContentScrollView {...props}>
        <SidebarContent
-         onNavigate={(screen) => props.navigation.navigate(screen)}
+         onNavigate={(screenName) => {
+            // For NewStatement, we might pass the userState, though CustomHeaderTitle can also fetch it
+            // if (screenName === 'NewStatement' && user?.unsafeMetadata?.inspectionState) {
+            //   props.navigation.navigate(screenName, { userState: user.unsafeMetadata.inspectionState as string });
+            // } else {
+            props.navigation.navigate(screenName as keyof RootDrawerParamList); // Type assertion
+            // }
+         }}
          activeScreen={activeRouteName}
+         isAdmin={isAdmin} // Pass isAdmin to SidebarContent
        />
     </DrawerContentScrollView>
   );
@@ -175,18 +201,31 @@ const RootNavigator: React.FC = () => {
     <Drawer.Navigator
         initialRouteName="NewStatement"
         drawerContent={(props: DrawerContentComponentProps) => <CustomDrawerContent {...props} />}
-        screenOptions={({ navigation }) => ({ // Keep hamburger menu for drawer
+        screenOptions={({ navigation, route }) => ({
             headerStyle: { backgroundColor: COLORS.primary },
             headerTintColor: COLORS.white,
-            headerTitleStyle: { fontWeight: 'bold' },
+            headerTitleAlign: 'center',
             headerLeft: () => (
-              <TouchableOpacity onPress={() => navigation.toggleDrawer()} style={{ marginLeft: 15 }}>
+              <Image
+                source={require('../../assets/logo_header.png')}
+                style={styles.headerLeftLogo}
+              />
+            ),
+            headerTitle: () => {
+                const { user } = useUser();
+                const userState = user?.unsafeMetadata?.inspectionState as string || 'N/A';
+                return (
+                    <Text style={styles.headerTitleTextCentral}>State: {userState}</Text>
+                );
+            },
+            headerRight: () => (
+              <TouchableOpacity onPress={() => navigation.toggleDrawer()} style={{ marginRight: 15 }}>
                 <Ionicons name="menu" size={28} color={COLORS.white} />
               </TouchableOpacity>
             ),
             drawerActiveTintColor: COLORS.primary,
             drawerInactiveTintColor: COLORS.darkText,
-            drawerLabelStyle: { marginLeft: -20, fontSize: 16 } // Adjust label style if needed
+            drawerLabelStyle: { marginLeft: -20, fontSize: 16 }
         })}
         >
         {/* Regular Screens */}
@@ -206,10 +245,28 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         backgroundColor: COLORS.white,
     },
-    // Styles for SidebarContent (used by both Drawer and Web Sidebar)
+    customHeaderContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'flex-start',
+        flex: 1,
+    },
+    headerLogo: {
+        width: 30,
+        height: 30,
+        resizeMode: 'contain',
+        marginLeft: Platform.OS === 'ios' ? 0 : -5,
+    },
+    headerStateText: {
+        flex: 1,
+        textAlign: 'center',
+        color: COLORS.white,
+        fontSize: 18,
+        fontWeight: 'bold',
+    },
     drawerHeader: {
         padding: 20,
-        paddingTop: Platform.OS === 'ios' ? 50 : 20, // Adjust top padding for notch
+        paddingTop: Platform.OS === 'ios' ? 50 : 20,
         backgroundColor: COLORS.secondary,
         borderBottomWidth: 1,
         borderBottomColor: '#ddd',
@@ -245,10 +302,9 @@ const styles = StyleSheet.create({
     drawerFooter: {
        borderTopWidth: 1,
        borderTopColor: '#ddd',
-       paddingBottom: Platform.OS === 'ios' ? 20 : 10, // Safe area padding bottom
+       paddingBottom: Platform.OS === 'ios' ? 20 : 10,
        paddingTop: 10,
     },
-    // Style for individual items in SidebarContent
     sidebarItem: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -257,13 +313,13 @@ const styles = StyleSheet.create({
         marginBottom: 5,
     },
     sidebarItemActive: {
-        backgroundColor: COLORS.primary + '1A', // Light primary color for active background
+        backgroundColor: COLORS.primary + '1A',
         borderLeftWidth: 3,
         borderLeftColor: COLORS.primary,
         paddingLeft: 17,
     },
     sidebarLabel: {
-        marginLeft: 15, // Space between icon and text
+        marginLeft: 15,
         fontSize: 16,
         fontWeight: '500',
         color: COLORS.darkText,
@@ -276,17 +332,27 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         color: COLORS.primary,
     },
-    // Styles specific to Web Dashboard Layout
     webSidebar: {
-        width: 280, // Fixed width for the sidebar
+        width: 280,
         borderRightWidth: 1,
         borderRightColor: '#ddd',
-        backgroundColor: COLORS.white, // Or another suitable background
+        backgroundColor: COLORS.white,
     },
     webContent: {
-        flex: 1, // Takes remaining space
-        // Add padding or background as needed for the content area
-         backgroundColor: '#f8f9fa', // Match the app background
+        flex: 1,
+        backgroundColor: '#f8f9fa',
+    },
+    headerLeftLogo: {
+        width: 30,
+        height: 30,
+        resizeMode: 'contain',
+        marginLeft: 15,
+    },
+    headerTitleTextCentral: {
+        textAlign: 'center',
+        color: COLORS.white,
+        fontWeight: 'bold',
+        fontSize: 16,
     },
 });
 
