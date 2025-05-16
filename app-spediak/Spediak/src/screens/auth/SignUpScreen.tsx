@@ -24,7 +24,6 @@ type SignUpScreenProps = NativeStackScreenProps<AuthStackParamList, 'SignUp'>;
 
 const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
   const { isLoaded, signUp, setActive } = useSignUp();
-  const navigationNative = useNavigation();
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState(''); // Assuming full name is first + last
