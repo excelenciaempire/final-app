@@ -50,14 +50,14 @@ const ProfileSettingsScreen: React.FC = () => {
         const permissions = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (!permissions.granted) {
             Alert.alert('Permission required', 'Media Library permission is needed to select an image.');
-            return;
-        }
+                return;
+            }
 
-        let result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            allowsEditing: true,
-            aspect: [1, 1],
-            quality: 0.7,
+                                let result = await ImagePicker.launchImageLibraryAsync({
+                                    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                                    allowsEditing: true,
+                                    aspect: [1, 1],
+                                    quality: 0.7,
         });
 
         if (!result.canceled && result.assets && result.assets.length > 0) {
@@ -170,15 +170,15 @@ const ProfileSettingsScreen: React.FC = () => {
                 <Text style={styles.title}>Edit Profile</Text>
                 <Text style={styles.description}>Update your details below.</Text>
 
-                <TouchableOpacity onPress={pickImage} style={styles.profileImageContainer}>
-                    <Image 
+                    <TouchableOpacity onPress={pickImage} style={styles.profileImageContainer}>
+                        <Image
                         source={{ uri: newImageUri || user.imageUrl || 'https://via.placeholder.com/150' }}
                         style={styles.avatar}
-                    />
+                        />
                     <View style={styles.editIconOverlay}> 
                         <Edit2 size={16} color={COLORS.white} />
-                    </View>
-                </TouchableOpacity>
+                        </View>
+                    </TouchableOpacity>
 
                 <View style={styles.inputContainer}>
                     <Ionicons name="person-outline" size={20} color={COLORS.darkText} style={styles.inputIcon} />
@@ -203,24 +203,24 @@ const ProfileSettingsScreen: React.FC = () => {
                 
                 <View style={styles.inputContainer}> 
                     <Ionicons name="map-outline" size={20} color={COLORS.darkText} style={styles.inputIcon} />
-                    <Picker
+                        <Picker
                         selectedValue={selectedState}
-                        onValueChange={(itemValue) => setSelectedState(itemValue)}
+                            onValueChange={(itemValue) => setSelectedState(itemValue)}
                         style={styles.input}
                         dropdownIconColor={COLORS.primary}
-                    >
+                        >
                         <Picker.Item label="Select State..." value={null} />
-                        {availableStates.map(state => (
-                            <Picker.Item key={state.value} label={state.label} value={state.value} />
-                        ))}
-                    </Picker>
-                </View>
+                            {availableStates.map(state => (
+                                <Picker.Item key={state.value} label={state.label} value={state.value} />
+                            ))}
+                        </Picker>
+                     </View>
 
                 {error && <Text style={styles.errorText}>{error}</Text>}
 
-                <TouchableOpacity 
+                    <TouchableOpacity
                     style={[styles.button, isLoading && styles.buttonDisabled]}
-                    onPress={handleSaveChanges}
+                         onPress={handleSaveChanges}
                     disabled={isLoading}
                 >
                     {isLoading ? (
@@ -228,9 +228,9 @@ const ProfileSettingsScreen: React.FC = () => {
                     ) : (
                         <><Check size={20} color={COLORS.white} style={{marginRight: 8}} /><Text style={styles.buttonText}>Save Changes</Text></>
                     )}
-                </TouchableOpacity>
+                     </TouchableOpacity>
 
-            </ScrollView>
+        </ScrollView>
         </SafeAreaView>
     );
 };
@@ -324,6 +324,6 @@ const styles = StyleSheet.create({
         fontSize: 14,
         paddingHorizontal: 10,
     },
-});
+}); 
 
 export default ProfileSettingsScreen; 

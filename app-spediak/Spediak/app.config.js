@@ -22,7 +22,7 @@ module.exports = {
       }
     },
     "web": {
-      "favicon": "./assets/favicon.png",
+      "favicon": "/favicon.png",
       "bundler": "metro",
       "output": "static"
     },

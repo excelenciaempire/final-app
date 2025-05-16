@@ -97,7 +97,7 @@ const InspectionList: React.FC = () => {
             }
 
         } catch (err: any) {
-            console.error("[AdminInspections] Error fetching data:", err);
+             console.error("[AdminInspections] Error fetching data:", err);
             let errorMessage = "Failed to fetch inspection data.";
             if (err.response) { errorMessage = err.response.data?.message || errorMessage; }
             setError(errorMessage);
@@ -266,6 +266,7 @@ const UserList: React.FC = () => {
     const [totalUsers, setTotalUsers] = useState(0);
     const { getToken } = useAuth();
     const debouncedUserSearch = useDebounce(userSearchQuery, 500);
+    const [isExporting, setIsExporting] = useState<boolean>(false);
 
     const fetchUsers = useCallback(async (page = 1, search = debouncedUserSearch, refreshing = false) => {
         console.log(`[AdminUsers] Fetching page ${page}, search: '${search}'`);
@@ -292,7 +293,7 @@ const UserList: React.FC = () => {
             setTotalUsers(totalCount);
 
         } catch (err: any) {
-            console.error("[AdminUsers] Error fetching data:", err);
+             console.error("[AdminUsers] Error fetching data:", err);
             let errorMessage = "Failed to fetch user data.";
             if (err.response) { errorMessage = err.response.data?.message || errorMessage; }
             setError(errorMessage);
@@ -329,27 +330,82 @@ const UserList: React.FC = () => {
         }
     };
 
+    const handleExportUsers = async () => {
+        setIsExporting(true);
+        Alert.alert(
+            "Confirm Export",
+            "Are you sure you want to export all users as a CSV file?",
+            [
+                {
+                    text: "Cancel",
+                    style: "cancel",
+                    onPress: () => setIsExporting(false)
+                },
+                {
+                    text: "Export",
+                    onPress: async () => {
+                        try {
+                            const token = await getToken();
+                            if (!token) {
+                                Alert.alert("Authentication Error", "Could not get authentication token.");
+                                setIsExporting(false);
+                                return;
+                            }
+                            console.log('[AdminExportUsers] Requesting CSV from:', `${BASE_URL}/api/admin/export-users-csv`);
+
+                            if (Platform.OS === 'web') {
+                                const response = await axios.get(`${BASE_URL}/api/admin/export-users-csv`, {
+                                    headers: { Authorization: `Bearer ${token}` },
+                                    responseType: 'blob',
+                                });
+
+                                const blob = new Blob([response.data], { type: response.headers['content-type'] });
+                                const url = window.URL.createObjectURL(blob);
+                                const link = document.createElement('a');
+                                link.href = url;
+                                link.setAttribute('download', 'users.csv');
+                                document.body.appendChild(link);
+                                link.click();
+                                document.body.removeChild(link);
+                                window.URL.revokeObjectURL(url);
+                                console.log('[AdminExportUsers] Users CSV download initiated.');
+                            } else {
+                                Alert.alert("Export Not Supported", "User export is currently supported on the web version only.");
+                            }
+                        } catch (err: any) {
+                            console.error('[AdminExportUsers] Error exporting users CSV:', err);
+                            const errorMessage = err.response?.data?.message || err.message || "Failed to export users.";
+                            Alert.alert("Export Failed", errorMessage);
+                        } finally {
+                            setIsExporting(false);
+                        }
+                    }
+                }
+            ]
+        );
+    };
+
     const renderUserItem = ({ item }: { item: UserData }) => (
-        <TouchableOpacity style={styles.userItemContainer} onPress={() => Alert.alert('User Profile', `User ID: ${item.id}`)}>
-            <View style={styles.userItemContent}>
-                 <View style={styles.userListImageContainer}>
-                    {item.profilePhoto ? (
-                        <Image source={{ uri: item.profilePhoto }} style={styles.userListImage} />
-                    ) : (
-                         <View style={styles.userListImagePlaceholder}>
-                            <UserCircle size={32} color={COLORS.secondary} />
-                         </View>
-                    )}
-                </View>
-                <View style={styles.userInfoContainer}>
+            <TouchableOpacity style={styles.userItemContainer} onPress={() => Alert.alert('User Profile', `User ID: ${item.id}`)}>
+                <View style={styles.userItemContent}>
+                     <View style={styles.userListImageContainer}>
+                        {item.profilePhoto ? (
+                            <Image source={{ uri: item.profilePhoto }} style={styles.userListImage} />
+                        ) : (
+                             <View style={styles.userListImagePlaceholder}>
+                                <UserCircle size={32} color={COLORS.secondary} />
+                             </View>
+                        )}
+                    </View>
+                    <View style={styles.userInfoContainer}>
                     <Text style={styles.userNameText}>{item.name || 'Unknown Name'}</Text>
-                    <Text style={styles.userEmailText}>{item.email}</Text>
+                        <Text style={styles.userEmailText}>{item.email}</Text>
                     <Text style={styles.userDetailText}>Username: {item.username || 'N/A'}</Text>
-                    <Text style={styles.userDetailText}>State: {item.state || 'N/A'}</Text>
-                </View>
-             </View>
-         </TouchableOpacity>
-    );
+                        <Text style={styles.userDetailText}>State: {item.state || 'N/A'}</Text>
+                    </View>
+                 </View>
+             </TouchableOpacity>
+        );
 
     const renderFooter = () => {
         if (!isLoadingMore) return null;
@@ -361,8 +417,9 @@ const UserList: React.FC = () => {
 
     return (
         <View style={{flex: 1}}>
-            {/* Search Input for Users */}
-            <View style={styles.userSearchContainer}> 
+            {/* Search Input and Export Button for Users */}
+            <View style={styles.userControlsContainer}> 
+                <View style={styles.searchWrapperUsers}> 
                 <Search size={18} color="#888" style={styles.searchIcon} />
                 <TextInput
                     style={styles.searchInput}
@@ -371,6 +428,19 @@ const UserList: React.FC = () => {
                     onChangeText={setUserSearchQuery}
                     placeholderTextColor="#999"
                 />
+                </View>
+                <TouchableOpacity 
+                    style={[styles.exportButton, isExporting && styles.buttonDisabled]} 
+                    onPress={handleExportUsers}
+                    disabled={isExporting}
+                >
+                    {isExporting ? (
+                        <ActivityIndicator size="small" color={COLORS.white} />
+                    ) : (
+                        <Download size={18} color={COLORS.white} />
+                    )}
+                    <Text style={styles.exportButtonText}>{isExporting ? 'Exporting...' : 'Export Users'}</Text>
+                </TouchableOpacity>
             </View>
 
             <FlatList
@@ -396,90 +466,11 @@ const UserList: React.FC = () => {
 const Tab = createMaterialTopTabNavigator();
 
 const AdminDashboardScreen = () => {
-    const { getToken } = useAuth();
-    const [isDownloading, setIsDownloading] = useState(false);
-
-    const handleDownloadBackup = async () => {
-        setIsDownloading(true);
-        Alert.alert(
-            "Confirm Download", 
-            "Are you sure you want to download the database backup? This might take a moment.",
-            [
-                {
-                    text: "Cancel",
-                    style: "cancel",
-                    onPress: () => setIsDownloading(false)
-                },
-                {
-                    text: "Download",
-                    onPress: async () => {
-                        try {
-                            const token = await getToken();
-                            if (!token) {
-                                Alert.alert("Authentication Error", "Could not get authentication token.");
-                                setIsDownloading(false);
-                                return;
-                            }
-                            console.log('[AdminBackup] Requesting backup from:', `${BASE_URL}/api/admin/download-backup`);
-
-                            // For web, direct navigation or axios with blob handling
-                            if (Platform.OS === 'web') {
-                                const response = await axios.get(`${BASE_URL}/api/admin/download-backup`, {
-                                    headers: { Authorization: `Bearer ${token}` },
-                                    responseType: 'blob', // Important for file downloads
-                                });
-
-                                const blob = new Blob([response.data], { type: response.headers['content-type'] });
-                                const url = window.URL.createObjectURL(blob);
-                                const link = document.createElement('a');
-                                link.href = url;
-                                const contentDisposition = response.headers['content-disposition'];
-                                let fileName = 'spediak_database_backup.zip'; // Default filename
-                                if (contentDisposition) {
-                                    const fileNameMatch = contentDisposition.match(/filename="?(.+)"?/i);
-                                    if (fileNameMatch && fileNameMatch.length === 2) fileName = fileNameMatch[1];
-                                }
-                                link.setAttribute('download', fileName);
-                                document.body.appendChild(link);
-                                link.click();
-                                document.body.removeChild(link);
-                                window.URL.revokeObjectURL(url);
-                                console.log('[AdminBackup] Backup download initiated.');
-                            } else {
-                                // For native, linking might be an option or inform user about web for download
-                                Alert.alert("Download Not Supported", "Database download is currently supported on the web version only.");
-                            }
-                        } catch (err: any) {
-                            console.error('[AdminBackup] Error downloading database backup:', err);
-                            const errorMessage = err.response?.data?.message || err.message || "Failed to download database backup.";
-                            Alert.alert("Download Failed", errorMessage);
-                        } finally {
-                            setIsDownloading(false);
-                        }
-                    }
-                }
-            ]
-        );
-    };
-
     return (
         <SafeAreaView style={styles.safeAreaContainer}>
              <View style={styles.headerContainer}> 
-                <Text style={styles.headerTitle}>Admin Dashboard</Text>
-                <TouchableOpacity 
-                    style={[styles.downloadButton, isDownloading && styles.buttonDisabled]} 
-                    onPress={handleDownloadBackup}
-                    disabled={isDownloading}
-                >
-                    {isDownloading ? (
-                        <ActivityIndicator size="small" color={COLORS.white} />
-                    ) : (
-                        <Download size={20} color={COLORS.white} />
-                    )}
-                    <Text style={styles.downloadButtonText}> {isDownloading ? 'Downloading...' : 'Download Backup'}</Text>
-                </TouchableOpacity>
+             <Text style={styles.headerTitle}>Admin Dashboard</Text>
              </View>
-             {/* TODO: Add totals here? */}
              <Tab.Navigator
                  screenOptions={{
                     tabBarActiveTintColor: COLORS.primary,
@@ -527,22 +518,6 @@ const styles = StyleSheet.create({
         // paddingHorizontal: 20, // Already in headerTitle, adjust as needed
         // paddingTop: Platform.OS === 'ios' ? 10 : 20, // Already in headerTitle
         // paddingBottom: 15, // Already in headerTitle
-    },
-    downloadButton: { // New style for download button
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: '#28a745', // Changed from COLORS.success to hex code
-        paddingVertical: 8,
-        paddingHorizontal: 12,
-        borderRadius: 5,
-        marginRight: 20, // Space from the edge or next element
-        height: 40, // Match search input height approx
-    },
-    downloadButtonText: { // New style for download button text
-        color: COLORS.white,
-        fontSize: 14,
-        fontWeight: '500',
-        marginLeft: 8,
     },
     buttonDisabled: {
         backgroundColor: '#adb5bd',
@@ -769,17 +744,40 @@ const styles = StyleSheet.create({
         color: '#777',
         marginTop: 2, // Add small space between detail lines
     },
-    userSearchContainer: {
+    userControlsContainer: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingHorizontal: 15,
+        marginTop: 15,
+        marginBottom: 15,
+    },
+    searchWrapperUsers: {
+        flex: 1,
         flexDirection: 'row',
         alignItems: 'center',
         backgroundColor: '#fff',
         borderRadius: 8,
-        marginHorizontal: 15,
-        marginTop: 15, // Add space above search
-        marginBottom: 15, // Add space below search
         paddingHorizontal: 10,
         borderWidth: 1,
         borderColor: '#ddd',
+        marginRight: 10,
+        height: 40,
+    },
+    exportButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#28a745',
+        paddingVertical: 8,
+        paddingHorizontal: 12,
+        borderRadius: 5,
+        height: 40,
+    },
+    exportButtonText: {
+        color: COLORS.white,
+        fontSize: 14,
+        fontWeight: '500',
+        marginLeft: 8,
     },
 });
 

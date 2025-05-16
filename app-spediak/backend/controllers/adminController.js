@@ -1,9 +1,9 @@
 const { Pool } = require('pg');
 const { clerkClient } = require('@clerk/clerk-sdk-node');
-const archiver = require('archiver');
+// const archiver = require('archiver'); // No longer needed
 const { Parser } = require('json2csv');
 
-// Pool configuration (assuming it's defined elsewhere or here like in inspectionController)
+// Pool configuration
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false }
@@ -15,7 +15,7 @@ const buildSearchWhereClause = (searchFields, searchTerm) => {
     return { clause: '', params: [] };
   }
   const lowerSearchTerm = `%${searchTerm.toLowerCase()}%`;
-  const clauses = searchFields.map((field, index) => `LOWER(${field}) LIKE $${index + 1}`); // Start param index from 1
+  const clauses = searchFields.map((field, index) => `LOWER(${field}) LIKE $${index + 1}`);
   return {
     clause: `WHERE (${clauses.join(' OR ')})`,
     params: Array(searchFields.length).fill(lowerSearchTerm)
@@ -142,58 +142,49 @@ const getAllUsers = async (req, res) => {
   }
 };
 
-// NEW: Download Database Backup
-const downloadDatabaseBackup = async (req, res) => {
-  console.log('[Admin] Request to download database backup received.');
+// NEW: Export Users as CSV
+const exportUsersCsv = async (req, res) => {
+  console.log('[Admin] Request to export users as CSV received.');
   try {
-    const archive = archiver('zip', {
-      zlib: { level: 9 } // Sets the compression level.
-    });
+    // Fetch all users - consider performance for very large datasets
+    // For this example, fetching all. Add specific columns to select.
+    const usersResult = await pool.query(
+      'SELECT clerk_id, name, email, username, state, created_at, updated_at, profile_photo_url FROM users ORDER BY name ASC'
+    );
 
-    // Set headers to trigger browser download
-    res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('Content-Disposition', 'attachment; filename="spediak_database_backup.zip"');
-
-    // Pipe archive data to the response
-    archive.pipe(res);
-
-    // Fetch Inspections
-    const inspectionsResult = await pool.query('SELECT * FROM inspections ORDER BY created_at DESC');
-    if (inspectionsResult.rows.length > 0) {
-      const json2csvParserInspections = new Parser();
-      const inspectionsCsv = json2csvParserInspections.parse(inspectionsResult.rows);
-      archive.append(inspectionsCsv, { name: 'inspections.csv' });
-      console.log('[Admin] Added inspections.csv to archive.');
-    } else {
-      archive.append('No inspection data found.', { name: 'inspections.csv' });
-      console.log('[Admin] No inspection data, added empty inspections.csv placeholder.');
+    if (usersResult.rows.length === 0) {
+      // If no users, send a 404 or an empty CSV with a message
+      // For simplicity, sending a 200 with an empty CSV content is also an option.
+      // Or a message in the CSV file itself.
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', 'attachment; filename="users.csv"');
+      return res.status(200).send('No user data found.'); // Send message in CSV
     }
 
-    // Fetch Users
-    const usersResult = await pool.query('SELECT clerk_id, name, email, username, state, created_at, updated_at, profile_photo_url FROM users ORDER BY created_at DESC'); // Exclude sensitive fields if any not needed for backup
-    if (usersResult.rows.length > 0) {
-      const json2csvParserUsers = new Parser();
-      const usersCsv = json2csvParserUsers.parse(usersResult.rows);
-      archive.append(usersCsv, { name: 'users.csv' });
-      console.log('[Admin] Added users.csv to archive.');
-    } else {
-      archive.append('No user data found.', { name: 'users.csv' });
-      console.log('[Admin] No user data, added empty users.csv placeholder.');
-    }
-    
-    // Finalize the archive (this sends the response)
-    await archive.finalize();
-    console.log('[Admin] Archive finalized and sent.');
+    const fields = [
+        { label: 'User ID', value: 'clerk_id'},
+        { label: 'Name', value: 'name'},
+        { label: 'Email', value: 'email'},
+        { label: 'Username', value: 'username'},
+        { label: 'State', value: 'state'},
+        { label: 'Created At', value: 'created_at'},
+        { label: 'Updated At', value: 'updated_at'},
+        { label: 'Profile Photo URL', value: 'profile_photo_url'}
+    ];
+    const json2csvParser = new Parser({ fields });
+    const usersCsv = json2csvParser.parse(usersResult.rows);
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="users.csv"');
+    res.status(200).send(usersCsv);
+    console.log('[Admin] Users CSV generated and sent.');
 
   } catch (err) {
-    console.error('Error generating database backup:', err);
-    // Avoid sending partial response if headers already sent
+    console.error('Error generating users CSV:', err);
     if (!res.headersSent) {
-      res.status(500).json({ message: 'Error generating database backup' });
+      res.status(500).json({ message: 'Error generating users CSV export' });
     } else {
-      // If headers are sent, we can't change status or send JSON.
-      // The connection will likely be terminated by the client due to error during streaming.
-      console.error('[Admin] Headers already sent, could not send error status for backup generation.');
+      console.error('[Admin] Headers already sent for CSV export, could not send error status.');
     }
   }
 };
@@ -201,5 +192,5 @@ const downloadDatabaseBackup = async (req, res) => {
 module.exports = {
   getAllInspectionsWithUserDetails,
   getAllUsers,
-  downloadDatabaseBackup,
+  exportUsersCsv, // Replaced downloadDatabaseBackup
 }; 
