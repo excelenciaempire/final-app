@@ -809,7 +809,7 @@ export default function NewInspectionScreen() {
                 <TouchableOpacity
                     style={styles.feedbackLinkContainer}
                     onPress={() => {
-                        const feedbackUrl = 'https://your-feedback-url.com'; // Replace with your actual feedback page URL
+                        const feedbackUrl = 'https://spediak.com/app-feedback/'; // Replace with your actual feedback page URL
                         Linking.canOpenURL(feedbackUrl).then(supported => {
                             if (supported) {
                                 Linking.openURL(feedbackUrl);
