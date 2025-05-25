@@ -452,37 +452,40 @@ const UserList: React.FC = () => {
     const handleDeleteUser = async (userId: string) => {
         Alert.alert(
             "Confirm Deletion",
-            "Are you sure you want to delete this user? This action will remove the user from Clerk and the database and cannot be undone.",
+            "Are you sure you want to delete this user? This action will also remove them from Clerk and cannot be undone.",
             [
                 { text: "Cancel", style: "cancel" },
                 {
                     text: "Delete",
                     style: "destructive",
                     onPress: async () => {
+                        console.log('[AdminDashboard] Delete confirmation pressed for userId:', userId);
                         try {
                             const token = await getToken();
+                            console.log('[AdminDashboard] Token for delete:', token);
                             if (!token) {
-                                Alert.alert("Error", "Authentication token not found.");
-                                return;
+                                console.error('[AdminDashboard] Admin not authenticated for user deletion');
+                                Alert.alert("Error", "Admin authentication failed.");
+                                throw new Error("Admin not authenticated for user deletion");
                             }
-                            console.log(`[AdminUsers] Attempting to delete user: ${userId}`);
-                            await axios.delete(`${BASE_URL}/api/admin/users/${userId}`, {
-                                headers: { Authorization: `Bearer ${token}` },
+
+                            console.log(`[AdminDashboard] Attempting to delete user ID: ${userId} via API.`);
+                            const response = await axios.delete(`${BASE_URL}/api/admin/users/${userId}`, {
+                                headers: { Authorization: `Bearer ${token}` }
                             });
+                            console.log('[AdminDashboard] API delete call successful, response:', response.data);
 
-                            setUsers(prevUsers => prevUsers.filter(user => user.id !== userId));
-                            setTotalUsersCount(prevCount => prevCount - 1);
                             Alert.alert("Success", "User deleted successfully.");
-                            console.log(`[AdminUsers] User ${userId} deleted successfully from frontend.`);
-
+                            // Refresh the user list
+                            console.log('[AdminDashboard] Refreshing user list after deletion...');
+                            fetchUsers(1, searchQuery, sortBy, sortOrder, true); // Force refresh from page 1
                         } catch (err: any) {
-                            console.error(`[AdminUsers] Error deleting user ${userId}:`, err);
-                            let errorMessage = "Failed to delete user.";
+                            console.error(`[AdminDashboard] Error deleting user ID ${userId}:`, err);
                             if (err.response) {
-                                errorMessage = err.response.data?.message || err.response.data?.error || errorMessage;
-                            } else if (err.message) {
-                                errorMessage = err.message;
+                                console.error('[AdminDashboard] Error response data:', err.response.data);
+                                console.error('[AdminDashboard] Error response status:', err.response.status);
                             }
+                            const errorMessage = err.response?.data?.message || err.message || "Failed to delete user";
                             Alert.alert("Error", errorMessage);
                         }
                     },

@@ -230,68 +230,63 @@ export default function InspectionHistoryScreen() {
 
     // Step 40: Filter Logic
     const filteredInspections = useMemo(() => {
-        if (!searchQuery) {
-            return inspections;
-        }
-        const lowerCaseQuery = searchQuery.toLowerCase();
         return inspections.filter(inspection =>
-            inspection.description.toLowerCase().includes(lowerCaseQuery) ||
-            (inspection.created_at && new Date(inspection.created_at).toLocaleDateString().includes(lowerCaseQuery)) ||
-            (inspection.ddid && inspection.ddid.toLowerCase().includes(lowerCaseQuery)) // Optionally search DDID text too
+            (inspection.description?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
+            (inspection.ddid?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
+            (inspection.created_at?.toLowerCase() || '').includes(searchQuery.toLowerCase())
         );
     }, [inspections, searchQuery]);
 
-    // Step 39 & 41: FlatList Render Item (Completed Design)
+    // Step 39: Render Item Function
     const renderItem = ({ item }: { item: Inspection }) => {
-        let dateTimeString = 'N/A';
-        if (item.created_at) {
-            const dateObj = new Date(item.created_at);
-            const formattedDate = dateObj.toLocaleDateString(undefined, {
-                year: 'numeric', month: 'short', day: 'numeric'
-            });
-            const formattedTime = dateObj.toLocaleTimeString(undefined, {
-                hour: 'numeric', minute: '2-digit' //, hour12: true // Optional: force 12-hour format
-            });
-            dateTimeString = `${formattedDate} at ${formattedTime}`;
-        }
-
-        // Use correct property name for logging
-        console.log(`[renderItem] Rendering item ID: ${item.id}, Image URL: ${item.image_url}`);
+        // Make sure created_at is a string before formatting
+        const displayDate = item.created_at ? new Date(item.created_at).toLocaleString() : 'Date not available';
 
         return (
             <View style={styles.itemContainer}>
-                <Image source={{ uri: item.image_url || 'https://via.placeholder.com/60' }} style={styles.itemThumbnail} />
-                <View style={styles.itemTextContainer}>
-                    <Text style={styles.itemDescriptionLabel}>Description:</Text>
-                    <Text style={styles.itemDescriptionText} numberOfLines={2}>{item.description || 'No description'}</Text>
-                    <Text style={styles.itemDateText}>{dateTimeString}</Text>
-                </View>
-                <View style={styles.itemActionsContainer}> 
-                    <TouchableOpacity
-                        style={[styles.actionButton, styles.viewButton]} 
-                        onPress={() => {
-                            setSelectedInspection(item);
-                            setShowDetailModal(true);
-                        }}
-                    >
-                        <Eye size={18} color={COLORS.primary} />
-                        <Text style={styles.actionButtonText}>View</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity 
-                        style={[styles.actionButton, styles.downloadButton]} 
-                        onPress={() => handleDownloadImage(item.image_url, item.id)}
-                        disabled={!item.image_url} // Disable if no image URL
-                    >
-                        <Download size={18} color={item.image_url ? COLORS.white : COLORS.textMuted} /> 
-                        <Text style={[styles.actionButtonText, { color: item.image_url ? COLORS.white : COLORS.textMuted }]}>Save</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity 
-                        style={[styles.actionButton, styles.deleteButton]} 
-                        onPress={() => handleDeleteInspection(item.id)}
-                    >
-                        <Trash2 size={18} color={COLORS.danger} />
-                        <Text style={[styles.actionButtonText, { color: COLORS.danger }]}>Delete</Text>
-                    </TouchableOpacity>
+                {item.image_url ? (
+                    <Image source={{ uri: item.image_url }} style={styles.itemImage} />
+                ) : (
+                    <View style={styles.itemImagePlaceholder}>
+                        <Text style={styles.itemImagePlaceholderText}>No Image</Text>
+                    </View>
+                )}
+                <View style={styles.itemContent}>
+                    <Text style={styles.itemDescription} numberOfLines={2} ellipsizeMode="tail">
+                        <Text style={styles.boldText}>Description:</Text> {item.description || 'N/A'}
+                    </Text>
+                    <Text style={styles.itemDate}><Text style={styles.boldText}>Date:</Text> {displayDate}</Text>
+
+                    <View style={styles.actionsContainer}>
+                        <TouchableOpacity
+                            style={[styles.actionButton, styles.viewButton]}
+                            onPress={() => {
+                                setSelectedInspection(item);
+                                setShowDetailModal(true);
+                            }}
+                        >
+                            <Eye size={16} color={COLORS.primary} />
+                            <Text style={[styles.actionButtonText, styles.viewButtonText]}>View</Text>
+                        </TouchableOpacity>
+
+                        {item.image_url && (
+                            <TouchableOpacity
+                                style={[styles.actionButton, styles.downloadButton]}
+                                onPress={() => handleDownloadImage(item.image_url, item.id)}
+                            >
+                                <Download size={16} color={COLORS.white} />
+                                <Text style={[styles.actionButtonText, styles.downloadButtonText]}>Download</Text>
+                            </TouchableOpacity>
+                        )}
+
+                        <TouchableOpacity
+                            style={[styles.actionButton, styles.deleteButton]}
+                            onPress={() => handleDeleteInspection(item.id)}
+                        >
+                            <Trash2 size={16} color={COLORS.white} />
+                            <Text style={[styles.actionButtonText, styles.deleteButtonText]}>Delete</Text>
+                        </TouchableOpacity>
+                    </View>
                 </View>
             </View>
         );
@@ -445,83 +440,91 @@ const styles = StyleSheet.create({
         // Remove paddingHorizontal from here if adding to container
     },
     itemContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingVertical: 10,
-        paddingHorizontal: 15,
-        borderBottomWidth: 1,
-        borderBottomColor: '#eee',
-        backgroundColor: '#fff',
-        marginHorizontal: 20, // Add horizontal margin instead of list padding
-        marginBottom: 8, // Add space between items
-        borderRadius: 8, // Add slight rounding
-        // Added elevation for a subtle shadow on Android
-        elevation: 1,
-        // Added shadow for iOS
+        backgroundColor: COLORS.white,
+        padding: 15,
+        borderRadius: 8,
+        marginBottom: 15,
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 }, // Small shadow at the bottom
-        shadowOpacity: 0.05, // Very subtle opacity
-        shadowRadius: 1.5, // Soften the shadow
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05, // Softer shadow
+        shadowRadius: 2,
+        elevation: 2,
+        flexDirection: 'row', // Align image and content side-by-side
     },
-    itemThumbnail: {
-        width: 60,
-        height: 60,
-        borderRadius: 8, // Softer corners for the thumbnail
+    itemImage: {
+        width: 80, // Fixed width for image
+        height: 80, // Fixed height for image
+        borderRadius: 6,
         marginRight: 15,
-        backgroundColor: '#e9ecef', // Light placeholder color
     },
-    itemTextContainer: {
-        flex: 1,
+    itemImagePlaceholder: {
+        width: 80,
+        height: 80,
+        borderRadius: 6,
+        marginRight: 15,
+        backgroundColor: COLORS.secondary,
         justifyContent: 'center',
+        alignItems: 'center',
     },
-    itemDescriptionLabel: {
+    itemImagePlaceholderText: {
         fontSize: 12,
-        color: '#6c757d', // Muted color for the label
-        marginBottom: 2,
-        fontWeight: '500',
+        color: COLORS.textMuted,
     },
-    itemDescriptionText: {
-        fontSize: 14, // Slightly larger for better readability
-        color: '#343a40', // Darker text for description
-        marginBottom: 4, // Space between description and date
+    itemContent: {
+        flex: 1, // Allow content to take remaining space
+        justifyContent: 'center', // Vertically center content if needed
     },
-    itemDateText: {
+    itemDescription: {
+        fontSize: 14,
+        marginBottom: 5, // Space between description and date
+        color: COLORS.darkText, // Use darkText for better readability
+    },
+    boldText: {
+        fontWeight: 'bold',
+        color: COLORS.primary, // Make bold text primary color for emphasis
+    },
+    itemDate: {
         fontSize: 12,
-        color: '#6c757d',
+        color: COLORS.textSeco, // Use textSeco for date
+        marginBottom: 10, // Add space before action buttons
     },
-    // Action buttons styling
-    itemActionsContainer: { // Holds all action buttons horizontally
-        flexDirection: 'column', // Changed to column for vertical stack
-        justifyContent: 'space-around', // Distribute space for vertical stack
-        alignItems: 'center', // Center items in the column
-        marginLeft: 10, // Give some space from the text container
-        // width: 80, // Fixed width for the actions column if needed, or remove for auto-width
+    actionsContainer: {
+        flexDirection: 'row',
+        justifyContent: 'flex-start', // Align buttons to the start
+        marginTop: 10, // Add some space above the buttons
     },
     actionButton: {
-        flexDirection: 'row', // Icon and text side-by-side
-        alignItems: 'center', // Vertically align icon and text
-        paddingVertical: 6, // Vertical padding
-        paddingHorizontal: 10, // Horizontal padding
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 8,
+        paddingHorizontal: 12,
         borderRadius: 5,
-        // marginBottom: 8, // Space between vertical buttons
-        minWidth: 80, // Ensure buttons have a decent tap area
-        justifyContent: 'center', // Center content within the button
-    },
-    viewButton: {
-        backgroundColor: COLORS.primary + '15', // Light primary background
-        marginBottom: 8, // Space between vertical buttons
-    },
-    downloadButton: {
-        backgroundColor: COLORS.success, // Green for download/save
-        marginBottom: 8, // Space between vertical buttons
-    },
-    deleteButton: {
-        backgroundColor: COLORS.danger + '15', // Light danger background
+        marginRight: 10, // Space between buttons
+        // minWidth: 90, // Ensure buttons have a decent width
+        justifyContent: 'center',
     },
     actionButtonText: {
-        marginLeft: 5, // Space between icon and text
+        marginLeft: 6,
         fontSize: 13,
         fontWeight: '500',
+    },
+    viewButton: {
+        backgroundColor: COLORS.secondary, // Light gray for view
+    },
+    viewButtonText: {
+        color: COLORS.primary, // Primary color text for view
+    },
+    downloadButton: {
+        backgroundColor: COLORS.success, // Success color for download
+    },
+    downloadButtonText: {
+        color: COLORS.white,
+    },
+    deleteButton: {
+        backgroundColor: COLORS.danger, // Danger color for delete
+    },
+    deleteButtonText: {
+        color: COLORS.white,
     },
     loader: {
         marginTop: 50,
