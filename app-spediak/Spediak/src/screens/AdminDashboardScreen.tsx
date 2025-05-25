@@ -65,14 +65,6 @@ const InspectionList: React.FC = () => {
     const [isModalVisible, setIsModalVisible] = useState(false);
     const { getToken } = useAuth();
     const debouncedSearchQuery = useDebounce(searchQuery, 500);
-    const [mediaLibraryPermission, requestMediaLibraryPermission] = MediaLibrary.usePermissions(); // For saving to gallery
-
-    // Request Media Library permission on mount if not granted
-    useEffect(() => {
-        if (Platform.OS !== 'web' && (!mediaLibraryPermission || mediaLibraryPermission.status !== MediaLibrary.PermissionStatus.GRANTED)) {
-            requestMediaLibraryPermission();
-        }
-    }, [mediaLibraryPermission]);
 
     const fetchData = useCallback(async (page = 1, search = debouncedSearchQuery, sortCol = sortBy, sortDir = sortOrder, refreshing = false) => {
         console.log(`[AdminInspections] Fetching page ${page}, search: '${search}', sort: ${sortCol} ${sortDir}`);
@@ -150,62 +142,6 @@ const InspectionList: React.FC = () => {
         setSortOrder(newSortOrder);
     };
 
-    // Image Download Handler for Admin Inspections
-    const handleAdminDownloadImage = async (imageUrl: string | null, inspectionId: string) => {
-        if (!imageUrl) {
-            Alert.alert("Error", "No image URL available for download.");
-            return;
-        }
-        console.log(`[AdminDownloadImage] Attempting to download: ${imageUrl}`);
-
-        if (Platform.OS === 'web') {
-            try {
-                // Fetch the image as a blob
-                const response = await fetch(imageUrl);
-                if (!response.ok) {
-                    throw new Error(`Failed to fetch image. Status: ${response.status} ${response.statusText}`);
-                }
-                const blob = await response.blob();
-
-                // Create an object URL for the blob
-                const url = window.URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = `spediak_admin_inspection_${inspectionId}_${Date.now()}.jpg`;
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                window.URL.revokeObjectURL(url); // Clean up the object URL
-                Alert.alert("Success", "Image download started.");
-            } catch (error: any) {
-                console.error("[AdminDownloadImage Web] Error:", error);
-                Alert.alert("Error", error.message || "Failed to download image on web.");
-            }
-        } else {
-            if (!mediaLibraryPermission || mediaLibraryPermission.status !== MediaLibrary.PermissionStatus.GRANTED) {
-                const { status } = await requestMediaLibraryPermission();
-                if (status !== MediaLibrary.PermissionStatus.GRANTED) {
-                    Alert.alert("Permission Denied", "Storage permission is required to save the image.");
-                    return;
-                }
-            }
-            try {
-                const fileName = `spediak_admin_inspection_${inspectionId}_${Date.now()}.jpg`;
-                const fileUri = FileSystem.documentDirectory + fileName;
-                const downloadResult = await FileSystem.downloadAsync(imageUrl, fileUri);
-                if (downloadResult.status !== 200) {
-                    throw new Error(`Download failed. Status: ${downloadResult.status}`);
-                }
-                const asset = await MediaLibrary.createAssetAsync(downloadResult.uri);
-                await MediaLibrary.createAlbumAsync('Spediak Admin Inspections', asset, false);
-                Alert.alert("Success", "Image saved to gallery in 'Spediak Admin Inspections' album!");
-            } catch (error: any) {
-                console.error("[AdminDownloadImage Native] Error:", error);
-                Alert.alert("Error", error.message || "Failed to download image.");
-            }
-        }
-    };
-
     const renderInspectionItem = ({ item }: { item: AdminInspectionData }) => (
         <View style={styles.cardContainer}>
             <View style={styles.cardContent}>
@@ -252,14 +188,6 @@ const InspectionList: React.FC = () => {
                                 <Eye size={16} color={COLORS.primary} />
                                 <Text style={styles.viewReportButtonText}>View Statement</Text>
                             </TouchableOpacity>
-                            {item.image_url && (
-                                <TouchableOpacity
-                                    style={styles.downloadIconButton} 
-                                    onPress={() => handleAdminDownloadImage(item.image_url, item.id)}
-                                >
-                                    <Download size={18} color={COLORS.primary} />
-                                </TouchableOpacity>
-                            )}
                         </View>
                     </View>
                 </View>
@@ -459,6 +387,37 @@ const UserList: React.FC = () => {
         }
     };
 
+    const performUserDeletion = async (userId: string) => {
+        console.log('[AdminDashboard] performUserDeletion called for userId:', userId);
+        try {
+            const token = await getToken();
+            console.log('[AdminDashboard] Token for delete:', token);
+            if (!token) {
+                console.error('[AdminDashboard] Admin not authenticated for user deletion');
+                Alert.alert("Error", "Admin authentication failed.");
+                return; 
+            }
+
+            console.log(`[AdminDashboard] Attempting to delete user ID: ${userId} via API.`);
+            const response = await axios.delete(`${BASE_URL}/api/admin/users/${userId}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            console.log('[AdminDashboard] API delete call successful, response:', response.data);
+
+            Alert.alert("Success", "User deleted successfully.");
+            console.log('[AdminDashboard] Refreshing user list after deletion...');
+            fetchUsers(1, searchQuery, sortBy, sortOrder, true); 
+        } catch (err: any) {
+            console.error(`[AdminDashboard] Error in performUserDeletion for user ID ${userId}:`, err);
+            if (err.response) {
+                console.error('[AdminDashboard] Error response data:', err.response.data);
+                console.error('[AdminDashboard] Error response status:', err.response.status);
+            }
+            const errorMessage = err.response?.data?.message || err.message || "Failed to delete user";
+            Alert.alert("Error", errorMessage);
+        }
+    };
+
     const handleDeleteUser = async (userId: string) => {
         console.log('[AdminDashboard] handleDeleteUser called with userId:', userId);
         if (!userId || typeof userId !== 'string') {
@@ -469,43 +428,17 @@ const UserList: React.FC = () => {
 
         Alert.alert(
             "Confirm Deletion",
-            `Are you sure you want to delete this user (${userId})? This action will also remove them from Clerk and cannot be undone.`, // Added userId to message for clarity
+            `Are you sure you want to delete this user (${userId})? This action will also remove them from Clerk and cannot be undone.`, 
             [
                 { text: "Cancel", style: "cancel", onPress: () => console.log('[AdminDashboard] User deletion cancelled.') },
                 {
                     text: "Delete",
                     style: "destructive",
-                    onPress: async () => {
-                        console.log('[AdminDashboard] Delete confirmation pressed for userId:', userId);
-                        try {
-                            const token = await getToken();
-                            console.log('[AdminDashboard] Token for delete:', token);
-                            if (!token) {
-                                console.error('[AdminDashboard] Admin not authenticated for user deletion');
-                                Alert.alert("Error", "Admin authentication failed.");
-                                // throw new Error("Admin not authenticated for user deletion"); // Avoid throwing here to see if alert shows
-                                return; // Exit if no token
-                            }
-
-                            console.log(`[AdminDashboard] Attempting to delete user ID: ${userId} via API.`);
-                            const response = await axios.delete(`${BASE_URL}/api/admin/users/${userId}`, {
-                                headers: { Authorization: `Bearer ${token}` }
-                            });
-                            console.log('[AdminDashboard] API delete call successful, response:', response.data);
-
-                            Alert.alert("Success", "User deleted successfully.");
-                            console.log('[AdminDashboard] Refreshing user list after deletion...');
-                            fetchUsers(1, searchQuery, sortBy, sortOrder, true); // Force refresh from page 1
-                        } catch (err: any) {
-                            console.error(`[AdminDashboard] Error deleting user ID ${userId}:`, err);
-                            if (err.response) {
-                                console.error('[AdminDashboard] Error response data:', err.response.data);
-                                console.error('[AdminDashboard] Error response status:', err.response.status);
-                            }
-                            const errorMessage = err.response?.data?.message || err.message || "Failed to delete user";
-                            Alert.alert("Error", errorMessage);
-                        }
-                    },
+                    // Call the separate async function here
+                    onPress: () => {
+                        console.log('[AdminDashboard] Alert Delete button pressed, calling performUserDeletion for:', userId);
+                        performUserDeletion(userId);
+                    }
                 },
             ]
         );
