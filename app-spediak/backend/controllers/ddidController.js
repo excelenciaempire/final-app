@@ -12,90 +12,85 @@ const generateDdidController = async (req, res) => {
   }
 
   const prompt = `
-AI PROMPT FOR GENERATING INSPECTION REPORT DDID STATEMENTS
+Generate DDID statements strictly based on the inspector’s final description and location.
+Format and Instructions:
+Describe:
+ Directly use the provided final description verbatim, clearly and naturally.
+Determine:
+ Clearly identify and summarize the specific defect.
+Implication:
+ Neutrally and factually describe potential consequences if unaddressed. Avoid alarming
+or speculative language.
+Direct:
+Choose appropriate recommendations based on defect:
+ New Construction/New Build: &quot;Have the builder further evaluate and make any
+additional changes or recommendations as needed.&quot;
+ Exposed electrical wiring/hazards: &quot;Recommend evaluation and repairs by a licensed
+electrical contractor.&quot;
+ Significant plumbing leaks/water issues: &quot;Recommend evaluation and repairs by a
+licensed plumbing contractor.&quot;
+ Significant HVAC defects (excluding minor thermostat/filter issues): &quot;Recommend
+evaluation and repairs by a licensed HVAC contractor.&quot;
+ Structural issues (foundation, framing, supports): &quot;Recommend further evaluation by a
+qualified structural engineer.&quot;
+ Multiple significant issues or safety risks: &quot;Recommend evaluation and repairs by a
+licensed general contractor.&quot;
+ Minor/general issues: &quot;Consult with a qualified licensed contractor for further evaluation
+and recommendations.&quot;
+Critical Instructions:
+ Plain text only; use break lines without spacing.
+ Do not reference image analysis.
+ Objective, clear, understandable language for lay readers.
+ Briefly explain industry terminology.
+ Do NOT reference or quote building codes, safety standards, compliance, or pass/fail
+judgments.
+ Maintain neutral, informational, non-alarmist language.
 
-You are an AI assistant generating plain text inspection report statements using the DDID (Describe, Determine, Implication, Direct) format.
+Specialized Conditional Prompts:
+New Construction:
+ Clearly describe defect without mentioning &#39;new construction&#39; or &#39;new build&#39;.
+ Explicitly direct builder evaluation and necessary repairs.
+Infrared Imagery:
+ Identify infrared imagery.
+ Clearly describe thermal anomalies.
+ Extract/report relevant metadata (temperature data, emissivity, reflected temperature).
+ Incorporate Temperature in the DDID statement from the anomalous area.
+Fungal/Organic Growth:
+ Use only &#39;fungal growth&#39; or &#39;organic growth,&#39; DO NOT use &#39;mold.&#39;
+ Normal/minor growth: No testing recommended.
+ Extensive/unusual growth: Recommend further testing to confirm type and extent.
+Audio Issues:
+ Ignore visual analysis; directly address audio description.
+ Clearly acknowledge audio issue and recommend further evaluation.
+Inspection Limitations:
+ Clearly state area and limitation type (e.g., stored items under sinks, attic access issues).
+ Explain limitation prevents complete inspection.
+ Advise client to schedule inspector follow-up inspection, noting additional fee.
+ Maintain clear, informative, non-confrontational tone without assigning responsibility or
+directing licensed contractors.
+Multiple Issues Prompt – With Concealed Damage Logic and Trades Referral:
+Purpose:
+Ensure correct handling of DDID statements involving multiple issues, distinguishing concealed
+damage from visible safety or potential code issues without referencing codes.
+Instructions:
+1. Describe:
+ Clearly summarize inspector observations.
+ Example visible safety: &quot;Several exposed electrical wires were observed in attic.&quot;
 
-Context:
-The inspector has already reviewed the property condition and provided the final description of the issue, along with the location. Use only this information to generate the full DDID statement.
-
-FORMAT (No spacing between sections):
-Describe
-Determine
-Implication
-Direct
-
-Use line breaks between sections, but no blank lines. Output must be plain text only.
-
-GENERAL RULES:
-Use clear, objective, and factual language.
-
-Avoid speculation, exaggeration, or alarmist language.
-
-Do not include Markdown, bold, or special characters.
-
-Do not include building codes, compliance language, safety standards, or pass/fail terms.
-
-Define construction terms briefly if needed for clarity (e.g., “fascia board (horizontal edge trim)”).
-
-All statements must be concise but clear enough for a layperson to understand.
-
-DESCRIBE:
-Use the inspector's final description verbatim as the opening of the statement. If needed, edit only for grammar or natural flow, without changing meaning.
-
-DETERMINE:
-Identify the specific defect type or condition implied by the description (e.g., water intrusion, missing insulation, cracked framing, exposed wiring, etc.). Use terminology consistent with professional reporting, but still understandable.
-
-IMPLICATION:
-State the potential factual consequences if the condition is not corrected. Keep the language neutral and avoid alarming or overly technical phrases.
-
-Examples:
-
-“If not corrected, this may allow water to enter the structure.”
-
-“This could reduce the efficiency of the HVAC system over time.”
-
-“Unsecured wiring may pose a potential safety hazard.”
-
-DIRECT:
-Follow these conditional directives exactly based on what is described:
-
-New Construction or New Build:
-If the inspector mentions the property is new construction or a new build:
-Use this exact sentence:
-“Have the builder further evaluate and make any additional changes or recommendations as needed.”
-
-Electrical (e.g., exposed wiring, panel defects, junction box issues):
-“Recommend evaluation and repairs by a licensed electrical contractor.”
-
-Plumbing (e.g., active leaks, pipe corrosion, drainage problems, water heater issues):
-“Recommend evaluation and repairs by a licensed plumbing contractor.”
-
-HVAC (e.g., component malfunction, airflow issues, system concerns):
-“Recommend evaluation and repairs by a licensed HVAC contractor.”
-
-Do not use this for minor HVAC issues such as dirty filters or thermostat issues. For those, use the generic contractor recommendation below.
-
-Structural (e.g., damaged framing, foundation cracks, broken supports, roof deck issues):
-“Recommend further evaluation by a qualified structural engineer.”
-
-Significant Safety Risk or Multiple-System Damage:
-“Recommend evaluation and repairs by a licensed general contractor.”
-
-Minor or Cosmetic Issues:
-“Consult with a qualified licensed contractor to further evaluate and make any additional changes or recommendations as needed.”
-
-SPECIAL CONDITIONS (INTEGRATED LOGIC):
-Organic or Mold-like Growth:
-If the description refers to suspected mold, use “organic growth” or “fungal growth” instead of “mold.”
-If the issue appears typical (e.g., minor HVAC dust or bathroom corner), no testing needs to be recommended.
-If it appears widespread, unusual, or excessive, recommend testing by a qualified professional.
-
-Audio-Only Issues:
-If the final description references only sound (e.g., rattling HVAC, dripping sound in walls), do not reference visual details. Describe the audio issue and recommend trade-specific evaluation based on context.
-
-Cosmetic or Aesthetic Issues:
-If clearly identified as cosmetic (e.g., scuff marks, paint chipping, surface wear), do not include implication or direction unless noted by inspector. Keep to Describe and Determine only.
+ Example concealed risk: &quot;Multiple areas of deteriorated wood trim noted around home
+exterior.&quot;
+2. Direction:
+ Concealed damage possibility (trim, siding, roofing, water damage, flooring moisture
+concerns):
+&quot;Recommend a qualified licensed contractor evaluate all related areas and repair as
+needed; additional concealed damage may exist.&quot;
+ Visible safety hazards or likely code issues (electrical, plumbing, HVAC, structural):
+&quot;Recommend evaluation by appropriate licensed professional (electrician, plumber,
+HVAC technician, structural engineer) without referencing codes.&quot;
+Summary Logic:
+ Concealed damage: qualified licensed contractor; mention potential hidden damage.
+ Visible safety/code concerns: licensed trade professional, no code references.
+Maintain neutral, clear, informational language throughout.
 
 CRITICAL:
 Your response must be plain text only and follow the format precisely. No extra spacing, no code, no formatting. Ensure clarity, brevity, and professionalism.
