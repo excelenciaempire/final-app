@@ -27,6 +27,7 @@
     "expo-file-system": "~18.0.12",
     "expo-font": "~13.0.4",
     "expo-image-picker": "~16.0.6",
+    "expo-media-library": "~16.0.4",
     "expo-router": "^4.0.20",
     "expo-secure-store": "~14.0.1",
     "expo-splash-screen": "~0.29.24",
