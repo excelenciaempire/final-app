@@ -183,18 +183,26 @@ export default function InspectionHistoryScreen() {
 
         if (Platform.OS === 'web') {
             try {
-                // For web, create a link and trigger download
+                // Fetch the image as a blob
+                const response = await fetch(imageUrl);
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch image. Status: ${response.status} ${response.statusText}`);
+                }
+                const blob = await response.blob();
+                
+                // Create an object URL for the blob
+                const url = window.URL.createObjectURL(blob);
                 const link = document.createElement('a');
-                link.href = imageUrl;
-                // Suggest a filename (browser might override)
+                link.href = url;
                 link.download = `spediak_inspection_${inspectionId}_${Date.now()}.jpg`; 
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);
+                window.URL.revokeObjectURL(url); // Clean up the object URL
                 Alert.alert("Success", "Image download started.");
-            } catch (error) {
+            } catch (error: any) {
                 console.error("[handleDownloadImage Web] Error:", error);
-                Alert.alert("Error", "Failed to download image on web.");
+                Alert.alert("Error", error.message || "Failed to download image on web.");
             }
         } else {
             // Native: Download using FileSystem and save to MediaLibrary
@@ -268,26 +276,14 @@ export default function InspectionHistoryScreen() {
                             <Eye size={16} color={COLORS.primary} />
                             <Text style={[styles.actionButtonText, styles.viewButtonText]}>View</Text>
                         </TouchableOpacity>
-
-                        {item.image_url && (
-                            <TouchableOpacity
-                                style={[styles.actionButton, styles.downloadButton]}
-                                onPress={() => handleDownloadImage(item.image_url, item.id)}
-                            >
-                                <Download size={16} color={COLORS.white} />
-                                <Text style={[styles.actionButtonText, styles.downloadButtonText]}>Download</Text>
-                            </TouchableOpacity>
-                        )}
-
-                        <TouchableOpacity
-                            style={[styles.actionButton, styles.deleteButton]}
-                            onPress={() => handleDeleteInspection(item.id)}
-                        >
-                            <Trash2 size={16} color={COLORS.white} />
-                            <Text style={[styles.actionButtonText, styles.deleteButtonText]}>Delete</Text>
-                        </TouchableOpacity>
                     </View>
                 </View>
+                <TouchableOpacity
+                    style={styles.deleteIconContainer}
+                    onPress={() => handleDeleteInspection(item.id)}
+                >
+                    <Trash2 size={20} color={COLORS.danger} />
+                </TouchableOpacity>
             </View>
         );
     };
@@ -379,12 +375,20 @@ export default function InspectionHistoryScreen() {
                                     <Copy size={18} color={COLORS.white} style={styles.modalButtonIcon} />
                                     <Text style={styles.modalButtonText}>Copy Statement</Text>
                                 </TouchableOpacity>
-                                {/* CHANGE 2: Apply updated style to Close button */}
+                                
+                                {selectedInspection.image_url && (
+                                    <TouchableOpacity
+                                        style={styles.modalDownloadButton} // New style for download icon in modal
+                                        onPress={() => handleDownloadImage(selectedInspection.image_url!, selectedInspection.id)}
+                                    >
+                                        <Download size={24} color={COLORS.primary} />
+                                    </TouchableOpacity>
+                                )}
+
                                 <TouchableOpacity
                                     style={[styles.modalButton, styles.closeButton]} 
                                     onPress={() => setSelectedInspection(null)}
                                 >
-                                    {/* Keep text white for contrast on grey */}
                                     <Text style={styles.modalButtonText}>Close</Text> 
                                 </TouchableOpacity>
                             </View>
@@ -473,6 +477,7 @@ const styles = StyleSheet.create({
     itemContent: {
         flex: 1, // Allow content to take remaining space
         justifyContent: 'center', // Vertically center content if needed
+        marginRight: 5, // Add some space before the delete icon if it were inline
     },
     itemDescription: {
         fontSize: 14,
@@ -491,6 +496,7 @@ const styles = StyleSheet.create({
     actionsContainer: {
         flexDirection: 'row',
         justifyContent: 'flex-start', // Align buttons to the start
+        alignItems: 'center', // Align items vertically
         marginTop: 10, // Add some space above the buttons
     },
     actionButton: {
@@ -514,17 +520,17 @@ const styles = StyleSheet.create({
     viewButtonText: {
         color: COLORS.primary, // Primary color text for view
     },
-    downloadButton: {
-        backgroundColor: COLORS.success, // Success color for download
-    },
-    downloadButtonText: {
-        color: COLORS.white,
-    },
     deleteButton: {
         backgroundColor: COLORS.danger, // Danger color for delete
     },
     deleteButtonText: {
         color: COLORS.white,
+    },
+    deleteIconContainer: { // New style for the delete icon's touchable area
+        padding: 10, // Make it easier to tap
+        justifyContent: 'center',
+        alignItems: 'center',
+        // Removed marginLeft as it's positioned by flex in itemContainer or absolutely
     },
     loader: {
         marginTop: 50,
@@ -577,7 +583,8 @@ const styles = StyleSheet.create({
     },
     modalActionsRow: {
         flexDirection: 'row',
-        justifyContent: 'space-around', // Space buttons evenly
+        justifyContent: 'space-between', // Distribute space for main buttons
+        alignItems: 'center', // Vertically align all items in the row
         marginTop: 10, // Add margin above buttons
     },
     modalButton: {
@@ -601,11 +608,16 @@ const styles = StyleSheet.create({
     },
     copyHistoryButton: {
         backgroundColor: COLORS.primary, // Or another distinct color
+        marginRight: 'auto', // Push other items to the right if only copy and close
+    },
+    modalDownloadButton: { // Style for the new download button in the modal
+        padding: 10,
+        marginLeft: 'auto', // Push it to the right, before the close button if both exist
+        // Add other styling as needed, e.g., if it should look like other modal buttons
     },
     closeButton: {
-        // CHANGE 2: Update close button background color
-        backgroundColor: '#6c757d', // Bootstrap secondary/gray color
-        // Optionally change text color if needed for contrast, but white should be ok
+        backgroundColor: '#6c757d', 
+        marginLeft: 10, // Ensure some space if download button is present
     },
 });
 

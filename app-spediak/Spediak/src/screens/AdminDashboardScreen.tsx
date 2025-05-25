@@ -160,16 +160,26 @@ const InspectionList: React.FC = () => {
 
         if (Platform.OS === 'web') {
             try {
+                // Fetch the image as a blob
+                const response = await fetch(imageUrl);
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch image. Status: ${response.status} ${response.statusText}`);
+                }
+                const blob = await response.blob();
+
+                // Create an object URL for the blob
+                const url = window.URL.createObjectURL(blob);
                 const link = document.createElement('a');
-                link.href = imageUrl;
+                link.href = url;
                 link.download = `spediak_admin_inspection_${inspectionId}_${Date.now()}.jpg`;
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);
+                window.URL.revokeObjectURL(url); // Clean up the object URL
                 Alert.alert("Success", "Image download started.");
-            } catch (error) {
+            } catch (error: any) {
                 console.error("[AdminDownloadImage Web] Error:", error);
-                Alert.alert("Error", "Failed to download image on web.");
+                Alert.alert("Error", error.message || "Failed to download image on web.");
             }
         } else {
             if (!mediaLibraryPermission || mediaLibraryPermission.status !== MediaLibrary.PermissionStatus.GRANTED) {
@@ -450,11 +460,18 @@ const UserList: React.FC = () => {
     };
 
     const handleDeleteUser = async (userId: string) => {
+        console.log('[AdminDashboard] handleDeleteUser called with userId:', userId);
+        if (!userId || typeof userId !== 'string') {
+            console.error('[AdminDashboard] Invalid or missing userId for deletion:', userId);
+            Alert.alert("Error", "Cannot delete user: Invalid User ID.");
+            return;
+        }
+
         Alert.alert(
             "Confirm Deletion",
-            "Are you sure you want to delete this user? This action will also remove them from Clerk and cannot be undone.",
+            `Are you sure you want to delete this user (${userId})? This action will also remove them from Clerk and cannot be undone.`, // Added userId to message for clarity
             [
-                { text: "Cancel", style: "cancel" },
+                { text: "Cancel", style: "cancel", onPress: () => console.log('[AdminDashboard] User deletion cancelled.') },
                 {
                     text: "Delete",
                     style: "destructive",
@@ -466,7 +483,8 @@ const UserList: React.FC = () => {
                             if (!token) {
                                 console.error('[AdminDashboard] Admin not authenticated for user deletion');
                                 Alert.alert("Error", "Admin authentication failed.");
-                                throw new Error("Admin not authenticated for user deletion");
+                                // throw new Error("Admin not authenticated for user deletion"); // Avoid throwing here to see if alert shows
+                                return; // Exit if no token
                             }
 
                             console.log(`[AdminDashboard] Attempting to delete user ID: ${userId} via API.`);
@@ -476,7 +494,6 @@ const UserList: React.FC = () => {
                             console.log('[AdminDashboard] API delete call successful, response:', response.data);
 
                             Alert.alert("Success", "User deleted successfully.");
-                            // Refresh the user list
                             console.log('[AdminDashboard] Refreshing user list after deletion...');
                             fetchUsers(1, searchQuery, sortBy, sortOrder, true); // Force refresh from page 1
                         } catch (err: any) {
