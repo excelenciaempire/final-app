@@ -6,9 +6,11 @@ import { useAuth } from '@clerk/clerk-expo';
 import { BASE_URL } from '../config/api';
 import { COLORS } from '../styles/colors';
 import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
-import { Search, Eye, UserCircle, Download } from 'lucide-react-native';
+import { Search, Eye, UserCircle, Download, Trash2 } from 'lucide-react-native';
 import DdidModal from '../components/DdidModal';
 import { useDebounce } from '../hooks/useDebounce';
+import * as FileSystem from 'expo-file-system'; // For native download
+import * as MediaLibrary from 'expo-media-library'; // For saving to gallery on native
 
 // Interface for the combined data expected from the admin endpoint
 interface AdminInspectionData {
@@ -63,6 +65,14 @@ const InspectionList: React.FC = () => {
     const [isModalVisible, setIsModalVisible] = useState(false);
     const { getToken } = useAuth();
     const debouncedSearchQuery = useDebounce(searchQuery, 500);
+    const [mediaLibraryPermission, requestMediaLibraryPermission] = MediaLibrary.usePermissions(); // For saving to gallery
+
+    // Request Media Library permission on mount if not granted
+    useEffect(() => {
+        if (Platform.OS !== 'web' && (!mediaLibraryPermission || mediaLibraryPermission.status !== MediaLibrary.PermissionStatus.GRANTED)) {
+            requestMediaLibraryPermission();
+        }
+    }, [mediaLibraryPermission]);
 
     const fetchData = useCallback(async (page = 1, search = debouncedSearchQuery, sortCol = sortBy, sortDir = sortOrder, refreshing = false) => {
         console.log(`[AdminInspections] Fetching page ${page}, search: '${search}', sort: ${sortCol} ${sortDir}`);
@@ -140,6 +150,52 @@ const InspectionList: React.FC = () => {
         setSortOrder(newSortOrder);
     };
 
+    // Image Download Handler for Admin Inspections
+    const handleAdminDownloadImage = async (imageUrl: string | null, inspectionId: string) => {
+        if (!imageUrl) {
+            Alert.alert("Error", "No image URL available for download.");
+            return;
+        }
+        console.log(`[AdminDownloadImage] Attempting to download: ${imageUrl}`);
+
+        if (Platform.OS === 'web') {
+            try {
+                const link = document.createElement('a');
+                link.href = imageUrl;
+                link.download = `spediak_admin_inspection_${inspectionId}_${Date.now()}.jpg`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                Alert.alert("Success", "Image download started.");
+            } catch (error) {
+                console.error("[AdminDownloadImage Web] Error:", error);
+                Alert.alert("Error", "Failed to download image on web.");
+            }
+        } else {
+            if (!mediaLibraryPermission || mediaLibraryPermission.status !== MediaLibrary.PermissionStatus.GRANTED) {
+                const { status } = await requestMediaLibraryPermission();
+                if (status !== MediaLibrary.PermissionStatus.GRANTED) {
+                    Alert.alert("Permission Denied", "Storage permission is required to save the image.");
+                    return;
+                }
+            }
+            try {
+                const fileName = `spediak_admin_inspection_${inspectionId}_${Date.now()}.jpg`;
+                const fileUri = FileSystem.documentDirectory + fileName;
+                const downloadResult = await FileSystem.downloadAsync(imageUrl, fileUri);
+                if (downloadResult.status !== 200) {
+                    throw new Error(`Download failed. Status: ${downloadResult.status}`);
+                }
+                const asset = await MediaLibrary.createAssetAsync(downloadResult.uri);
+                await MediaLibrary.createAlbumAsync('Spediak Admin Inspections', asset, false);
+                Alert.alert("Success", "Image saved to gallery in 'Spediak Admin Inspections' album!");
+            } catch (error: any) {
+                console.error("[AdminDownloadImage Native] Error:", error);
+                Alert.alert("Error", error.message || "Failed to download image.");
+            }
+        }
+    };
+
     const renderInspectionItem = ({ item }: { item: AdminInspectionData }) => (
         <View style={styles.cardContainer}>
             <View style={styles.cardContent}>
@@ -175,16 +231,26 @@ const InspectionList: React.FC = () => {
                     <View style={styles.inspectionTextContainer}>
                         <Text style={styles.cardDescriptionLabel}>Description:</Text>
                         <Text style={styles.cardDescriptionText} numberOfLines={1}>{item.description}</Text>
-                        <TouchableOpacity
-                            style={styles.viewReportButton}
-                            onPress={() => {
-                                setSelectedInspection(item);
-                                setIsModalVisible(true);
-                            }}
-                        >
-                            <Eye size={16} color={COLORS.primary} />
-                            <Text style={styles.viewReportButtonText}>View Report</Text>
-                        </TouchableOpacity>
+                        <View style={styles.inspectionActionsRow}> 
+                            <TouchableOpacity
+                                style={styles.viewReportButton}
+                                onPress={() => {
+                                    setSelectedInspection(item);
+                                    setIsModalVisible(true);
+                                }}
+                            >
+                                <Eye size={16} color={COLORS.primary} />
+                                <Text style={styles.viewReportButtonText}>View Statement</Text>
+                            </TouchableOpacity>
+                            {item.image_url && (
+                                <TouchableOpacity
+                                    style={styles.downloadIconButton} 
+                                    onPress={() => handleAdminDownloadImage(item.image_url, item.id)}
+                                >
+                                    <Download size={18} color={COLORS.primary} />
+                                </TouchableOpacity>
+                            )}
+                        </View>
                     </View>
                 </View>
             </View>
@@ -259,17 +325,19 @@ const UserList: React.FC = () => {
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
-    const [userSearchQuery, setUserSearchQuery] = useState<string>('');
+    const [searchQuery, setSearchQuery] = useState('');
+    const [sortBy, setSortBy] = useState('createdAt');
+    const [sortOrder, setSortOrder] = useState('desc');
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
+    const [totalUsersCount, setTotalUsersCount] = useState<number>(0);
     const [isLoadingMore, setIsLoadingMore] = useState(false);
-    const [totalUsers, setTotalUsers] = useState(0);
     const { getToken } = useAuth();
-    const debouncedUserSearch = useDebounce(userSearchQuery, 500);
+    const debouncedSearchQuery = useDebounce(searchQuery, 500);
     const [isExporting, setIsExporting] = useState<boolean>(false);
 
-    const fetchUsers = useCallback(async (page = 1, search = debouncedUserSearch, refreshing = false) => {
-        console.log(`[AdminUsers] Fetching page ${page}, search: '${search}'`);
+    const fetchUsers = useCallback(async (page = 1, search = debouncedSearchQuery, sortCol = sortBy, sortDir = sortOrder, refreshing = false) => {
+        console.log(`[AdminUsers] Fetching page ${page}, search: '${search}', sort: ${sortCol} ${sortDir}`);
         if (!refreshing && page === 1) setIsLoading(true);
         if (page > 1) setIsLoadingMore(true);
         setError(null);
@@ -278,55 +346,64 @@ const UserList: React.FC = () => {
             const token = await getToken();
             if (!token) throw new Error("User not authenticated");
 
-            const params = { page, limit: 20, search }; // Increased limit slightly for users
+            const params = {
+                page,
+                limit: 15,
+                search,
+                sortBy: sortCol,
+                sortOrder: sortDir
+            };
 
             const response = await axios.get<PaginatedResponse<UserData>>(`${BASE_URL}/api/admin/all-users`, {
                 headers: { Authorization: `Bearer ${token}` },
                 params
             });
 
-            const { users: fetchedUsers = [], totalPages: fetchedTotalPages, page: fetchedPage, totalCount } = response.data;
+            const { users: fetchedUsers = [], totalPages: fetchedTotalPages, page: fetchedPage, totalCount: fetchedTotalCount } = response.data;
 
             setUsers(prev => (page === 1 ? fetchedUsers : [...prev, ...fetchedUsers]));
             setTotalPages(fetchedTotalPages);
             setCurrentPage(fetchedPage);
-            setTotalUsers(totalCount);
+            if (fetchedTotalCount !== undefined) {
+                setTotalUsersCount(fetchedTotalCount);
+            }
 
         } catch (err: any) {
-             console.error("[AdminUsers] Error fetching data:", err);
+            console.error("[AdminUsers] Error fetching users:", err);
             let errorMessage = "Failed to fetch user data.";
             if (err.response) { errorMessage = err.response.data?.message || errorMessage; }
+            else if (err.message) { errorMessage = err.message; }
             setError(errorMessage);
         } finally {
             setIsLoading(false);
             setIsLoadingMore(false);
             if (refreshing) setIsRefreshing(false);
         }
-    }, [getToken, debouncedUserSearch]);
+    }, [getToken, debouncedSearchQuery, sortBy, sortOrder]);
 
     useEffect(() => {
         fetchUsers(1);
     }, []);
 
     useEffect(() => {
-        if (debouncedUserSearch !== undefined) {
-            setCurrentPage(1);
-            fetchUsers(1);
+        if (debouncedSearchQuery !== undefined || sortBy !== 'createdAt' || sortOrder !== 'desc') {
+             setCurrentPage(1);
+             fetchUsers(1);
         }
-    }, [debouncedUserSearch]);
+    }, [debouncedSearchQuery, sortBy, sortOrder]);
 
     const handleRefresh = useCallback(() => {
         setIsRefreshing(true);
         setCurrentPage(1);
-        fetchUsers(1, userSearchQuery, true);
-    }, [fetchUsers, userSearchQuery]);
+        fetchUsers(1, searchQuery, sortBy, sortOrder, true);
+    }, [fetchUsers, searchQuery, sortBy, sortOrder]);
 
     const handleLoadMore = () => {
         if (!isLoadingMore && currentPage < totalPages) {
-            console.log('[AdminUsers] Loading more...', currentPage + 1);
+            console.log('[AdminUsers] Loading more users...', currentPage + 1);
             fetchUsers(currentPage + 1);
         } else {
-            console.log('[AdminUsers] No more pages or already loading.');
+            console.log('[AdminUsers] No more user pages or already loading.');
         }
     };
 
@@ -372,27 +449,78 @@ const UserList: React.FC = () => {
         }
     };
 
-    const renderUserItem = ({ item }: { item: UserData }) => (
-            <TouchableOpacity style={styles.userItemContainer} onPress={() => Alert.alert('User Profile', `User ID: ${item.id}`)}>
-                <View style={styles.userItemContent}>
-                     <View style={styles.userListImageContainer}>
-                        {item.profilePhoto ? (
-                            <Image source={{ uri: item.profilePhoto }} style={styles.userListImage} />
-                        ) : (
-                             <View style={styles.userListImagePlaceholder}>
-                                <UserCircle size={32} color={COLORS.secondary} />
-                             </View>
-                        )}
-                    </View>
-                    <View style={styles.userInfoContainer}>
-                    <Text style={styles.userNameText}>{item.name || 'Unknown Name'}</Text>
-                        <Text style={styles.userEmailText}>{item.email}</Text>
-                    <Text style={styles.userDetailText}>Username: {item.username || 'N/A'}</Text>
-                        <Text style={styles.userDetailText}>State: {item.state || 'N/A'}</Text>
-                    </View>
-                 </View>
-             </TouchableOpacity>
+    const handleDeleteUser = async (userId: string) => {
+        Alert.alert(
+            "Confirm Deletion",
+            "Are you sure you want to delete this user? This action will remove the user from Clerk and the database and cannot be undone.",
+            [
+                { text: "Cancel", style: "cancel" },
+                {
+                    text: "Delete",
+                    style: "destructive",
+                    onPress: async () => {
+                        try {
+                            const token = await getToken();
+                            if (!token) {
+                                Alert.alert("Error", "Authentication token not found.");
+                                return;
+                            }
+                            console.log(`[AdminUsers] Attempting to delete user: ${userId}`);
+                            await axios.delete(`${BASE_URL}/api/admin/users/${userId}`, {
+                                headers: { Authorization: `Bearer ${token}` },
+                            });
+
+                            setUsers(prevUsers => prevUsers.filter(user => user.id !== userId));
+                            setTotalUsersCount(prevCount => prevCount - 1);
+                            Alert.alert("Success", "User deleted successfully.");
+                            console.log(`[AdminUsers] User ${userId} deleted successfully from frontend.`);
+
+                        } catch (err: any) {
+                            console.error(`[AdminUsers] Error deleting user ${userId}:`, err);
+                            let errorMessage = "Failed to delete user.";
+                            if (err.response) {
+                                errorMessage = err.response.data?.message || err.response.data?.error || errorMessage;
+                            } else if (err.message) {
+                                errorMessage = err.message;
+                            }
+                            Alert.alert("Error", errorMessage);
+                        }
+                    },
+                },
+            ]
         );
+    };
+
+    const handleSortChange = (newSortCol: string) => {
+        const newSortOrder = sortBy === newSortCol ? (sortOrder === 'asc' ? 'desc' : 'asc') : 'desc';
+        setSortBy(newSortCol);
+        setSortOrder(newSortOrder);
+    };
+
+    const renderUserItem = ({ item }: { item: UserData }) => (
+        <View style={styles.userCard}>
+            <View style={styles.userCardContent}>
+                {item.profilePhoto ? (
+                    <Image source={{ uri: item.profilePhoto }} style={styles.userImage} />
+                ) : (
+                    <View style={styles.userImagePlaceholder}>
+                        <UserCircle size={40} color={COLORS.secondary} />
+                    </View>
+                )}
+                <View style={styles.userInfo}>
+                    <Text style={styles.userNameText}>{item.name || 'N/A'}</Text>
+                    <Text style={styles.userEmailText}>{item.email}</Text>
+                    <Text style={styles.userMetaText}>Username: {item.username || 'N/A'}</Text>
+                    <Text style={styles.userMetaText}>State: {item.state || 'N/A'}</Text>
+                    <Text style={styles.userMetaText}>Joined: {new Date(item.createdAt).toLocaleDateString()}</Text>
+                    <Text style={styles.userMetaText}>Inspections: {item.inspectionCount || 0}</Text>
+                </View>
+                <TouchableOpacity onPress={() => handleDeleteUser(item.id)} style={styles.deleteButton}>
+                    <Trash2 size={24} color={COLORS.danger} />
+                </TouchableOpacity>
+            </View>
+        </View>
+    );
 
     const renderFooter = () => {
         if (!isLoadingMore) return null;
@@ -411,8 +539,8 @@ const UserList: React.FC = () => {
                 <TextInput
                     style={styles.searchInput}
                     placeholder="Search by name or email..."
-                    value={userSearchQuery}
-                    onChangeText={setUserSearchQuery}
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
                     placeholderTextColor="#999"
                 />
                 </View>
@@ -433,11 +561,11 @@ const UserList: React.FC = () => {
             <FlatList
                 data={users}
                 renderItem={renderUserItem}
-                keyExtractor={(item: UserData) => `user-${item.id}`}
+                keyExtractor={(item) => item.id.toString()}
                 style={styles.list}
                 contentContainerStyle={{ padding: 15, paddingTop: 0 }}
-                ListHeaderComponent={<Text style={styles.totalCountText}>Total Users: {totalUsers}</Text>}
-                ListEmptyComponent={<Text style={styles.emptyText}>{userSearchQuery ? 'No matching users found.' : 'No users found.'}</Text>}
+                ListHeaderComponent={<Text style={styles.totalCountText}>Total Users: {totalUsersCount}</Text>}
+                ListEmptyComponent={<Text style={styles.emptyText}>{searchQuery ? 'No matching users found.' : 'No users found.'}</Text>}
                 refreshControl={
                     <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} colors={[COLORS.primary]} tintColor={COLORS.primary} />
                 }
@@ -723,8 +851,13 @@ const styles = StyleSheet.create({
     },
     userEmailText: {
         fontSize: 14,
-        color: '#555',
-        marginBottom: 3, 
+        color: COLORS.textSeco,
+        marginBottom: 4,
+    },
+    userMetaText: {
+        fontSize: 13,
+        color: COLORS.textMuted,
+        marginBottom: 1,
     },
     userDetailText: { // Style for State and Inspection Count
         fontSize: 13,
@@ -765,6 +898,63 @@ const styles = StyleSheet.create({
         fontSize: 14,
         fontWeight: '500',
         marginLeft: 8,
+    },
+    userCard: {
+        backgroundColor: '#fff',
+        borderRadius: 12,
+        padding: 15,
+        marginVertical: 8,
+        marginHorizontal: Platform.OS === 'web' ? 10 : 2, // Slight horizontal margin for web
+        elevation: 3,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        borderWidth: 1,
+        borderColor: '#e8e8e8',
+    },
+    userCardContent: {
+        flexDirection: 'row',
+        alignItems: 'flex-start', // Align items to the top to accommodate varying text lengths
+    },
+    userImage: {
+        width: 50,
+        height: 50,
+        borderRadius: 25,
+        marginRight: 15,
+        borderWidth: 1,
+        borderColor: '#ddd',
+    },
+    userImagePlaceholder: {
+        width: 50,
+        height: 50,
+        borderRadius: 25,
+        marginRight: 15,
+        backgroundColor: '#f0f2f5',
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: '#e8e8e8',
+    },
+    userInfo: {
+        flex: 1, // Take remaining space
+    },
+    deleteButton: {
+        padding: 8, // Make it easier to tap
+        marginLeft: 10, // Space from user info
+        justifyContent: 'center', // Center icon vertically if needed
+        alignItems: 'center',
+    },
+    inspectionActionsRow: { // New style for View Report and Download buttons
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 'auto', // Pushes to the bottom of inspectionTextContainer
+    },
+    downloadIconButton: { // Style for the new download icon button
+        padding: 6, // Make it easy to tap
+        marginLeft: 10, // Space from the view report button
+        // backgroundColor: COLORS.secondary + '80', // Optional: light background
+        // borderRadius: 20, // Optional: make it circular
     },
 });
 

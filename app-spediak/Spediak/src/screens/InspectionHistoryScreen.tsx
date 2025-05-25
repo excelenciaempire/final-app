@@ -3,12 +3,14 @@ import { View, Text, StyleSheet, TextInput, FlatList, ActivityIndicator, Touchab
 import { useAuth } from '@clerk/clerk-expo';
 import { useNavigation } from '@react-navigation/native'; // Import useNavigation
 import axios from 'axios';
-import { Search, Trash2, Eye, Copy } from 'lucide-react-native'; // Added Trash2, Eye, and Copy
+import { Search, Trash2, Eye, Copy, Download } from 'lucide-react-native'; // Added Trash2, Eye, Copy, and Download
 import DdidModal from '../components/DdidModal'; // Step 41: Import Modal
 import { BASE_URL } from '../config/api'; // Import centralized BASE_URL
 import { COLORS } from '../styles/colors'; // Corrected path to styles
 import Markdown from 'react-native-markdown-display'; // Import Markdown display
 import * as Clipboard from 'expo-clipboard'; // Import Clipboard
+import * as FileSystem from 'expo-file-system'; // For native download
+import * as MediaLibrary from 'expo-media-library'; // For saving to gallery on native
 
 // --- Define Base URL (Platform Specific) ---
 // const YOUR_COMPUTER_IP_ADDRESS = '<YOUR-COMPUTER-IP-ADDRESS>'; // Removed
@@ -43,6 +45,14 @@ export default function InspectionHistoryScreen() {
 
     const { getToken } = useAuth();
     const navigation = useNavigation(); // Get navigation object
+    const [mediaLibraryPermission, requestMediaLibraryPermission] = MediaLibrary.usePermissions(); // For saving to gallery
+
+    // Request Media Library permission on mount if not granted
+    useEffect(() => {
+        if (Platform.OS !== 'web' && (!mediaLibraryPermission || mediaLibraryPermission.status !== MediaLibrary.PermissionStatus.GRANTED)) {
+            requestMediaLibraryPermission();
+        }
+    }, [mediaLibraryPermission]);
 
     // Step 38: Data Fetching
     const fetchInspections = useCallback(async () => {
@@ -163,6 +173,61 @@ export default function InspectionHistoryScreen() {
         }
     };
 
+    // New Function: Handle Image Download
+    const handleDownloadImage = async (imageUrl: string, inspectionId: string) => {
+        if (!imageUrl) {
+            Alert.alert("Error", "No image URL available for download.");
+            return;
+        }
+        console.log(`[handleDownloadImage] Attempting to download image: ${imageUrl}`);
+
+        if (Platform.OS === 'web') {
+            try {
+                // For web, create a link and trigger download
+                const link = document.createElement('a');
+                link.href = imageUrl;
+                // Suggest a filename (browser might override)
+                link.download = `spediak_inspection_${inspectionId}_${Date.now()}.jpg`; 
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                Alert.alert("Success", "Image download started.");
+            } catch (error) {
+                console.error("[handleDownloadImage Web] Error:", error);
+                Alert.alert("Error", "Failed to download image on web.");
+            }
+        } else {
+            // Native: Download using FileSystem and save to MediaLibrary
+            if (!mediaLibraryPermission || mediaLibraryPermission.status !== MediaLibrary.PermissionStatus.GRANTED) {
+                const { status } = await requestMediaLibraryPermission();
+                if (status !== MediaLibrary.PermissionStatus.GRANTED) {
+                    Alert.alert("Permission Denied", "Storage permission is required to save the image.");
+                    return;
+                }
+            }
+
+            try {
+                const fileName = `spediak_inspection_${inspectionId}_${Date.now()}.jpg`;
+                const fileUri = FileSystem.documentDirectory + fileName;
+
+                console.log(`[handleDownloadImage Native] Downloading to URI: ${fileUri}`);
+                const downloadResult = await FileSystem.downloadAsync(imageUrl, fileUri);
+                console.log('[handleDownloadImage Native] Download result:', downloadResult);
+
+                if (downloadResult.status !== 200) {
+                    throw new Error(`Failed to download image. Status: ${downloadResult.status}`);
+                }
+
+                const asset = await MediaLibrary.createAssetAsync(downloadResult.uri);
+                await MediaLibrary.createAlbumAsync('Spediak Inspections', asset, false);
+                Alert.alert("Success", "Image saved to your gallery in 'Spediak Inspections' album!");
+            } catch (error: any) {
+                console.error("[handleDownloadImage Native] Error:", error);
+                Alert.alert("Error", error.message || "Failed to download and save image.");
+            }
+        }
+    };
+
     // Step 40: Filter Logic
     const filteredInspections = useMemo(() => {
         if (!searchQuery) {
@@ -198,23 +263,36 @@ export default function InspectionHistoryScreen() {
                 <Image source={{ uri: item.image_url || 'https://via.placeholder.com/60' }} style={styles.itemThumbnail} />
                 <View style={styles.itemTextContainer}>
                     <Text style={styles.itemDescriptionLabel}>Description:</Text>
-                    <Text style={styles.itemDescription} numberOfLines={1} ellipsizeMode="tail">{item.description}</Text>
-                    <Text style={styles.itemDate}>{dateTimeString}</Text>
+                    <Text style={styles.itemDescriptionText} numberOfLines={2}>{item.description || 'No description'}</Text>
+                    <Text style={styles.itemDateText}>{dateTimeString}</Text>
                 </View>
-                <TouchableOpacity 
-                    style={styles.viewButton}
-                    onPress={() => {
-                        console.log("View Report tapped:", item.id, "Image URL:", item.image_url);
-                        setSelectedInspectionDdid(item.ddid);
-                        setSelectedImageUrl(item.image_url);
-                        setSelectedInspection(item);
-                    }}
-                >
-                    <Text style={styles.viewButtonText}>View Statement</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => handleDeleteInspection(item.id)} style={styles.deleteButton}>
-                    <Trash2 size={20} color="#dc3545" />
-                </TouchableOpacity>
+                <View style={styles.itemActionsContainer}> 
+                    <TouchableOpacity
+                        style={[styles.actionButton, styles.viewButton]} 
+                        onPress={() => {
+                            setSelectedInspection(item);
+                            setShowDetailModal(true);
+                        }}
+                    >
+                        <Eye size={18} color={COLORS.primary} />
+                        <Text style={styles.actionButtonText}>View</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                        style={[styles.actionButton, styles.downloadButton]} 
+                        onPress={() => handleDownloadImage(item.image_url, item.id)}
+                        disabled={!item.image_url} // Disable if no image URL
+                    >
+                        <Download size={18} color={item.image_url ? COLORS.white : COLORS.textMuted} /> 
+                        <Text style={[styles.actionButtonText, { color: item.image_url ? COLORS.white : COLORS.textMuted }]}>Save</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                        style={[styles.actionButton, styles.deleteButton]} 
+                        onPress={() => handleDeleteInspection(item.id)}
+                    >
+                        <Trash2 size={18} color={COLORS.danger} />
+                        <Text style={[styles.actionButtonText, { color: COLORS.danger }]}>Delete</Text>
+                    </TouchableOpacity>
+                </View>
             </View>
         );
     };
@@ -369,66 +447,81 @@ const styles = StyleSheet.create({
     itemContainer: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingVertical: 12,
-        paddingHorizontal: 15, // Add padding here
+        paddingVertical: 10,
+        paddingHorizontal: 15,
         borderBottomWidth: 1,
         borderBottomColor: '#eee',
         backgroundColor: '#fff',
         marginHorizontal: 20, // Add horizontal margin instead of list padding
         marginBottom: 8, // Add space between items
         borderRadius: 8, // Add slight rounding
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 1.41,
+        // Added elevation for a subtle shadow on Android
         elevation: 1,
+        // Added shadow for iOS
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 }, // Small shadow at the bottom
+        shadowOpacity: 0.05, // Very subtle opacity
+        shadowRadius: 1.5, // Soften the shadow
     },
     itemThumbnail: {
-        width: 50,
-        height: 50,
-        borderRadius: 5,
+        width: 60,
+        height: 60,
+        borderRadius: 8, // Softer corners for the thumbnail
         marginRight: 15,
-        backgroundColor: '#e0e0e0', // Placeholder bg color
+        backgroundColor: '#e9ecef', // Light placeholder color
     },
     itemTextContainer: {
-        flex: 1, 
+        flex: 1,
         justifyContent: 'center',
-        marginRight: 8, // Add margin to prevent text overlap with buttons
     },
     itemDescriptionLabel: {
-        fontSize: 11,
-        color: '#888',
-        fontWeight: '600',
-        marginTop: 4,
-        marginBottom: 1,
+        fontSize: 12,
+        color: '#6c757d', // Muted color for the label
+        marginBottom: 2,
+        fontWeight: '500',
     },
-    itemDescription: {
-        fontSize: 14,
-        color: '#333',
-        marginBottom: 4, 
+    itemDescriptionText: {
+        fontSize: 14, // Slightly larger for better readability
+        color: '#343a40', // Darker text for description
+        marginBottom: 4, // Space between description and date
     },
-    itemDate: {
-        fontSize: 13,
+    itemDateText: {
+        fontSize: 12,
         color: '#6c757d',
-        marginTop: 4, // Add margin top for spacing
+    },
+    // Action buttons styling
+    itemActionsContainer: { // Holds all action buttons horizontally
+        flexDirection: 'column', // Changed to column for vertical stack
+        justifyContent: 'space-around', // Distribute space for vertical stack
+        alignItems: 'center', // Center items in the column
+        marginLeft: 10, // Give some space from the text container
+        // width: 80, // Fixed width for the actions column if needed, or remove for auto-width
+    },
+    actionButton: {
+        flexDirection: 'row', // Icon and text side-by-side
+        alignItems: 'center', // Vertically align icon and text
+        paddingVertical: 6, // Vertical padding
+        paddingHorizontal: 10, // Horizontal padding
+        borderRadius: 5,
+        // marginBottom: 8, // Space between vertical buttons
+        minWidth: 80, // Ensure buttons have a decent tap area
+        justifyContent: 'center', // Center content within the button
     },
     viewButton: {
-        backgroundColor: COLORS.primary, // Use primary color
-        paddingVertical: 8,
-        paddingHorizontal: 15,
-        borderRadius: 5,
-        marginLeft: 10, // Space from delete button
-        alignItems: 'center',
-        justifyContent: 'center',
+        backgroundColor: COLORS.primary + '15', // Light primary background
+        marginBottom: 8, // Space between vertical buttons
     },
-    viewButtonText: {
-        color: COLORS.white,
-        fontSize: 14,
-        fontWeight: 'bold',
+    downloadButton: {
+        backgroundColor: COLORS.success, // Green for download/save
+        marginBottom: 8, // Space between vertical buttons
     },
     deleteButton: {
-        padding: 8, 
-        // Removed marginLeft as spacing is handled by viewButton
+        backgroundColor: COLORS.danger + '15', // Light danger background
+    },
+    actionButtonText: {
+        marginLeft: 5, // Space between icon and text
+        fontSize: 13,
+        fontWeight: '500',
     },
     loader: {
         marginTop: 50,

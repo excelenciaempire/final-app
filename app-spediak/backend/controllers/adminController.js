@@ -189,8 +189,65 @@ const exportUsersCsv = async (req, res) => {
   }
 };
 
+// Delete User (Admin)
+const deleteUser = async (req, res) => {
+  const { userId } = req.params; // This is the Clerk User ID
+  console.log(`[Admin] Request to delete user ID: ${userId}`);
+
+  if (!userId) {
+    return res.status(400).json({ message: 'User ID is required' });
+  }
+
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+    console.log(`[Admin] Deleting user ${userId} from Clerk...`);
+    await clerkClient.users.deleteUser(userId);
+    console.log(`[Admin] User ${userId} deleted from Clerk successfully.`);
+
+    console.log(`[Admin] Deleting user ${userId} from local database...`);
+    const deleteDbUserQuery = 'DELETE FROM users WHERE clerk_id = $1 RETURNING *';
+    const dbResult = await client.query(deleteDbUserQuery, [userId]);
+
+    if (dbResult.rowCount === 0) {
+      // This case might happen if the user was in Clerk but not in the local DB (e.g., sync issue)
+      // Or if they were already deleted from the DB but not Clerk.
+      // We'll still consider the Clerk deletion a success for the overall operation if it passed.
+      console.warn(`[Admin] User ${userId} not found in the local database, but was deleted from Clerk.`);
+      // Optionally, you could choose to throw an error here if strict consistency is required immediately.
+    } else {
+      console.log(`[Admin] User ${userId} (DB record: ${dbResult.rows[0].id}) deleted from local database.`);
+    }
+
+    await client.query('COMMIT');
+    res.status(200).json({ message: 'User deleted successfully from Clerk and database.' });
+
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error(`[Admin] Error deleting user ${userId}:`, error);
+    let errorMessage = 'Failed to delete user.';
+    let statusCode = 500;
+
+    if (error.isClerkAPIError) { // Check if it's a Clerk API error
+        errorMessage = error.errors?.[0]?.longMessage || error.errors?.[0]?.message || 'Clerk API error during user deletion.';
+        // Clerk API might return specific status codes, e.g., 404 if user not found
+        if (error.status) statusCode = error.status;
+        console.error('[Admin] Clerk API Error details:', JSON.stringify(error.errors));
+    } else if (error.code) { // Check for pg error codes
+        // Handle specific pg errors if needed, e.g., foreign key constraints
+        errorMessage = `Database error: ${error.message}`;
+    }
+
+    res.status(statusCode).json({ message: errorMessage, error: error.message });
+  } finally {
+    client.release();
+  }
+};
+
 module.exports = {
   getAllInspectionsWithUserDetails,
   getAllUsers,
   exportUsersCsv, // Replaced downloadDatabaseBackup
+  deleteUser, 
 }; 

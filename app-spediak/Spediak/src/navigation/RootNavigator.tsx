@@ -149,7 +149,18 @@ const RootNavigator: React.FC = () => {
   // Check for admin role using unsafeMetadata for frontend visibility
   const isAdmin = useMemo(() => user?.unsafeMetadata?.role === 'admin', [user]);
 
-  const isWebLarge = Platform.OS === 'web' && width > 768;
+  // Determine if it's a large web screen (desktop-like)
+  const isWebLarge = useMemo(() => {
+    if (Platform.OS === 'web') {
+      // Check for iPad user agent string to force mobile view for iPads
+      const userAgent = typeof window !== 'undefined' && window.navigator ? window.navigator.userAgent : '';
+      const isIPad = /iPad|Macintosh/.test(userAgent) && 'ontouchend' in document;
+      // Consider it large web if not an iPad and width is greater than a threshold
+      if (isIPad) return false; // Force mobile view for iPads
+      return width > 768; 
+    }
+    return false; // Not web, so not large web view
+  }, [width]);
 
   // Loading State
   if (!isLoaded) {
