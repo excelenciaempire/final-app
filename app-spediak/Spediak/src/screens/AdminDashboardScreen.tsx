@@ -426,22 +426,34 @@ const UserList: React.FC = () => {
             return;
         }
 
-        Alert.alert(
-            "Confirm Deletion",
-            `Are you sure you want to delete this user (${userId})? This action will also remove them from Clerk and cannot be undone.`, 
-            [
-                { text: "Cancel", style: "cancel", onPress: () => console.log('[AdminDashboard] User deletion cancelled.') },
-                {
-                    text: "Delete",
-                    style: "destructive",
-                    // Call the separate async function here
-                    onPress: () => {
-                        console.log('[AdminDashboard] Alert Delete button pressed, calling performUserDeletion for:', userId);
-                        performUserDeletion(userId);
-                    }
-                },
-            ]
-        );
+        const confirmationMessage = `Are you sure you want to delete this user (${userId})? This action will also remove them from Clerk and cannot be undone.`;
+
+        if (Platform.OS === 'web') {
+            console.log('[AdminDashboard] Using window.confirm for web.');
+            if (window.confirm(confirmationMessage)) {
+                console.log('[AdminDashboard] window.confirm returned true, calling performUserDeletion for:', userId);
+                performUserDeletion(userId);
+            } else {
+                console.log('[AdminDashboard] User deletion cancelled via window.confirm.');
+            }
+        } else {
+            console.log('[AdminDashboard] Using Alert.alert for native.');
+            Alert.alert(
+                "Confirm Deletion",
+                confirmationMessage, 
+                [
+                    { text: "Cancel", style: "cancel", onPress: () => console.log('[AdminDashboard] User deletion cancelled via Alert.alert.') },
+                    {
+                        text: "Delete",
+                        style: "destructive",
+                        onPress: () => {
+                            console.log('[AdminDashboard] Alert.alert Delete button pressed, calling performUserDeletion for:', userId);
+                            performUserDeletion(userId);
+                        }
+                    },
+                ]
+            );
+        }
     };
 
     const handleSortChange = (newSortCol: string) => {
