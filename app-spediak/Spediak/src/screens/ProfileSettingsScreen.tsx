@@ -43,10 +43,13 @@ const ProfileSettingsScreen: React.FC = () => {
     const [emailChangeError, setEmailChangeError] = useState<string | null>(null);
     const [emailChangeSuccess, setEmailChangeSuccess] = useState<string | null>(null);
 
+    const [isClientMounted, setIsClientMounted] = useState(false); // New state for client mount
+
     const { user: clerkUser, isLoaded: clerkIsLoaded } = useUser();
 
     // Initialize form fields (just use user data, no auto-edit)
     useEffect(() => {
+        setIsClientMounted(true); // Set client mounted state
         if (clerkUser) {
             setFirstName(clerkUser.firstName || '');
             setLastName(clerkUser.lastName || '');
@@ -286,7 +289,7 @@ const ProfileSettingsScreen: React.FC = () => {
         // No finally block, as successful signout unmounts the component
     };
 
-    if (!clerkIsLoaded) {
+    if (!isClientMounted || !clerkIsLoaded) {
         return <ActivityIndicator style={styles.loader} size="large" color="#003366" />;
     }
 
