@@ -50,11 +50,13 @@ const ProfileSettingsScreen: React.FC = () => {
             setFirstName(clerkUser.firstName || '');
             setLastName(clerkUser.lastName || '');
             setSelectedState(clerkUser.unsafeMetadata?.inspectionState as string || null);
-            setProfileImageUri(clerkUser.imageUrl || null);
-            setInitialImageUri(clerkUser.imageUrl || null);
+            if (!newImageUri) { // Only set from clerkUser if no new image is staged
+                setProfileImageUri(clerkUser.imageUrl || null);
+                setInitialImageUri(clerkUser.imageUrl || null);
+            }
             setProfileImageBase64(null); // Ensure base64 is cleared on load/mode switch
         }
-    }, [clerkUser, isEditing]); // Rerun when user loads OR when switching to edit mode
+    }, [clerkUser]); // Removed isEditing dependency, should fetch on clerkUser change primarily
 
     // --- Updated Image Picker Logic ---
     const pickImage = async () => {
@@ -94,13 +96,17 @@ const ProfileSettingsScreen: React.FC = () => {
 
         // Keep validation, but message is less critical now
         if (!firstName || !lastName || !selectedState) {
-             Alert.alert("Missing Information", "Please ensure First Name, Last Name, and State are provided.");
+            //  Alert.alert("Missing Information", "Please ensure First Name, Last Name, and State are provided.");
+            setError("Please ensure First Name, Last Name, and State are provided.");
              return;
         }
 
-        setIsLoading(true);
+        setIsLoading(true); 
         setError(null);
-        let imageUpdateSuccess = true; // Flag to track image upload success
+        setSuccessMessage(null); 
+        setEmailChangeError(null);
+        setEmailChangeSuccess(null); // Clear all messages
+        let imageUpdateSuccess = true; 
 
         try {
             // --- Step 1: Handle Profile Image Update ---
@@ -137,63 +143,69 @@ const ProfileSettingsScreen: React.FC = () => {
                 setIsEditing(false); // Exit edit mode on success
             }
 
-            setSuccessMessage('Profile updated successfully!');
-            setError(null); // Clear previous general errors
-            setEmailChangeError(null); // Clear email errors
-            setEmailChangeSuccess(null); // Clear email success
+            setSuccessMessage('Profile updated successfully!'); // Corrected to use setSuccessMessage
+            // setError(null); // Already cleared above
+            // setEmailChangeError(null); // Already cleared above
+            // setEmailChangeSuccess(null); // Already cleared above
 
         } catch (err: any) {
             // Catch errors from user.update()
             console.error("Error saving profile metadata/name:", err);
-            setError(`Failed to save profile details: ${err.message || 'Unknown error'}`);
-            Alert.alert("Error", `Failed to save profile details: ${err.message || 'Please try again.'}`);
+            const errMessage = err.errors?.[0]?.longMessage || err.errors?.[0]?.message || "Failed to save profile details.";
+            setError(errMessage); 
+            // Alert.alert("Error", `Failed to save profile details: ${errMessage}`); // Error state is shown
         } finally {
-            setIsLoading(false);
+            setIsLoading(false); // Clear loading for main save
         }
     };
 
     // Function to initiate email change
     const handleInitiateEmailChange = async () => {
         if (!clerkUser) return;
-        if (!newEmail.trim() || !/\\S+@\\S+\\.\\S+/.test(newEmail)) {
+        
+        const trimmedEmail = newEmail.trim();
+        console.log("Attempting to initiate email change for:", trimmedEmail);
+
+        if (!trimmedEmail || !/^\S+@\S+\.\S+$/.test(trimmedEmail)) { 
             setEmailChangeError("Please enter a valid new email address.");
+            console.log("Email validation failed for:", trimmedEmail); 
             return;
         }
-        // Clear all error/success messages
+        
         setError(null);
         setSuccessMessage(null);
         setEmailChangeError(null);
         setEmailChangeSuccess(null);
-        setIsLoading(true);
+        setIsLoading(true); // General loading for this operation too
 
         try {
-            const createdEmailAddress = await clerkUser.createEmailAddress({ email: newEmail });
+            const createdEmailAddress = await clerkUser.createEmailAddress({ email: trimmedEmail });
             await createdEmailAddress.prepareVerification({ strategy: 'email_code' });
             setIsVerifyingEmail(true);
-            setEmailChangeSuccess(`A verification code has been sent to ${newEmail}. Please enter it below.`);
+            setEmailChangeSuccess(`A verification code has been sent to ${trimmedEmail}. Please enter it below.`);
         } catch (err: any) {
             console.error("Error initiating email change:", JSON.stringify(err, null, 2));
             const clerkError = err.errors?.[0]?.longMessage || err.errors?.[0]?.message || "An error occurred. Please try again.";
             setEmailChangeError(clerkError);
             setIsVerifyingEmail(false);
         } finally {
-            setIsLoading(false);
+            setIsLoading(false); // Clear general loading
         }
     };
 
     // Function to attempt email verification
     const handleAttemptEmailVerification = async () => {
-        if (!clerkUser || !newEmail.trim()) return;
+        if (!clerkUser || !newEmail.trim()) return; 
         if (!verificationCode.trim()) {
             setEmailChangeError("Please enter the verification code.");
             return;
         }
-        // Clear all error/success messages
+        
         setError(null);
         setSuccessMessage(null);
         setEmailChangeError(null);
         setEmailChangeSuccess(null);
-        setIsLoading(true);
+        setIsLoading(true); // General loading for this operation
 
         try {
             const emailAddressToVerify = clerkUser.emailAddresses.find(
@@ -240,7 +252,7 @@ const ProfileSettingsScreen: React.FC = () => {
             const errMsg = err.errors?.[0]?.longMessage || err.errors?.[0]?.message || (err.message || "Verification failed. Please try again.");
             setEmailChangeError(errMsg);
         } finally {
-            setIsLoading(false);
+            setIsLoading(false); // Clear general loading
         }
     };
 
@@ -276,9 +288,9 @@ const ProfileSettingsScreen: React.FC = () => {
                 <Text style={styles.title}>Edit Profile</Text>
                 <Text style={styles.description}>Update your details below.</Text>
 
-                    <TouchableOpacity onPress={pickImage} style={styles.profileImageContainer}>
+                    <TouchableOpacity onPress={pickImage} style={styles.profileImageContainer} disabled={isLoading}>
                         <Image
-                        source={{ uri: newImageUri || clerkUser.imageUrl || 'https://via.placeholder.com/150' }}
+                        source={{ uri: newImageUri || profileImageUri || 'https://via.placeholder.com/150' }} 
                         style={styles.avatar}
                         />
                     <View style={styles.editIconOverlay}> 
@@ -294,6 +306,7 @@ const ProfileSettingsScreen: React.FC = () => {
                         onChangeText={setFirstName}
                         style={styles.input}
                         placeholderTextColor={COLORS.darkText}
+                        editable={!isLoading} // Disable if any loading
                     />
                 </View>
                 <View style={styles.inputContainer}>
@@ -308,6 +321,7 @@ const ProfileSettingsScreen: React.FC = () => {
                         }}
                         style={styles.input}
                         placeholderTextColor={COLORS.darkText}
+                        editable={!isLoading} // Disable if any loading
                     />
                 </View>
                 
@@ -318,6 +332,7 @@ const ProfileSettingsScreen: React.FC = () => {
                             onValueChange={(itemValue) => setSelectedState(itemValue)}
                         style={styles.input}
                         dropdownIconColor={COLORS.primary}
+                        enabled={!isLoading} // Disable if any loading
                         >
                         <Picker.Item label="Select State..." value={null} />
                             {availableStates.map(state => (
@@ -325,6 +340,19 @@ const ProfileSettingsScreen: React.FC = () => {
                             ))}
                         </Picker>
                      </View>
+
+                {/* Moved Save Changes Button and general messages UP */}
+                <TouchableOpacity
+                    style={[styles.button, isLoading && styles.buttonDisabled, {marginTop: 20}] } 
+                    onPress={handleSaveChanges}
+                    disabled={isLoading} // Simply disable if isLoading is true
+                >
+                    {isLoading && !isVerifyingEmail ? ( // Show spinner if general save, not email verify
+                        <ActivityIndicator color={COLORS.white} />
+                    ) : (
+                        <><Check size={20} color={COLORS.white} style={{marginRight: 8}} /><Text style={styles.buttonText}>Save Profile Changes</Text></> 
+                    )}
+                </TouchableOpacity>
 
                 {error && <Text style={styles.errorText}>{error}</Text>}
                 {successMessage && !emailChangeSuccess && !emailChangeError && <Text style={styles.successText}>{successMessage}</Text>}
@@ -341,18 +369,19 @@ const ProfileSettingsScreen: React.FC = () => {
                                 value={newEmail}
                                 onChangeText={(text) => {
                                     setNewEmail(text);
-                                    setEmailChangeError(null);
+                                    setEmailChangeError(null); 
                                     setEmailChangeSuccess(null);
                                 }}
                                 placeholder="Enter new email"
                                 style={styles.input}
                                 keyboardType="email-address"
                                 autoCapitalize="none"
+                                editable={!isLoading} // Disable if any loading
                             />
                         </View>
                         {emailChangeError && !isVerifyingEmail && <Text style={styles.errorText}>{emailChangeError}</Text>}
-                        <TouchableOpacity style={styles.button} onPress={handleInitiateEmailChange} disabled={isLoading}>
-                            <Text style={styles.buttonText}>{isLoading ? 'Sending...' : 'Send Verification Code'}</Text>
+                        <TouchableOpacity style={[styles.button, isLoading && styles.buttonDisabled]} onPress={handleInitiateEmailChange} disabled={isLoading}>
+                            <Text style={styles.buttonText}>{isLoading && isVerifyingEmail === false ? 'Sending...' : 'Send Verification Code'}</Text> 
                         </TouchableOpacity>
                     </>
                 ) : (
@@ -364,50 +393,38 @@ const ProfileSettingsScreen: React.FC = () => {
                                 value={verificationCode}
                                 onChangeText={(text) => {
                                     setVerificationCode(text);
-                                    setEmailChangeError(null);
+                                    setEmailChangeError(null); 
                                 }}
                                 placeholder="Enter verification code"
                                 style={styles.input}
                                 keyboardType="number-pad"
+                                editable={!isLoading} // Disable if any loading
                             />
                         </View>
                         {emailChangeError && isVerifyingEmail && <Text style={styles.errorText}>{emailChangeError}</Text>}
                         {emailChangeSuccess && <Text style={styles.successText}>{emailChangeSuccess}</Text>}
-                        <TouchableOpacity style={styles.button} onPress={handleAttemptEmailVerification} disabled={isLoading}>
-                            <Text style={styles.buttonText}>{isLoading ? 'Verifying...' : 'Verify and Update Email'}</Text>
+                        <TouchableOpacity style={[styles.button, isLoading && styles.buttonDisabled]} onPress={handleAttemptEmailVerification} disabled={isLoading}>
+                            <Text style={styles.buttonText}>{isLoading && isVerifyingEmail === true ? 'Verifying...' : 'Verify and Update Email'}</Text>
                         </TouchableOpacity>
-                        <TouchableOpacity
-                            style={[styles.button, styles.cancelButton]}
+                        <TouchableOpacity 
+                            style={[styles.button, styles.cancelButton, isLoading && styles.buttonDisabled]} 
                             onPress={() => {
                                 setIsVerifyingEmail(false);
                                 setNewEmail('');
                                 setVerificationCode('');
                                 setEmailChangeError(null);
                                 setEmailChangeSuccess(null);
-                                setError(null); // also clear general error
-                                setSuccessMessage(null); // also clear general success
+                                setError(null); 
+                                setSuccessMessage(null); 
                             }}
-                            disabled={isLoading}
+                            disabled={isLoading} 
                         >
                             <Text style={styles.buttonText}>Cancel</Text>
                         </TouchableOpacity>
                     </>
                 )}
                 {/* End of Change Email Section */}
-
-                    <TouchableOpacity
-                    style={[styles.button, isLoading && styles.buttonDisabled]}
-                         onPress={handleSaveChanges}
-                    disabled={isLoading}
-                >
-                    {isLoading ? (
-                        <ActivityIndicator color={COLORS.white} />
-                    ) : (
-                        <><Check size={20} color={COLORS.white} style={{marginRight: 8}} /><Text style={styles.buttonText}>Save Changes</Text></>
-                    )}
-                     </TouchableOpacity>
-
-        </ScrollView>
+            </ScrollView>
         </SafeAreaView>
     );
 };
