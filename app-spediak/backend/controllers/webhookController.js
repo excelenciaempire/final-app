@@ -221,14 +221,35 @@ const handleClerkWebhook = async (req, res) => {
         const updateResult = await pool.query(updateQuery, updateValues);
 
         if (updateResult.rowCount === 0) {
-          // This is a crucial log. If user.updated comes for a user not in DB, it implies user.created was missed or data is out of sync.
-          console.warn(`[Webhook] user.updated: User ${clerk_id_updated} not found in DB for update. RowCount: 0. This may indicate a missed user.created event or an issue with ID matching.`);
-          // DECISION: Should we attempt an INSERT here?
-          // Pros: Can self-heal if user.created was genuinely missed.
-          // Cons: If user.created is just delayed, might lead to race conditions or duplicate attempts.
-          // For now, let's log verbosely. If this becomes common, an "upsert" or "insert on update fail" might be needed.
-          // Consider also fetching the `created_at` from evt.data if it's available for user.updated
-          // (though Clerk docs suggest it's usually not top-level in user.updated `data` object).
+          console.warn(`[Webhook] user.updated: User ${clerk_id_updated} not found in DB for update. RowCount: 0. Attempting to INSERT as a fallback.`);
+          
+          // Attempt to INSERT the user if UPDATE found no rows
+          try {
+            // created_at might not be in user.updated evt.data top-level directly from webhook
+            // Prefer evt.data.created_at if present, otherwise use updated_at as a fallback for created_at for this healing insert
+            const createdAtForInsert = evt.data.created_at || updated_at_updated; 
+
+            const healingInsertQuery = `
+              INSERT INTO users (clerk_id, email, name, username, profile_photo_url, state, created_at, updated_at)
+              VALUES ($1, $2, $3, $4, $5, $6, TO_TIMESTAMP($7 / 1000.0), TO_TIMESTAMP($8 / 1000.0))
+              ON CONFLICT (clerk_id) DO NOTHING; // If it was created by another process in the meantime, do nothing
+            `;
+            const healingInsertValues = [
+              clerk_id_updated,
+              primaryEmailUpdated, // This could be null if not found and DB allows it
+              fullNameUpdated,
+              usernameUpdated,
+              imageUrlUpdated,
+              userStateUpdated,
+              createdAtForInsert, // Use determined created_at timestamp
+              updated_at_updated  // Current updated_at
+            ];
+            await pool.query(healingInsertQuery, healingInsertValues);
+            console.log(`[Webhook] user.updated: Successfully performed healing INSERT for user ${clerk_id_updated}.`);
+          } catch (healingInsertErr) {
+            console.error(`[Webhook] user.updated: Database error during healing INSERT for user ${clerk_id_updated}:`, healingInsertErr);
+            // Don't return 500 here for the healing attempt to avoid retry loops if this specific data causes persistent insert issues.
+          }
         } else {
           console.log(`[Webhook] user.updated: Successfully UPDATED user ${clerk_id_updated}.`);
         }
