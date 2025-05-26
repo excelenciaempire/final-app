@@ -170,7 +170,10 @@ const ProfileSettingsScreen: React.FC = () => {
         const trimmedEmail = newEmail.trim();
         console.log("Attempting to initiate email change for:", trimmedEmail);
 
-        if (!trimmedEmail || !/^\\S+@\\S+\\.\\S+$/.test(trimmedEmail)) { 
+        // Add more detailed logging before the regex test
+        console.log(`Validating email: '${trimmedEmail}', Length: ${trimmedEmail.length}, Regex test result: ${/^\S+@\S+\.\S+$/.test(trimmedEmail)}`);
+
+        if (!trimmedEmail || !/^\S+@\S+\.\S+$/.test(trimmedEmail)) { 
             setEmailChangeError("Please enter a valid new email address.");
             console.log("Email validation failed for:", trimmedEmail); 
             return;
@@ -306,7 +309,7 @@ const ProfileSettingsScreen: React.FC = () => {
             >
                 <TouchableOpacity onPress={pickImage} style={styles.profileImageContainer} disabled={isLoading}>
                     <Image
-                    source={{ uri: newImageUri || profileImageUri || 'https://placehold.co/150' }} 
+                    source={{ uri: newImageUri || profileImageUri || 'https://dummyimage.com/150x150/ccc/000.png&text=Profile' }} 
                     style={styles.avatar}
                     />
                 <View style={styles.editIconOverlay}> 
