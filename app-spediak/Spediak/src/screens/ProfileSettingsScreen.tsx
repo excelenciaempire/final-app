@@ -195,10 +195,11 @@ const ProfileSettingsScreen: React.FC = () => {
             if (isClerkAPIResponseError(err)) {
                 const reverificationError = err.errors.find(e => e.code === 'session_reverification_required');
                 if (reverificationError) {
-                    setEmailChangeError(reverificationError.longMessage || "Please re-authenticate to change your email. You might need to complete an additional verification step.");
+                    const userFriendlyMessage = "This action requires enhanced security. Please sign out and sign back in to continue. If the issue persists after signing back in, please contact support.";
+                    setEmailChangeError(userFriendlyMessage);
                     Alert.alert(
-                        "Re-authentication Required",
-                        reverificationError.longMessage || "Changing your email is a sensitive action. Please complete any re-authentication steps prompted by the application. If no prompt appears, you might need to sign out and sign back in to refresh your session's security before trying again."
+                        "Additional Verification Needed",
+                        userFriendlyMessage
                     );
                 } else {
                     const firstError = err.errors[0];
