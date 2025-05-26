@@ -30,6 +30,65 @@ interface Inspection {
     // Add other relevant fields like userState, etc.
 }
 
+// Helper function to get optimized Cloudinary image URL
+const getOptimizedImageUrl = (url: string | null | undefined, width: number, height: number): string | undefined => {
+    if (!url || !url.includes('cloudinary.com')) return url || undefined;
+    // Example: w_300,h_200,c_fill,q_auto:good
+    // Using c_pad to maintain aspect ratio and pad if necessary, q_auto for quality.
+    try {
+        const parts = url.split('/upload/');
+        if (parts.length === 2) {
+            return `${parts[0]}/upload/w_${width},h_${height},c_pad,q_auto/${parts[1]}`;
+        }
+    } catch (e) {
+        console.warn("Error constructing optimized image URL:", e);
+    }
+    return url; // Fallback to original URL if manipulation fails
+};
+
+// Memoized Inspection Item Component
+const InspectionItem = React.memo(({ item, onSelectItem, onDeleteItem }: {
+    item: Inspection;
+    onSelectItem: (inspection: Inspection) => void;
+    onDeleteItem: (id: string) => void;
+}) => {
+    const displayDate = item.created_at ? new Date(item.created_at).toLocaleString() : 'Date not available';
+    const optimizedImageUrl = getOptimizedImageUrl(item.image_url, 80, 80); // Optimize for list item size
+
+    return (
+        <View style={styles.itemContainer}>
+            {optimizedImageUrl ? (
+                <Image source={{ uri: optimizedImageUrl }} style={styles.itemImage} />
+            ) : (
+                <View style={styles.itemImagePlaceholder}>
+                    <Text style={styles.itemImagePlaceholderText}>No Image</Text>
+                </View>
+            )}
+            <View style={styles.itemContent}>
+                <Text style={styles.itemDescription} numberOfLines={2} ellipsizeMode="tail">
+                    <Text style={styles.boldText}>Description:</Text> {item.description || 'N/A'}
+                </Text>
+                <Text style={styles.itemDate}><Text style={styles.boldText}>Date:</Text> {displayDate}</Text>
+
+                <View style={styles.actionsContainer}>
+                    <TouchableOpacity
+                        style={[styles.actionButton, styles.viewButton]}
+                        onPress={() => onSelectItem(item)}
+                    >
+                        <Eye size={16} color={COLORS.primary} />
+                        <Text style={[styles.actionButtonText, styles.viewButtonText]}>View</Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+            <TouchableOpacity
+                style={styles.deleteIconContainer}
+                onPress={() => onDeleteItem(item.id)}
+            >
+                <Trash2 size={20} color={COLORS.danger} />
+            </TouchableOpacity>
+        </View>
+    );
+});
 
 export default function InspectionHistoryScreen() {
     // Step 37: State Variables
@@ -43,6 +102,12 @@ export default function InspectionHistoryScreen() {
     const [showDetailModal, setShowDetailModal] = useState<boolean>(false);
     const [selectedInspection, setSelectedInspection] = useState<Inspection | null>(null);
 
+    // Pagination state
+    const [currentPage, setCurrentPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
+    const [isLoadingMore, setIsLoadingMore] = useState(false);
+    const ITEMS_PER_PAGE = 10; // Or your preferred limit
+
     const { getToken } = useAuth();
     const navigation = useNavigation(); // Get navigation object
     const [mediaLibraryPermission, requestMediaLibraryPermission] = MediaLibrary.usePermissions(); // For saving to gallery
@@ -55,32 +120,41 @@ export default function InspectionHistoryScreen() {
     }, [mediaLibraryPermission]);
 
     // Step 38: Data Fetching
-    const fetchInspections = useCallback(async () => {
-        console.log("[fetchInspections] Fetching inspections..."); // Log start
-        setIsLoading(true);
+    const fetchInspections = useCallback(async (pageToFetch = 1, isRefreshingData = false) => {
+        console.log(`[fetchInspections] Fetching inspections for page: ${pageToFetch}, isRefreshing: ${isRefreshingData}`);
+        if (pageToFetch === 1) {
+            setIsLoading(true); // Full screen loader for first page or refresh
+        } else {
+            setIsLoadingMore(true); // Footer loader for subsequent pages
+        }
+        if (isRefreshingData) {
+            setInspections([]); // Clear existing inspections if refreshing
+        }
         setError(null);
+
         try {
             const token = await getToken();
             if (!token) throw new Error("User not authenticated");
 
-            console.log(`[fetchInspections] Calling GET ${BASE_URL}/api/inspections`);
-            const response = await axios.get(`${BASE_URL}/api/inspections`, {
+            console.log(`[fetchInspections] Calling GET ${BASE_URL}/api/inspections?page=${pageToFetch}&limit=${ITEMS_PER_PAGE}`);
+            const response = await axios.get(`${BASE_URL}/api/inspections?page=${pageToFetch}&limit=${ITEMS_PER_PAGE}`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             console.log("[fetchInspections] API call successful, status:", response.status);
-            // Log the actual data received more clearly
             console.log("[fetchInspections] Received data:", JSON.stringify(response.data, null, 2));
-            const inspectionsData = Array.isArray(response.data) ? response.data : [];
-            console.log("[fetchInspections] Setting inspections state with count:", inspectionsData.length);
-            setInspections(inspectionsData);
+            
+            const { items, totalPages: newTotalPages, currentPage: newCurrentPage } = response.data; // Assuming this structure from backend
 
-            // --- Placeholder Data (Remove/Comment out) ---
-            // await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate network delay
-            // const placeholderInspections: Inspection[] = [
-            //     { id: '1', imageUrl: '...', description: '...', created_at: '...', ddid: '...' },
-            // ];
-            // setInspections(placeholderInspections);
-            // --- End Placeholder ---
+            const inspectionsData = Array.isArray(items) ? items : [];
+            console.log("[fetchInspections] Setting inspections state with count:", inspectionsData.length);
+            
+            if (pageToFetch === 1 || isRefreshingData) {
+                setInspections(inspectionsData);
+            } else {
+                setInspections(prevInspections => [...prevInspections, ...inspectionsData]);
+            }
+            setTotalPages(newTotalPages || 1);
+            setCurrentPage(newCurrentPage || 1); // Ensure currentPage is updated from response
 
         } catch (err: any) {
             console.error("[fetchInspections] Error caught:", err);
@@ -89,41 +163,52 @@ export default function InspectionHistoryScreen() {
                 console.error("[fetchInspections] Error response status:", err.response.status);
             }
             const errorMessage = err.response?.data?.message || err.message || "Failed to fetch inspections";
-            console.log("[fetchInspections] Setting error state:", errorMessage); // Log error set
+            console.log("[fetchInspections] Setting error state:", errorMessage);
             setError(errorMessage);
         } finally {
-            console.log("[fetchInspections] Setting isLoading = false in finally block"); // Log finally
+            console.log("[fetchInspections] Setting loading states to false in finally block");
             setIsLoading(false);
+            setIsLoadingMore(false);
+            if (isRefreshingData) setIsRefreshing(false); // Also turn off pull-to-refresh indicator
         }
-    }, [getToken]);
+    }, [getToken, ITEMS_PER_PAGE]);
 
     // --- Fetch data on initial mount AND on screen focus using event listener ---
     useEffect(() => {
-        // Fetch data initially when the component mounts
         console.log("[useEffect Mount] Fetching initial inspections...");
-        fetchInspections();
+        fetchInspections(1, true); // Fetch page 1 and indicate it's a refresh/initial load
 
-        // Subscribe to focus events
         const unsubscribe = navigation.addListener('focus', () => {
             console.log("[navigation Listener] Screen focused, fetching inspections...");
-            fetchInspections();
+            // Reset and fetch if you always want fresh data on focus, 
+            // or implement more sophisticated cache-invalidation logic.
+            // For now, let's re-fetch page 1 as a refresh.
+            setCurrentPage(1); // Reset page on focus if desired
+            fetchInspections(1, true);
         });
 
-        // Return the function to unsubscribe from the event so it gets removed on unmount
         return unsubscribe;
-    }, [navigation]); // ONLY depend on navigation. fetchInspections is called from parent scope.
-    // --- End event listener logic ---
+    }, [navigation]); // Removed fetchInspections from dependency array to avoid re-triggering on its own change
 
     // --- Pull to Refresh Logic ---
     const onRefresh = useCallback(async () => {
         console.log("[onRefresh] Starting refresh...");
         setIsRefreshing(true);
-        // Use the original fetchInspections here, as it's needed for standalone refresh
-        await fetchInspections();
-        setIsRefreshing(false);
-        console.log("[onRefresh] Refresh finished.");
+        setCurrentPage(1); // Reset to page 1 on pull-to-refresh
+        await fetchInspections(1, true); // Pass page 1 and isRefreshing=true
+        //setIsRefreshing(false); // fetchInspections will handle this in its finally block
+        console.log("[onRefresh] Refresh finished call initiated.");
     }, [fetchInspections]);
-    // --- End Pull to Refresh Logic ---
+
+    // --- Handle Load More --- 
+    const handleLoadMore = () => {
+        if (!isLoadingMore && currentPage < totalPages) {
+            console.log(`[handleLoadMore] Loading more inspections, current page: ${currentPage}, total pages: ${totalPages}`);
+            fetchInspections(currentPage + 1);
+        } else if (isLoadingMore) {
+            console.log("[handleLoadMore] Already loading more or no more pages.");
+        }
+    };
 
     // Step 42: Delete Logic
     const handleDeleteInspection = async (id: string) => {
@@ -245,46 +330,27 @@ export default function InspectionHistoryScreen() {
         );
     }, [inspections, searchQuery]);
 
-    // Step 39: Render Item Function
-    const renderItem = ({ item }: { item: Inspection }) => {
-        // Make sure created_at is a string before formatting
-        const displayDate = item.created_at ? new Date(item.created_at).toLocaleString() : 'Date not available';
-
+    // Render Footer for FlatList (Loading Indicator for pagination)
+    const renderFooter = () => {
+        if (!isLoadingMore) return null;
         return (
-            <View style={styles.itemContainer}>
-                {item.image_url ? (
-                    <Image source={{ uri: item.image_url }} style={styles.itemImage} />
-                ) : (
-                    <View style={styles.itemImagePlaceholder}>
-                        <Text style={styles.itemImagePlaceholderText}>No Image</Text>
-                    </View>
-                )}
-                <View style={styles.itemContent}>
-                    <Text style={styles.itemDescription} numberOfLines={2} ellipsizeMode="tail">
-                        <Text style={styles.boldText}>Description:</Text> {item.description || 'N/A'}
-                    </Text>
-                    <Text style={styles.itemDate}><Text style={styles.boldText}>Date:</Text> {displayDate}</Text>
-
-                    <View style={styles.actionsContainer}>
-                        <TouchableOpacity
-                            style={[styles.actionButton, styles.viewButton]}
-                            onPress={() => {
-                                setSelectedInspection(item);
-                                setShowDetailModal(true);
-                            }}
-                        >
-                            <Eye size={16} color={COLORS.primary} />
-                            <Text style={[styles.actionButtonText, styles.viewButtonText]}>View</Text>
-                        </TouchableOpacity>
-                    </View>
-                </View>
-                <TouchableOpacity
-                    style={styles.deleteIconContainer}
-                    onPress={() => handleDeleteInspection(item.id)}
-                >
-                    <Trash2 size={20} color={COLORS.danger} />
-                </TouchableOpacity>
+            <View style={{ paddingVertical: 20 }}>
+                <ActivityIndicator animating size="large" color={COLORS.primary} />
             </View>
+        );
+    };
+
+    // Step 39: Render Item Function - Now uses the memoized component
+    const renderItem = ({ item }: { item: Inspection }) => {
+        return (
+            <InspectionItem 
+                item={item} 
+                onSelectItem={(selectedItem) => {
+                    setSelectedInspection(selectedItem);
+                    setShowDetailModal(true); // Assuming this state controls your modal
+                }}
+                onDeleteItem={handleDeleteInspection}
+            />
         );
     };
 
@@ -344,6 +410,9 @@ export default function InspectionHistoryScreen() {
                         // --- End RefreshControl ---
                         // ListEmptyComponent can still be used as a fallback, but the check above is more direct
                         // ListEmptyComponent={<Text style={styles.emptyText}>{searchQuery ? 'No matching inspections found.' : 'No inspections found.'}</Text>}
+                        ListFooterComponent={renderFooter} // Added for pagination
+                        onEndReached={handleLoadMore} // Added for pagination
+                        onEndReachedThreshold={0.5} // Trigger onEndReached when half a screen away from the end
                     />
                  )
             )}

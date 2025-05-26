@@ -7,6 +7,7 @@ import { Pencil, X, Camera, LogOut } from 'lucide-react-native';
 import { COLORS } from '../styles/colors';
 import { Check, Edit2, Upload } from 'lucide-react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 // Define the states available for selection
 const availableStates = [
@@ -17,7 +18,7 @@ const availableStates = [
 
 const ProfileSettingsScreen: React.FC = () => {
     const { isLoaded, isSignedIn, user } = useUser();
-    const { signOut } = useAuth();
+    const { signOut, getToken } = useAuth();
     const [isEditing, setIsEditing] = useState<boolean>(false);
 
     // State for editable fields
@@ -32,18 +33,28 @@ const ProfileSettingsScreen: React.FC = () => {
 
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
+    const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+    // States for email change
+    const [newEmail, setNewEmail] = useState('');
+    const [isVerifyingEmail, setIsVerifyingEmail] = useState(false);
+    const [verificationCode, setVerificationCode] = useState('');
+    const [emailChangeError, setEmailChangeError] = useState<string | null>(null);
+    const [emailChangeSuccess, setEmailChangeSuccess] = useState<string | null>(null);
+
+    const { user: clerkUser, isLoaded: clerkIsLoaded } = useUser();
 
     // Initialize form fields (just use user data, no auto-edit)
     useEffect(() => {
-        if (user) {
-            setFirstName(user.firstName || '');
-            setLastName(user.lastName || '');
-            setSelectedState(user.unsafeMetadata?.inspectionState as string || null);
-            setProfileImageUri(user.imageUrl || null);
-            setInitialImageUri(user.imageUrl || null);
+        if (clerkUser) {
+            setFirstName(clerkUser.firstName || '');
+            setLastName(clerkUser.lastName || '');
+            setSelectedState(clerkUser.unsafeMetadata?.inspectionState as string || null);
+            setProfileImageUri(clerkUser.imageUrl || null);
+            setInitialImageUri(clerkUser.imageUrl || null);
             setProfileImageBase64(null); // Ensure base64 is cleared on load/mode switch
         }
-    }, [user, isEditing]); // Rerun when user loads OR when switching to edit mode
+    }, [clerkUser, isEditing]); // Rerun when user loads OR when switching to edit mode
 
     // --- Updated Image Picker Logic ---
     const pickImage = async () => {
@@ -79,7 +90,7 @@ const ProfileSettingsScreen: React.FC = () => {
 
     // --- Updated Save Changes Logic ---
     const handleSaveChanges = async () => {
-        if (!user) return;
+        if (!clerkUser) return;
 
         // Keep validation, but message is less critical now
         if (!firstName || !lastName || !selectedState) {
@@ -95,7 +106,7 @@ const ProfileSettingsScreen: React.FC = () => {
             // --- Step 1: Handle Profile Image Update ---
             if (newImageBlob) {
                 console.log("Profile image changed, attempting update with blob...");
-                await user.setProfileImage({
+                await clerkUser.setProfileImage({
                     file: newImageBlob,
                 });
                 console.log("Profile image updated successfully on Clerk (using blob).");
@@ -108,15 +119,15 @@ const ProfileSettingsScreen: React.FC = () => {
             if (imageUpdateSuccess) {
                 const updates: any = {};
 
-                if (firstName !== user.firstName) updates.firstName = firstName;
-                if (lastName !== user.lastName) updates.lastName = lastName;
-                if (selectedState !== user.unsafeMetadata?.inspectionState) {
-                    updates.unsafeMetadata = { ...user.unsafeMetadata, inspectionState: selectedState };
+                if (firstName !== clerkUser.firstName) updates.firstName = firstName;
+                if (lastName !== clerkUser.lastName) updates.lastName = lastName;
+                if (selectedState !== clerkUser.unsafeMetadata?.inspectionState) {
+                    updates.unsafeMetadata = { ...clerkUser.unsafeMetadata, inspectionState: selectedState };
                 }
 
                 if (Object.keys(updates).length > 0) {
                     console.log("Updating user profile metadata/name with:", updates);
-                    await user.update(updates);
+                    await clerkUser.update(updates);
                     Alert.alert("Success", "Profile updated successfully!");
                  } else if (!newImageBlob) {
                     console.log("No changes detected to save.");
@@ -125,6 +136,11 @@ const ProfileSettingsScreen: React.FC = () => {
                  }
                 setIsEditing(false); // Exit edit mode on success
             }
+
+            setSuccessMessage('Profile updated successfully!');
+            setError(null); // Clear previous general errors
+            setEmailChangeError(null); // Clear email errors
+            setEmailChangeSuccess(null); // Clear email success
 
         } catch (err: any) {
             // Catch errors from user.update()
@@ -135,7 +151,98 @@ const ProfileSettingsScreen: React.FC = () => {
             setIsLoading(false);
         }
     };
-    // --- End Updated Save Changes Logic ---
+
+    // Function to initiate email change
+    const handleInitiateEmailChange = async () => {
+        if (!clerkUser) return;
+        if (!newEmail.trim() || !/\\S+@\\S+\\.\\S+/.test(newEmail)) {
+            setEmailChangeError("Please enter a valid new email address.");
+            return;
+        }
+        // Clear all error/success messages
+        setError(null);
+        setSuccessMessage(null);
+        setEmailChangeError(null);
+        setEmailChangeSuccess(null);
+        setIsLoading(true);
+
+        try {
+            const createdEmailAddress = await clerkUser.createEmailAddress({ email: newEmail });
+            await createdEmailAddress.prepareVerification({ strategy: 'email_code' });
+            setIsVerifyingEmail(true);
+            setEmailChangeSuccess(`A verification code has been sent to ${newEmail}. Please enter it below.`);
+        } catch (err: any) {
+            console.error("Error initiating email change:", JSON.stringify(err, null, 2));
+            const clerkError = err.errors?.[0]?.longMessage || err.errors?.[0]?.message || "An error occurred. Please try again.";
+            setEmailChangeError(clerkError);
+            setIsVerifyingEmail(false);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    // Function to attempt email verification
+    const handleAttemptEmailVerification = async () => {
+        if (!clerkUser || !newEmail.trim()) return;
+        if (!verificationCode.trim()) {
+            setEmailChangeError("Please enter the verification code.");
+            return;
+        }
+        // Clear all error/success messages
+        setError(null);
+        setSuccessMessage(null);
+        setEmailChangeError(null);
+        setEmailChangeSuccess(null);
+        setIsLoading(true);
+
+        try {
+            const emailAddressToVerify = clerkUser.emailAddresses.find(
+                (ea) => ea.emailAddress === newEmail && ea.verification.status !== 'verified'
+            );
+
+            if (!emailAddressToVerify) {
+                setEmailChangeError("Could not find the email address to verify. Please try initiating the change again.");
+                setIsVerifyingEmail(false);
+                setIsLoading(false);
+                return;
+            }
+
+            const verifiedEmailAddress = await emailAddressToVerify.attemptVerification({ code: verificationCode });
+
+            if (verifiedEmailAddress.verification.status === 'verified') {
+                const backendUrl = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000'; 
+                const token = await getToken(); // Get token using useAuth
+
+                const response = await fetch(`${backendUrl}/api/user/set-primary-email`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}` // Use the obtained token
+                    },
+                    body: JSON.stringify({ newEmailAddressId: verifiedEmailAddress.id }),
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || 'Failed to set new email as primary.');
+                }
+
+                setEmailChangeSuccess('Email address changed and verified successfully! It is now your primary email.');
+                setIsVerifyingEmail(false);
+                setNewEmail('');
+                setVerificationCode('');
+                await clerkUser.reload();
+            } else {
+                setEmailChangeError("Verification failed. Please check the code and try again.");
+            }
+        } catch (err: any) {
+            console.error("Error verifying email:", JSON.stringify(err, null, 2));
+            const errMsg = err.errors?.[0]?.longMessage || err.errors?.[0]?.message || (err.message || "Verification failed. Please try again.");
+            setEmailChangeError(errMsg);
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
     // Step 52: Log Out Logic
     const handleLogout = async () => {
@@ -151,13 +258,12 @@ const ProfileSettingsScreen: React.FC = () => {
         // No finally block, as successful signout unmounts the component
     };
 
-    if (!isLoaded) {
-        return <ActivityIndicator style={styles.loader} size="large" color={COLORS.primary} />;
+    if (!clerkIsLoaded) {
+        return <ActivityIndicator style={styles.loader} size="large" color="#003366" />;
     }
 
-    if (!isSignedIn || !user) {
-        // This shouldn't happen if navigation is set up correctly, but good practice
-        return <View style={styles.container}><Text>Please sign in.</Text></View>;
+    if (!isSignedIn || !clerkUser) {
+        return <View style={styles.safeArea}><Text>Please sign in to view your profile.</Text></View>;
     }
 
     return (
@@ -172,7 +278,7 @@ const ProfileSettingsScreen: React.FC = () => {
 
                     <TouchableOpacity onPress={pickImage} style={styles.profileImageContainer}>
                         <Image
-                        source={{ uri: newImageUri || user.imageUrl || 'https://via.placeholder.com/150' }}
+                        source={{ uri: newImageUri || clerkUser.imageUrl || 'https://via.placeholder.com/150' }}
                         style={styles.avatar}
                         />
                     <View style={styles.editIconOverlay}> 
@@ -195,7 +301,11 @@ const ProfileSettingsScreen: React.FC = () => {
                     <TextInput
                         placeholder="Last Name"
                         value={lastName}
-                        onChangeText={setLastName}
+                        onChangeText={(text) => {
+                            setLastName(text);
+                            setError(null);
+                            setSuccessMessage(null);
+                        }}
                         style={styles.input}
                         placeholderTextColor={COLORS.darkText}
                     />
@@ -217,6 +327,73 @@ const ProfileSettingsScreen: React.FC = () => {
                      </View>
 
                 {error && <Text style={styles.errorText}>{error}</Text>}
+                {successMessage && !emailChangeSuccess && !emailChangeError && <Text style={styles.successText}>{successMessage}</Text>}
+
+                {/* --- Change Email Section --- */}
+                <Text style={styles.sectionTitle}>Change Email</Text>
+
+                {!isVerifyingEmail ? (
+                    <>
+                        <Text style={styles.inputLabel}>New Email Address</Text>
+                        <View style={styles.inputContainer}>
+                            <MaterialCommunityIcons name="email-outline" size={20} color="#666" style={styles.icon} />
+                            <TextInput
+                                value={newEmail}
+                                onChangeText={(text) => {
+                                    setNewEmail(text);
+                                    setEmailChangeError(null);
+                                    setEmailChangeSuccess(null);
+                                }}
+                                placeholder="Enter new email"
+                                style={styles.input}
+                                keyboardType="email-address"
+                                autoCapitalize="none"
+                            />
+                        </View>
+                        {emailChangeError && !isVerifyingEmail && <Text style={styles.errorText}>{emailChangeError}</Text>}
+                        <TouchableOpacity style={styles.button} onPress={handleInitiateEmailChange} disabled={isLoading}>
+                            <Text style={styles.buttonText}>{isLoading ? 'Sending...' : 'Send Verification Code'}</Text>
+                        </TouchableOpacity>
+                    </>
+                ) : (
+                    <>
+                        <Text style={styles.inputLabel}>Verification Code</Text>
+                        <View style={styles.inputContainer}>
+                            <MaterialCommunityIcons name="numeric" size={20} color="#666" style={styles.icon} />
+                            <TextInput
+                                value={verificationCode}
+                                onChangeText={(text) => {
+                                    setVerificationCode(text);
+                                    setEmailChangeError(null);
+                                }}
+                                placeholder="Enter verification code"
+                                style={styles.input}
+                                keyboardType="number-pad"
+                            />
+                        </View>
+                        {emailChangeError && isVerifyingEmail && <Text style={styles.errorText}>{emailChangeError}</Text>}
+                        {emailChangeSuccess && <Text style={styles.successText}>{emailChangeSuccess}</Text>}
+                        <TouchableOpacity style={styles.button} onPress={handleAttemptEmailVerification} disabled={isLoading}>
+                            <Text style={styles.buttonText}>{isLoading ? 'Verifying...' : 'Verify and Update Email'}</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[styles.button, styles.cancelButton]}
+                            onPress={() => {
+                                setIsVerifyingEmail(false);
+                                setNewEmail('');
+                                setVerificationCode('');
+                                setEmailChangeError(null);
+                                setEmailChangeSuccess(null);
+                                setError(null); // also clear general error
+                                setSuccessMessage(null); // also clear general success
+                            }}
+                            disabled={isLoading}
+                        >
+                            <Text style={styles.buttonText}>Cancel</Text>
+                        </TouchableOpacity>
+                    </>
+                )}
+                {/* End of Change Email Section */}
 
                     <TouchableOpacity
                     style={[styles.button, isLoading && styles.buttonDisabled]}
@@ -249,7 +426,11 @@ const styles = StyleSheet.create({
         maxWidth: 500,
         alignSelf: 'center',
     },
-    loader: { marginTop: 50 },
+    loader: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
     title: {
         fontSize: 24,
         fontWeight: 'bold',
@@ -286,43 +467,67 @@ const styles = StyleSheet.create({
     inputContainer: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: COLORS.secondary,
-        borderRadius: 10,
+        backgroundColor: '#f0f0f0',
+        borderRadius: 8,
+        paddingHorizontal: 10,
         marginBottom: 15,
-        paddingHorizontal: 15,
+        borderWidth: 1,
+        borderColor: '#ddd',
     },
     inputIcon: {
         marginRight: 10,
     },
     input: {
         flex: 1,
-        height: 50,
-        color: COLORS.darkText,
+        paddingVertical: Platform.OS === 'ios' ? 15 : 12,
         fontSize: 16,
+        color: '#333',
     },
     button: {
-        flexDirection: 'row',
-        justifyContent: 'center',
-        backgroundColor: COLORS.primary,
+        backgroundColor: '#003366',
         paddingVertical: 15,
-        borderRadius: 10,
+        borderRadius: 8,
         alignItems: 'center',
-        marginTop: 20,
+        marginBottom: 10,
     },
     buttonDisabled: {
         backgroundColor: '#a0a0a0',
     },
     buttonText: {
-        color: COLORS.white,
-        fontSize: 18,
+        color: '#ffffff',
+        fontSize: 16,
         fontWeight: 'bold',
     },
     errorText: {
         color: 'red',
+        marginBottom: 10,
         textAlign: 'center',
+    },
+    successText: {
+        color: 'green',
+        marginBottom: 10,
+        textAlign: 'center',
+    },
+    sectionTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: '#333',
+        marginTop: 20,
         marginBottom: 15,
+    },
+    cancelButton: {
+        backgroundColor: '#888',
+        marginTop: 5,
+    },
+    inputLabel: {
         fontSize: 14,
-        paddingHorizontal: 10,
+        fontWeight: '600',
+        color: '#444',
+        marginBottom: 8,
+        marginLeft: 2,
+    },
+    icon: {
+        marginRight: 10,
     },
 }); 
 

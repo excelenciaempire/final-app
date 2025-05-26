@@ -13,25 +13,22 @@ const generatePreDescriptionController = async (req, res) => {
   }
 
   const prompt = `
+Primary Directive:
 The AI will consistently follow the original instructions for standard inspection scenarios,
 providing thorough and clear evaluation and reporting explicitly aligned with the DDID
 (Describe, Determine, Implication, Direct) format for maximum consistency and clarity. Imagery
 analysis will inform only preliminary descriptions and conditional prompts, not final DDID
 statements. After addressing a conditional scenario, the AI must explicitly revert to the Primary
 Directive.
-
 Conditional Prompts:
-
 When the AI identifies conditions such as audio issues, new construction scenarios, fungal or
 organic growth (previously noted as mold), infrared anomalies, multiple issues, or inspection
 limitations, it will automatically switch to the corresponding specialized prompt. Immediately
 after handling the conditional scenario, clearly indicate the return to the Primary Directive.
-
 Imagery Analysis Directive:
 Analyze each inspection submission&#39;s accompanying images solely to inform preliminary
 observations and activate specialized prompts if necessary. Visual analysis insights will enhance
 future accuracy but must never reference imagery analysis in final DDID statements.
-
 Fallback:
 After addressing any specific conditional scenario, revert to the Primary Directive for the
 remainder of the inspection process.
@@ -48,6 +45,7 @@ Instructions:
  Include inspector-provided notes.
  DO NOT suggesting causes, repairs, or remedies.
  DO NOT use Markdown or special formatting—output plain text only.
+ Provide completed statement in a paragraph output.
 
 Inspector Data:
 - Analyze the image and the inspector's notes (${description || 'None provided'}).

@@ -17,11 +17,34 @@ const getInspections = async (req, res) => {
   if (!userId) { // Doble chequeo por si acaso
     return res.status(401).json({ message: 'Not authorized' });
   }
+
+  const page = parseInt(req.query.page, 10) || 1;
+  const limit = parseInt(req.query.limit, 10) || 10; // Default limit to 10, matching frontend
+  const offset = (page - 1) * limit;
+
   try {
-    // Filtrar por user_id
-    const result = await pool.query('SELECT * FROM inspections WHERE user_id = $1 ORDER BY created_at DESC', [userId]);
-    // const result = await pool.query('SELECT * FROM inspections ORDER BY created_at DESC'); // Temporal: Obtiene todas
-    return res.json(result.rows);
+    // Query to get items for the current page
+    const itemsResult = await pool.query(
+      'SELECT * FROM inspections WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3',
+      [userId, limit, offset]
+    );
+
+    // Query to get the total count of items for this user
+    const totalResult = await pool.query(
+      'SELECT COUNT(*) FROM inspections WHERE user_id = $1',
+      [userId]
+    );
+
+    const totalItems = parseInt(totalResult.rows[0].count, 10);
+    const totalPages = Math.ceil(totalItems / limit);
+
+    return res.json({
+      items: itemsResult.rows,
+      currentPage: page,
+      totalPages: totalPages,
+      totalItems: totalItems
+    });
+
   } catch (err) {
     console.error('Error fetching inspections:', err);
     return res.status(500).json({ message: 'Error fetching inspections' });
