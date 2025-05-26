@@ -86,7 +86,7 @@ router.post('/user/set-primary-email', ClerkExpressRequireAuth(), async (req, re
         // 3. Update the email in your Neon (PostgreSQL) database
         // IMPORTANT: Replace 'users' with your actual table name and 'clerk_id' with your Clerk user ID column name.
         const dbResult = await pool.query(
-            'UPDATE users SET email = $1 WHERE clerk_id = $2 RETURNING *' 
+            'UPDATE users SET email = $1 WHERE clerk_id = $2 RETURNING *', 
             [newPrimaryEmailString, userId]
         );
 
