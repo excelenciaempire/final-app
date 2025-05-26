@@ -303,7 +303,7 @@ const ProfileSettingsScreen: React.FC = () => {
             >
                 <TouchableOpacity onPress={pickImage} style={styles.profileImageContainer} disabled={isLoading}>
                     <Image
-                    source={{ uri: newImageUri || profileImageUri || 'https://via.placeholder.com/150' }} 
+                    source={{ uri: newImageUri || profileImageUri || 'https://placehold.co/150' }} 
                     style={styles.avatar}
                     />
                 <View style={styles.editIconOverlay}> 
