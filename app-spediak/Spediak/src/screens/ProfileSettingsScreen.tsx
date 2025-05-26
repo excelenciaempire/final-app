@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, Image, Button, TextInput, TouchableOpacity, Alert, ActivityIndicator, ScrollView, Platform, SafeAreaView } from 'react-native';
-import { useUser, useAuth } from '@clerk/clerk-expo';
+import { useUser, useAuth, useClerk, isClerkAPIResponseError } from '@clerk/clerk-expo';
 import { Picker } from '@react-native-picker/picker';
 import * as ImagePicker from 'expo-image-picker';
 import { Pencil, X, Camera, LogOut } from 'lucide-react-native';
@@ -19,6 +19,7 @@ const availableStates = [
 const ProfileSettingsScreen: React.FC = () => {
     const { isLoaded, isSignedIn, user } = useUser();
     const { signOut, getToken } = useAuth();
+    const clerk = useClerk();
     const [isEditing, setIsEditing] = useState<boolean>(false);
 
     // State for editable fields
@@ -166,7 +167,7 @@ const ProfileSettingsScreen: React.FC = () => {
         const trimmedEmail = newEmail.trim();
         console.log("Attempting to initiate email change for:", trimmedEmail);
 
-        if (!trimmedEmail || !/^\S+@\S+\.\S+$/.test(trimmedEmail)) { 
+        if (!trimmedEmail || !/^\\S+@\\S+\\.\\S+$/.test(trimmedEmail)) { 
             setEmailChangeError("Please enter a valid new email address.");
             console.log("Email validation failed for:", trimmedEmail); 
             return;
@@ -176,20 +177,35 @@ const ProfileSettingsScreen: React.FC = () => {
         setSuccessMessage(null);
         setEmailChangeError(null);
         setEmailChangeSuccess(null);
-        setIsLoading(true); // General loading for this operation too
+        setIsLoading(true);
 
         try {
             const createdEmailAddress = await clerkUser.createEmailAddress({ email: trimmedEmail });
             await createdEmailAddress.prepareVerification({ strategy: 'email_code' });
             setIsVerifyingEmail(true);
             setEmailChangeSuccess(`A verification code has been sent to ${trimmedEmail}. Please enter it below.`);
-        } catch (err: any) {
+        } catch (err: unknown) { // Use unknown for better type safety in catch
             console.error("Error initiating email change:", JSON.stringify(err, null, 2));
-            const clerkError = err.errors?.[0]?.longMessage || err.errors?.[0]?.message || "An error occurred. Please try again.";
-            setEmailChangeError(clerkError);
+            if (isClerkAPIResponseError(err)) {
+                const reverificationError = err.errors.find(e => e.code === 'session_reverification_required');
+                if (reverificationError) {
+                    setEmailChangeError(reverificationError.longMessage || "Please re-authenticate to change your email. You might need to complete an additional verification step.");
+                    Alert.alert(
+                        "Re-authentication Required",
+                        reverificationError.longMessage || "Changing your email is a sensitive action. Please complete any re-authentication steps prompted by the application. If no prompt appears, you might need to sign out and sign back in to refresh your session's security before trying again."
+                    );
+                } else {
+                    const firstError = err.errors[0];
+                    setEmailChangeError(firstError?.longMessage || firstError?.message || "An error occurred. Please try again.");
+                }
+            } else if (err instanceof Error) {
+                 setEmailChangeError(err.message || "An unexpected error occurred. Please try again.");
+            } else {
+                setEmailChangeError("An unexpected error occurred. Please try again.");
+            }
             setIsVerifyingEmail(false);
         } finally {
-            setIsLoading(false); // Clear general loading
+            setIsLoading(false);
         }
     };
 
@@ -285,18 +301,22 @@ const ProfileSettingsScreen: React.FC = () => {
                 contentContainerStyle={styles.scrollContentContainer}
                 keyboardShouldPersistTaps="handled"
             >
+                <TouchableOpacity onPress={pickImage} style={styles.profileImageContainer} disabled={isLoading}>
+                    <Image
+                    source={{ uri: newImageUri || profileImageUri || 'https://via.placeholder.com/150' }} 
+                    style={styles.avatar}
+                    />
+                <View style={styles.editIconOverlay}> 
+                    <Edit2 size={16} color={COLORS.white} />
+                    </View>
+                </TouchableOpacity>
+                {/* Display Username */}
+                {clerkUser.username && (
+                    <Text style={styles.usernameText}>{clerkUser.username}</Text>
+                )}
+
                 <Text style={styles.title}>Edit Profile</Text>
                 <Text style={styles.description}>Update your details below.</Text>
-
-                    <TouchableOpacity onPress={pickImage} style={styles.profileImageContainer} disabled={isLoading}>
-                        <Image
-                        source={{ uri: newImageUri || profileImageUri || 'https://via.placeholder.com/150' }} 
-                        style={styles.avatar}
-                        />
-                    <View style={styles.editIconOverlay}> 
-                        <Edit2 size={16} color={COLORS.white} />
-                        </View>
-                    </TouchableOpacity>
 
                 <View style={styles.inputContainer}>
                     <Ionicons name="person-outline" size={20} color={COLORS.darkText} style={styles.inputIcon} />
@@ -545,6 +565,13 @@ const styles = StyleSheet.create({
     },
     icon: {
         marginRight: 10,
+    },
+    usernameText: { // Style for the username
+        fontSize: 18,
+        fontWeight: '600',
+        color: COLORS.darkText,
+        textAlign: 'center',
+        marginBottom: 20, // Space before the "Edit Profile" title
     },
 }); 
 
