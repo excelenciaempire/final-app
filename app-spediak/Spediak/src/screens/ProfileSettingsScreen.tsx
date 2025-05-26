@@ -397,7 +397,7 @@ const ProfileSettingsScreen: React.FC = () => {
                                 onChangeText={(text) => {
                                     setNewEmail(text);
                                     setEmailChangeError(null); 
-                                    setEmailChangeSuccess(null);
+                                    // setEmailChangeSuccess(null); // Keep success message until next action
                                 }}
                                 placeholder="Enter new email"
                                 style={styles.input}
@@ -406,7 +406,10 @@ const ProfileSettingsScreen: React.FC = () => {
                                 editable={!isLoading} // Disable if any loading
                             />
                         </View>
-                        {emailChangeError && !isVerifyingEmail && <Text style={styles.errorText}>{emailChangeError}</Text>}
+                        {/* Display success message here if it exists */}
+                        {emailChangeSuccess && <Text style={styles.successText}>{emailChangeSuccess}</Text>} 
+                        {/* Display error message here if it exists (and no success message) */}
+                        {emailChangeError && !isVerifyingEmail && !emailChangeSuccess && <Text style={styles.errorText}>{emailChangeError}</Text>}
                         <TouchableOpacity style={[styles.button, isLoading && styles.buttonDisabled]} onPress={handleInitiateEmailChange} disabled={isLoading}>
                             <Text style={styles.buttonText}>{isLoading && isVerifyingEmail === false ? 'Sending...' : 'Send Verification Code'}</Text> 
                         </TouchableOpacity>
@@ -428,8 +431,10 @@ const ProfileSettingsScreen: React.FC = () => {
                                 editable={!isLoading} // Disable if any loading
                             />
                         </View>
+                        {/* THIS ERROR IS FINE HERE AS IT PERTAINS TO THE CURRENT VERIFICATION ATTEMPT */}
                         {emailChangeError && isVerifyingEmail && <Text style={styles.errorText}>{emailChangeError}</Text>}
-                        {emailChangeSuccess && <Text style={styles.successText}>{emailChangeSuccess}</Text>}
+                        {/* SUCCESS MESSAGE DURING VERIFICATION IS NO LONGER THE PRIMARY ONE */}
+                        {/* {emailChangeSuccess && <Text style={styles.successText}>{emailChangeSuccess}</Text>} */}
                         <TouchableOpacity style={[styles.button, isLoading && styles.buttonDisabled]} onPress={handleAttemptEmailVerification} disabled={isLoading}>
                             <Text style={styles.buttonText}>{isLoading && isVerifyingEmail === true ? 'Verifying...' : 'Verify and Update Email'}</Text>
                         </TouchableOpacity>
