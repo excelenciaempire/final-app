@@ -312,7 +312,7 @@ const ProfileSettingsScreen: React.FC = () => {
                 </TouchableOpacity>
                 {/* Display Username */}
                 {clerkUser.username && (
-                    <Text style={styles.usernameText}>{clerkUser.username}</Text>
+                    <Text style={styles.usernameText}>@{clerkUser.username}</Text>
                 )}
 
                 <Text style={styles.title}>Edit Profile</Text>
@@ -567,11 +567,11 @@ const styles = StyleSheet.create({
         marginRight: 10,
     },
     usernameText: { // Style for the username
-        fontSize: 18,
+        fontSize: 16,
         fontWeight: '600',
-        color: COLORS.darkText,
+        color: '#888888',
         textAlign: 'center',
-        marginBottom: 20, // Space before the "Edit Profile" title
+        marginBottom: 20,
     },
 }); 
 
