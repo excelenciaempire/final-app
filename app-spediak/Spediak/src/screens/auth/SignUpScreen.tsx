@@ -529,9 +529,10 @@ const styles = StyleSheet.create({
   },
   inputHelperText: {
     fontSize: 12,
-    color: COLORS.textMuted, // Changed from textLight to textMuted
-    marginTop: 4,
-    marginLeft: 5, // Align with input text if possible
+    color: COLORS.textMuted,
+    marginTop: 2,
+    marginBottom: 10,
+    marginLeft: 5,
     alignSelf: 'flex-start',
   },
 });
