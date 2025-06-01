@@ -13,6 +13,21 @@ cloudinary.config({
 });
 
 const uploadImageController = async (req, res) => {
+  console.log('[uploadController.js] Entered for URL:', req.originalUrl);
+  console.log('[uploadController.js] req.auth from middleware:', req.auth ? { userId: req.auth.userId, sessionId: req.auth.sessionId, orgId: req.auth.orgId } : 'null or undefined');
+  console.log('[uploadController.js] All Headers:', JSON.stringify(req.headers, null, 2));
+
+  // It's crucial that requireAuth has already populated req.auth
+  // If req.auth is not populated here, the middleware isn't working as expected for this route.
+  if (!req.auth || !req.auth.userId) {
+    console.warn('[uploadController.js] Auth check failed: req.auth.userId is missing. Responding with 401.');
+    // This response will be sent if requireAuth somehow let the request through without proper auth,
+    // or if requireAuth is not even running for this route (which seems unlikely given api.js).
+    return res.status(401).json({ message: 'User not authenticated. Access denied by upload controller.' });
+  }
+  // If we reach here, req.auth.userId should be available and valid.
+  console.log(`[uploadController.js] User ${req.auth.userId} is authenticated. Proceeding with image upload logic.`);
+
   const { imageBase64 } = req.body;
 
   if (!imageBase64) {

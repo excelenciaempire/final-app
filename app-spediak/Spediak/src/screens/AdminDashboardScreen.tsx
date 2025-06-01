@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, Text, FlatList, StyleSheet, ActivityIndicator, RefreshControl, Alert, Image, SafeAreaView, TouchableOpacity, Platform, TextInput } from 'react-native';
+import { View, Text, FlatList, StyleSheet, ActivityIndicator, RefreshControl, Alert, Image, SafeAreaView, TouchableOpacity, Platform, TextInput, Modal as RNModal, Dimensions } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import axios from 'axios';
 import { useAuth } from '@clerk/clerk-expo';
 import { BASE_URL } from '../config/api';
 import { COLORS } from '../styles/colors';
 import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
-import { Search, Eye, UserCircle, Download, Trash2 } from 'lucide-react-native';
+import { Search, Eye, UserCircle, Download, Trash2, X as XIcon } from 'lucide-react-native';
 import DdidModal from '../components/DdidModal';
 import { useDebounce } from '../hooks/useDebounce';
 import * as FileSystem from 'expo-file-system'; // For native download
@@ -65,6 +65,10 @@ const InspectionList: React.FC = () => {
     const [isModalVisible, setIsModalVisible] = useState(false);
     const { getToken } = useAuth();
     const debouncedSearchQuery = useDebounce(searchQuery, 500);
+
+    // State for full image preview modal
+    const [fullScreenImageUrl, setFullScreenImageUrl] = useState<string | null>(null);
+    const [isFullImageModalVisible, setIsFullImageModalVisible] = useState(false);
 
     const fetchData = useCallback(async (page = 1, search = debouncedSearchQuery, sortCol = sortBy, sortDir = sortOrder, refreshing = false) => {
         console.log(`[AdminInspections] Fetching page ${page}, search: '${search}', sort: ${sortCol} ${sortDir}`);
@@ -169,7 +173,12 @@ const InspectionList: React.FC = () => {
                 <View style={styles.inspectionDetailsContainer}>
                     <View style={styles.inspectionImageContainer}>
                         {item.image_url ? (
-                            <Image source={{ uri: item.image_url }} style={styles.cardImage} resizeMode="cover"/>
+                            <TouchableOpacity onPress={() => {
+                                setFullScreenImageUrl(item.image_url);
+                                setIsFullImageModalVisible(true);
+                            }}>
+                                <Image source={{ uri: item.image_url }} style={styles.cardImage} resizeMode="cover"/>
+                            </TouchableOpacity>
                         ) : (
                             <View style={styles.cardImagePlaceholder}><Text style={styles.placeholderText}>No image</Text></View>
                         )}
@@ -209,7 +218,7 @@ const InspectionList: React.FC = () => {
                 {/* Display Total Inspections Count */}
                 {(!isLoading || isRefreshing) && ( // Show when not in initial load or when refreshing
                     <Text style={styles.totalCountText}>
-                        Total Inspections: {totalInspectionsCount}
+                        Total Statements: {totalInspectionsCount}
                     </Text>
                 )}
                 <View style={styles.searchWrapper}>
@@ -253,6 +262,35 @@ const InspectionList: React.FC = () => {
                  userName={selectedInspection?.userName}
                  userEmail={selectedInspection?.userEmail}
             />
+
+            {/* Full Screen Image Preview Modal */}
+            {fullScreenImageUrl && (
+                <RNModal
+                    transparent={true}
+                    visible={isFullImageModalVisible}
+                    onRequestClose={() => {
+                        setIsFullImageModalVisible(false);
+                        setFullScreenImageUrl(null);
+                    }}
+                >
+                    <View style={styles.fullImageModalOverlay}>
+                        <TouchableOpacity 
+                            style={styles.fullImageCloseButton} 
+                            onPress={() => {
+                                setIsFullImageModalVisible(false);
+                                setFullScreenImageUrl(null);
+                            }}
+                        >
+                            <XIcon size={30} color={COLORS.white} />
+                        </TouchableOpacity>
+                        <Image 
+                            source={{ uri: fullScreenImageUrl }}
+                            style={styles.fullScreenImage}
+                            resizeMode="contain"
+                        />
+                    </View>
+                </RNModal>
+            )}
         </View>
     );
 };
@@ -602,7 +640,12 @@ const styles = StyleSheet.create({
     buttonDisabled: {
         backgroundColor: '#adb5bd',
     },
-    loader: { marginTop: 50 },
+    loader: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingTop: 20,
+    },
     errorText: { color: 'red', textAlign: 'center', marginTop: 20, paddingHorizontal: 15 },
     list: { flex: 1 },
     emptyText: { textAlign: 'center', marginTop: 50, color: '#6c757d', fontSize: 16 },
@@ -725,17 +768,18 @@ const styles = StyleSheet.create({
         marginRight: 10,
     },
     cardImage: {
-        width: '100%',
-        height: '100%',
+        width: 80, 
+        height: 80,
         borderRadius: 4,
+        backgroundColor: '#e0e0e0', // Placeholder color
     },
     cardImagePlaceholder: {
-        width: '100%',
-        height: '100%',
-        backgroundColor: '#f0f2f5',
+        width: 80,
+        height: 80,
+        borderRadius: 4,
+        backgroundColor: '#e0e0e0',
         justifyContent: 'center',
         alignItems: 'center',
-        borderRadius: 4,
     },
     inspectionTextContainer: {
         flex: 1,
@@ -756,7 +800,7 @@ const styles = StyleSheet.create({
     },
     placeholderText: {
         fontSize: 12,
-        color: '#aaa',
+        color: '#757575',
     },
     viewReportButton: {
         flexDirection: 'row',
@@ -920,6 +964,24 @@ const styles = StyleSheet.create({
         marginLeft: 10, // Space from the view report button
         // backgroundColor: COLORS.secondary + '80', // Optional: light background
         // borderRadius: 20, // Optional: make it circular
+    },
+    // Styles for Full Image Modal
+    fullImageModalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0, 0, 0, 0.85)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    fullScreenImage: {
+        width: Dimensions.get('window').width * 0.9, // 90% of screen width
+        height: Dimensions.get('window').height * 0.8, // 80% of screen height
+    },
+    fullImageCloseButton: {
+        position: 'absolute',
+        top: Platform.OS === 'ios' ? 50 : 20, // Adjust for status bar
+        right: 20,
+        zIndex: 10, // Ensure it's above the image
+        padding: 10, // Make it easier to tap
     },
 });
 

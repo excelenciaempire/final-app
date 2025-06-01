@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TextInput, FlatList, ActivityIndicator, Touchab
 import { useAuth } from '@clerk/clerk-expo';
 import { useNavigation } from '@react-navigation/native'; // Import useNavigation
 import axios from 'axios';
-import { Search, Trash2, Eye, Copy, Download } from 'lucide-react-native'; // Added Trash2, Eye, Copy, and Download
+import { Search, Trash2, Eye, Copy, Download, X } from 'lucide-react-native'; // Added X icon
 import DdidModal from '../components/DdidModal'; // Step 41: Import Modal
 import { BASE_URL } from '../config/api'; // Import centralized BASE_URL
 import { COLORS } from '../styles/colors'; // Corrected path to styles
@@ -427,6 +427,9 @@ export default function InspectionHistoryScreen() {
                 >
                     <View style={styles.modalOverlay}>
                         <View style={styles.modalContent}>
+                            <TouchableOpacity onPress={() => setSelectedInspection(null)} style={styles.modalCloseIconContainer}>
+                                <X size={24} color={COLORS.darkText} />
+                            </TouchableOpacity>
                             {/* Optional: Display image */}
                             {selectedInspection.image_url && (
                                 <Image source={{ uri: selectedInspection.image_url }} style={styles.historyModalImage} resizeMode="contain" />
@@ -445,21 +448,15 @@ export default function InspectionHistoryScreen() {
                                     <Text style={styles.modalButtonText}>Copy Statement</Text>
                                 </TouchableOpacity>
                                 
-                                {selectedInspection.image_url && (
-                                    <TouchableOpacity
-                                        style={styles.modalDownloadButton} // New style for download icon in modal
-                                        onPress={() => handleDownloadImage(selectedInspection.image_url!, selectedInspection.id)}
-                                    >
-                                        <Download size={24} color={COLORS.primary} />
-                                    </TouchableOpacity>
-                                )}
-
+                                {selectedInspection.image_url && ( // Ensure download button only shows if there's an image
                                 <TouchableOpacity
-                                    style={[styles.modalButton, styles.closeButton]} 
-                                    onPress={() => setSelectedInspection(null)}
+                                    style={[styles.modalButton, styles.downloadImageButton]} // New style for download button
+                                    onPress={() => handleDownloadImage(selectedInspection.image_url!, selectedInspection.id)}
                                 >
-                                    <Text style={styles.modalButtonText}>Close</Text> 
+                                    <Download size={18} color={COLORS.white} style={styles.modalButtonIcon} />
+                                    <Text style={styles.modalButtonText}>Download Image</Text> 
                                 </TouchableOpacity>
+                                )}
                             </View>
                         </View>
                     </View>
@@ -621,18 +618,33 @@ const styles = StyleSheet.create({
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: 'rgba(0, 0, 0, 0.6)',
+        backgroundColor: 'rgba(0,0,0,0.6)', // Darker overlay
     },
     modalContent: {
         width: '90%',
-        maxWidth: 600,
-        backgroundColor: 'white',
-        borderRadius: 10,
-        padding: 20,
-        maxHeight: '85%', // Increased max height slightly
+        maxWidth: 500, // Max width for larger screens
+        backgroundColor: COLORS.white, // Use white background
+        borderRadius: 10, // Rounded corners
+        padding: 20, // Consistent padding
+        alignItems: 'stretch', // Stretch children to fill width
+        shadowColor: '#000',
+        shadowOffset: {
+            width: 0,
+            height: 2,
+        },
+        shadowOpacity: 0.25,
+        shadowRadius: 3.84,
+        elevation: 5,
     },
-    historyModalImage: { // Optional image style for history modal
-        width: '100%',
+    modalCloseIconContainer: { // Style for the X icon container
+        position: 'absolute',
+        top: 10,
+        right: 10,
+        padding: 5, // Add some padding for easier tapping
+        zIndex: 10, // Ensure it's above other content
+    },
+    historyModalImage: {
+        width: '100%', // Make image responsive
         height: 150, // Adjust height as needed
         borderRadius: 8,
         marginBottom: 15,
@@ -678,15 +690,20 @@ const styles = StyleSheet.create({
     copyHistoryButton: {
         backgroundColor: COLORS.primary, // Or another distinct color
         marginRight: 'auto', // Push other items to the right if only copy and close
+        flexShrink: 1, // Allow button to shrink if needed
     },
-    modalDownloadButton: { // Style for the new download button in the modal
+    modalDownloadButton: { // Style for the old download icon button (now unused but kept for reference if needed)
         padding: 10,
-        marginLeft: 'auto', // Push it to the right, before the close button if both exist
-        // Add other styling as needed, e.g., if it should look like other modal buttons
+        marginLeft: 'auto', 
     },
-    closeButton: {
+    downloadImageButton: { // New style for the prominent Download Image button
+        backgroundColor: COLORS.success, // Or another distinct color like a blue
+        marginLeft: 10,
+        flexShrink: 1, // Allow button to shrink if needed
+    },
+    closeButton: { // This style is now effectively replaced by downloadImageButton or the X icon
         backgroundColor: '#6c757d', 
-        marginLeft: 10, // Ensure some space if download button is present
+        marginLeft: 10, 
     },
 });
 

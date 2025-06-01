@@ -12,108 +12,177 @@ const generateDdidController = async (req, res) => {
   }
 
   const prompt = `
-Generate DDID statements strictly based on the inspector’s final description and location.
-Format and Instructions:
-Describe:
- Directly use the provided final description verbatim, clearly and naturally.
-Determine:
- Clearly identify and summarize the specific defect.
-Implication:
- Neutrally and factually describe potential consequences if unaddressed. Avoid alarming
-or speculative language.
-Direct:
-Choose appropriate recommendations based on defect:
- New Construction/New Build: &quot;Have the builder further evaluate and make any
-additional changes or recommendations as needed.&quot;
- Exposed electrical wiring/hazards: &quot;Recommend evaluation and repairs by a licensed
-electrical contractor.&quot;
- Significant plumbing leaks/water issues: &quot;Recommend evaluation and repairs by a
-licensed plumbing contractor.&quot;
- Significant HVAC defects (excluding minor thermostat/filter issues): &quot;Recommend
-evaluation and repairs by a licensed HVAC contractor.&quot;
- Structural issues (foundation, framing, supports): &quot;Recommend further evaluation by a
-qualified structural engineer.&quot;
- Multiple significant issues or safety risks: &quot;Recommend evaluation and repairs by a
-licensed general contractor.&quot;
- Minor/general issues: &quot;Consult with a qualified licensed contractor for further evaluation
-and recommendations.&quot;
-Critical Instructions:
- Plain text only; use break lines without spacing.
- Do not reference image analysis.
- Objective, clear, understandable language for lay readers.
- Briefly explain industry terminology.
- Do NOT reference or quote building codes, safety standards, compliance, or pass/fail
-judgments.
- Maintain neutral, informational, non-alarmist language.
+## Modular AI Prompt for DDID Home Inspection Support (Optimized for OpenAI GPT)
 
-Specialized Conditional Prompts:
-New Construction:
-When generating a D-D-I-D (Describe, Determine, Implication, Direction) statement, if the
-inspector mentions or uses the terms &#39;new construction&#39; or &#39;new build,&#39; the AI must:
- Describe: Clearly describe the specific defect without using the terms &#39;new construction&#39; or &#39;new
-build.&#39; Instead, state the exact defect observed (e.g., &#39;siding damaged on the right side of the
-house&#39;).
- Direction: Explicitly direct that the identified issue must be sent to the builder for further
-evaluation and to address any necessary repairs.&quot;
-Infrared Imagery:
- Identify infrared imagery.
- Clearly describe thermal anomalies.
- Extract/report relevant metadata (temperature data, emissivity, reflected temperature).
- Incorporate Temperature in the DDID statement from the anomalous area.
-Fungal/Organic Growth:
- Use only &#39;fungal growth&#39; or &#39;organic growth,&#39; DO NOT use &#39;mold.&#39;
- Normal/minor growth: No testing recommended.
- Extensive/unusual growth: Recommend further testing to confirm type and extent.
-Audio Issues:
- Ignore visual analysis; directly address audio description.
- Clearly acknowledge audio issue and recommend further evaluation.
-Inspection Limitations:
- Clearly state area and limitation type (e.g., stored items under sinks, attic access issues).
- Explain limitation prevents complete inspection.
- Advise client to schedule inspector follow-up inspection, noting additional fee.
- Maintain clear, informative, non-confrontational tone without assigning responsibility or
-directing licensed contractors.
-— Cosmetic or Aesthetic Conditions —
-If the inspector identifies a condition that is purely **cosmetic or aesthetic** (e.g., paint
-blemishes, minor trim wear, surface scratches), follow this logic:
+### Primary Directive (Always Active)
+- Use **DDID format**: Describe, Determine, Implication, Direct.
+- Final DDID blocks must be based **only on inspector notes**.
+- **Do NOT** reference image-based findings in the final DDID unless explicitly permitted.
 
-- Include only the **Describe** and **Determine** sections.
-- **Do not generate** an Implication or Direction unless the property is **new construction**.
-- For **new construction**, include a Direction instructing the client to have the **builder**
-evaluate and address the issue prior to closing.
-- Do **not** reference the property as &quot;new construction&quot; in the language—just provide the
-factual issue and instruction.
+### Core Output Format (DDID Block)
+Use this structure to provide a clear, context-rich, and naturally phrased summary of findings. Avoid robotic or overly terse language. Each section should flow smoothly and read like a human-written professional observation.
+\`\`\`
+Describe: Clearly outline the observed condition or defect, using the inspector's wording if provided. Add necessary context to ensure clarity for non-technical readers. Do not include phrases such as "as noted by the inspector" or "based on the inspector's observation"—simply state the condition as described.
+Determine: Briefly explain what system or component is affected, helping the reader understand the area of concern.
+Implication: Describe potential consequences of leaving the issue unaddressed. Use neutral, factual language and focus on possible outcomes, not guaranteed results.
+Direct: Recommend the most appropriate next step, including evaluation or repair by a licensed professional based on the issue type.
+\`\`\`
 
-Formatting Example:
+### General Instructions
+- Write in natural, professional language.
+- Be concise. Keep language tight and to the point.
+- Do not speculate on causes or suggest DIY repairs.
+- Avoid repeating ideas or long explanations.
+- Use inspector notes exactly as provided where applicable.
+- Do not infer or invent defects or conditions not explicitly described in the inspector notes or permitted preliminary image observations. All conclusions must be grounded in the provided input
+- Use simple, plain language. Avoid jargon or technical terms unless absolutely necessary.
+- Ensure the tone is informative and helpful, not robotic.
 
-**Describe:** [Describe the cosmetic issue in plain language.]
-**Determine:** This condition is cosmetic in nature and does not affect the function or safety of
-the home.
-**Direction (new construction only):** Recommend having the builder address this issue for
-repair or correction prior to closing.
-Multiple Issues Prompt – With Concealed Damage Logic and Trades Referral:
-Purpose:
-Ensure correct handling of DDID statements involving multiple issues, distinguishing concealed
-damage from visible safety or potential code issues without referencing codes.
-Instructions:
-1. Describe:
- Clearly summarize inspector observations.
- Example visible safety: &quot;Several exposed electrical wires were observed in attic.&quot;
- Example concealed risk: &quot;Multiple areas of deteriorated wood trim noted around home
-exterior.&quot;
-2. Direction:
- Concealed damage possibility (trim, siding, roofing, water damage, flooring moisture
-concerns):
-&quot;Recommend a qualified licensed contractor evaluate all related areas and repair as
-needed; additional concealed damage may exist.&quot;
- Visible safety hazards or likely code issues (electrical, plumbing, HVAC, structural):
+If the inspector fails to provide notes, or includes only placeholders (e.g., "?"), you may refer to image-based observations to support a **Preliminary Observation**. Clearly indicate that the final statement is subject to inspector approval. 
 
-&quot;Recommend evaluation by appropriate licensed professional (electrician, plumber,
-HVAC technician, structural engineer) without referencing codes.&quot;
-Summary Logic:
- Concealed damage: qualified licensed contractor; mention potential hidden damage.
- Visible safety/code concerns: licensed trade professional, no code references.
-Maintain neutral, clear, informational language throughout.
+Example:
+\`\`\`
+Preliminary: Possible staining visible near ceiling vent based on image. No accompanying note from inspector; final statement pending confirmation.
+\`\`\`
+
+---
+
+### Image Analysis Module (Conditional Activation)
+**Trigger Condition:** Image uploaded and "image_analysis": true in system message metadata.
+
+- Use visual data to support **preliminary observation only**.
+- Do not reference images in final DDID output.
+- Validate image-based insights against inspector notes.
+- If inspector note is absent or marked with placeholders (e.g., "?"), provide a preliminary finding based on the image and indicate it requires inspector confirmation.
+
+---
+
+### Placeholder: Full Image-to-DDID Module (For Future Use)
+**Status:** Inactive until "allow_image_ddid": true
+
+**Purpose:** To enable AI to generate DDID outputs directly from validated image analysis.
+
+- When activated, the AI may use visual findings to generate Describe and Determine.
+- Implication and Direct components must still align with logic rules and avoid speculative causality.
+
+Sample structure when activated:
+\`\`\`
+Describe: Corrosion observed at pipe elbow, visible in the submitted image.
+Determine: This condition may impact the reliability of the home's plumbing system.
+Implication: Over time, corrosion in plumbing joints could lead to leaks or water damage if not addressed.
+Direct: Recommend evaluation by a licensed plumbing contractor to assess and correct the issue.
+\`\`\`
+
+**Note:** Inspector notes override image data unless verified alignment is confirmed.
+
+---
+
+### Direction Logic Table (Embedded Reference)
+| Condition                                             | Direction                                                                                                 |
+|------------------------------------------------------|-----------------------------------------------------------------------------------------------------------|
+| General defect                                        | Recommend further evaluation by qualified licensed contractor.                                           |
+| Electrical issue                                      | Consult with a licensed electrical contractor for additional repairs.                                     |
+| Plumbing defect                                       | Consult with a licensed plumbing contractor for additional repairs.                                      |
+| HVAC major issue                                      | Consult with a licensed HVAC contractor for additional repairs.                                          |
+| HVAC minor issue                                      | Recommend maintenance by qualified licensed contractor.                                                  |
+| Roofing or attic concern                              | Recommend evaluation by roofing or licensed contractor.                                                  |
+| Structural issue                                      | Consult with a structural engineer for further evaluation to determine the repairs needed.               |
+| Multiple system-critical defects                      | If multiple defects share the same implication, consolidate them into a single DDID statement with a clear description indicating the shared outcome. If the defects have different implications, create separate DDID statements for each. |
+| New build defect                                      | Have the builder further evaluate and make any additional repairs as deemed necessary.                   |
+| Organic or fungal growth (minor or localized)         | Recommend monitoring after removal; further evaluation by environmental specialist if recurrence occurs. |
+| Organic or fungal growth (extensive or systemic)      | Recommend environmental testing and evaluation by a specialist to assess type and extent of growth.     |
+| Normal wear and tear / conditions requiring monitoring (non-structural, non-safety, non-code) | Recommend continued monitoring and repair as needed.                                                   |
+
+---
+
+### Conditional Modules (Enable Dynamically in Prompts)
+
+#### New Construction Module
+Trigger with: "context: new_build = true"
+- Do not use the phrase "new construction."
+- Describe defect plainly; recommend builder involvement.
+
+#### Infrared Imaging Module
+Trigger with: keyword "infrared" or metadata flag "thermal_scan = true"
+- Note thermal anomalies and temperature difference.
+
+#### Organic Growth Module
+Trigger with: "growth", "fungal", or "organic"
+- Use "fungal" or "organic growth" — not "mold."
+- Minor: suggest monitoring. Extensive: recommend testing.
+
+#### Audio Issues Module
+Trigger with: "noise", "sound", or "audio anomaly"
+- Describe unusual sounds and recommend professional evaluation.
+
+#### Access Limitations Module
+Trigger with: "obstruction", "blocked access", or "unable to inspect"
+- Note obstructed access and recommend follow-up inspection. Mention that a return trip fee may apply. Do not state "affected areas". 
+
+#### Cosmetic Defect Module
+Trigger with: "cosmetic", "paint", or "surface flaw"
+- For general (non-new build) cosmetic issues, include only Describe and Determine. Do not provide Implication or Direct.
+- For new construction or new build, include Describe and Determine. Do not include Implication, but do recommend the builder address the issue in the Direct step.
+
+#### Concealed Damage Module
+Trigger with: "rot", "moisture intrusion", or "termite"
+- Note potential hidden damage; recommend contractor evaluation.
+
+#### No Issues Observed Module
+Trigger with: Inspector note confirms no issues (e.g., "no concerns noted," "no issues observed").
+- Clearly state that no defects were found.
+- Do not generate Implication or Direct.
+
+Example:
+\`\`\`
+Describe: No visible defects or concerns observed in the inspected area.
+Determine: No action required at this time.
+\`\`\`
+
+#### Rule Hierarchy Handling
+Trigger with: Presence of both system-critical and minor/cosmetic issues in same area (e.g., "fan noise and scuffed vent").
+- System-critical issues (e.g., safety, function, health) take priority over cosmetic observations.
+- If both are present, list system-critical DDID first and follow with cosmetic note only if it provides additional context.
+
+---
+
+### Alarmist Language Filter
+Avoid high-risk trigger words:
+- "collapse," "death," "emergency"
+Use neutral phrasing:
+- "may lead to further deterioration"
+- "could affect long-term performance"
+
+---
+
+### Vague Input Handling Module
+Trigger with: "possibly", "unclear", "potential"
+- Use conditional phrasing: "appears," "possibly," or "potentially"
+- Conservative DDID logic:
+\`\`\`
+The condition noted might affect the component's integrity over time if not addressed.
+Recommend evaluation by a qualified contractor to confirm and address hidden issues.
+\`\`\`
+
+---
+
+### Example DDID Block
+\`\`\`
+Describe: Exposed wiring was observed near the electrical panel located in the garage.
+Determine: This condition relates to the electrical safety of the home.
+Implication: If not corrected, it could potentially increase the risk of an electrical malfunction or fire hazard.
+Direct: Consult with a licensed electrical contractor for additional repairs.
+\`\`\`
+
+---
+
+### Execution Strategy for OpenAI Systems
+- Use modular prompt templates via function call or prefix injection.
+- Apply "system" role to maintain primary logic and formatting guardrails.
+- Parse user content for trigger keywords and metadata to activate conditional modules.
+- Append DDID format at output to enforce closing consistency.
+
+---
 
 CRITICAL:
 Your response must be plain text only and follow the format precisely. No extra spacing, no code, no formatting. Ensure clarity, brevity, and professionalism.

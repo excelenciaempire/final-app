@@ -316,15 +316,17 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
                <View style={styles.inputContainer}>
                    <Ionicons name="person-outline" size={20} color={COLORS.darkText} style={styles.inputIcon} />
                   <TextInput
-                      style={styles.input}
+                      style={[styles.input, usernameError ? styles.inputError : null]}
                       placeholder="Username"
                       placeholderTextColor={COLORS.darkText}
                       value={username}
                       onChangeText={(text) => { setUsername(text); setUsernameError(null); }}
                       autoCapitalize="none"
+                      onFocus={() => setUsernameError(null)}
                   />
               </View>
               {usernameError && <Text style={styles.errorText}>{usernameError}</Text>}
+              <Text style={styles.inputHelperText}>Username cannot be changed after registration.</Text>
 
               {/* Terms and Conditions Checkbox */}
               <View style={styles.checkboxContainer}>
@@ -521,6 +523,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: COLORS.primary,
     textDecorationLine: 'underline',
+  },
+  inputError: {
+    borderColor: COLORS.danger, // Red border for errors
+  },
+  inputHelperText: {
+    fontSize: 12,
+    color: COLORS.textMuted, // Changed from textLight to textMuted
+    marginTop: 4,
+    marginLeft: 5, // Align with input text if possible
+    alignSelf: 'flex-start',
   },
 });
 
