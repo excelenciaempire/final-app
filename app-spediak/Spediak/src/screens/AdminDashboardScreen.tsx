@@ -12,6 +12,20 @@ import { useDebounce } from '../hooks/useDebounce';
 import * as FileSystem from 'expo-file-system'; // For native download
 import * as MediaLibrary from 'expo-media-library'; // For saving to gallery on native
 
+// Helper function to get optimized Cloudinary image URL (copied from InspectionHistoryScreen)
+const getOptimizedImageUrl = (url: string | null | undefined, width: number, height: number): string | undefined => {
+    if (!url || !url.includes('cloudinary.com')) return url || undefined;
+    try {
+        const parts = url.split('/upload/');
+        if (parts.length === 2) {
+            return `${parts[0]}/upload/w_${width},h_${height},c_pad,q_auto/${parts[1]}`;
+        }
+    } catch (e) {
+        console.warn("Error constructing optimized image URL:", e);
+    }
+    return url; // Fallback to original URL if manipulation fails
+};
+
 // Interface for the combined data expected from the admin endpoint
 interface AdminInspectionData {
     id: string;
@@ -146,38 +160,40 @@ const InspectionList: React.FC = () => {
         setSortOrder(newSortOrder);
     };
 
-    const renderInspectionItem = ({ item }: { item: AdminInspectionData }) => (
-        <View style={styles.cardContainer}>
-            <View style={styles.cardContent}>
-                 <View style={styles.cardHeaderInfo}> 
-                     {/* User Info with Photo */}
-                     <View style={styles.userInfoRow}> 
+    const renderInspectionItem = ({ item }: { item: AdminInspectionData }): JSX.Element => {
+        const optimizedCardImageUrl = getOptimizedImageUrl(item.image_url, 80, 80);
+
+        return (
+            <View style={styles.cardContainer}>
+                <View style={styles.cardHeaderInfo}>
+                    {/* User Info with Photo */}
+                    <View style={styles.userInfoRow}>
                         {item.userProfilePhoto ? (
                             <Image source={{ uri: item.userProfilePhoto }} style={styles.userImageSmall} />
                         ) : (
-                             <View style={styles.userImagePlaceholderSmall}>
+                            <View style={styles.userImagePlaceholderSmall}>
                                 <UserCircle size={20} color={COLORS.secondary} />
-                             </View>
+                            </View>
                         )}
-                        <View style={styles.userInfoTextContainer}> 
+                        <View style={styles.userInfoTextContainer}>
                             <Text style={styles.cardUserText} numberOfLines={1}>{item.userName || 'Unknown User'}</Text>
                             <Text style={styles.cardDetailText} numberOfLines={1}>
                                 {item.userEmail} {item.userState ? `(${item.userState})` : ''}
                             </Text>
                         </View>
-                     </View>
+                    </View>
                     <Text style={styles.cardDateText}>{new Date(item.created_at).toLocaleString()}</Text>
-                 </View>
+                </View>
 
                 {/* Inspection Details Section */}
                 <View style={styles.inspectionDetailsContainer}>
                     <View style={styles.inspectionImageContainer}>
-                        {item.image_url ? (
+                        {optimizedCardImageUrl ? (
                             <TouchableOpacity onPress={() => {
-                                setFullScreenImageUrl(item.image_url);
+                                setFullScreenImageUrl(item.image_url); // Use original for full screen
                                 setIsFullImageModalVisible(true);
                             }}>
-                                <Image source={{ uri: item.image_url }} style={styles.cardImage} resizeMode="cover"/>
+                                <Image source={{ uri: optimizedCardImageUrl }} style={styles.cardImage} resizeMode="cover" />
                             </TouchableOpacity>
                         ) : (
                             <View style={styles.cardImagePlaceholder}><Text style={styles.placeholderText}>No image</Text></View>
@@ -186,7 +202,7 @@ const InspectionList: React.FC = () => {
                     <View style={styles.inspectionTextContainer}>
                         <Text style={styles.cardDescriptionLabel}>Description:</Text>
                         <Text style={styles.cardDescriptionText} numberOfLines={1}>{item.description}</Text>
-                        <View style={styles.inspectionActionsRow}> 
+                        <View style={styles.inspectionActionsRow}>
                             <TouchableOpacity
                                 style={styles.viewReportButton}
                                 onPress={() => {
@@ -201,8 +217,8 @@ const InspectionList: React.FC = () => {
                     </View>
                 </View>
             </View>
-        </View>
-    );
+        );
+    };
 
     const renderFooter = () => {
         if (!isLoadingMore) return null;
