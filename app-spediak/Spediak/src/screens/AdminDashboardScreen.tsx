@@ -724,11 +724,12 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.1,
         shadowRadius: 2.5,
         elevation: 2,
-        flexDirection: 'column', // Keep as column
+        flexDirection: 'column',
     },
     cardContent: { // Contains everything now
         flex: 1,
-        padding: 12, // Use slightly more padding
+        paddingVertical: 12, // Keep vertical padding
+        paddingHorizontal: 20, // Increased horizontal padding from 12 to 20
     },
     cardHeaderInfo: { 
         marginBottom: 10, 
