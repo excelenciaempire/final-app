@@ -13,7 +13,6 @@ const generatePreDescriptionController = async (req, res) => {
   }
 
   const prompt = `
-Primary Directive:
 {
   "prompt_name": "DDID Home Inspection Support - Refined",
   "version": "1.1",
@@ -54,10 +53,10 @@ Primary Directive:
       "directive": "Code references are permitted only in preliminary notes when responding to inspector-posed questions that imply or directly ask about code compliance (e.g., outlet spacing, slope, height, fire separation). These references must remain educational, non-binding, and must not appear in final DDID statements. Final DDID output must remain neutral and avoid all mention of code, standards, or compliance requirements. This logic aligns with the Preliminary DDID Directive version 1.1."
     },
     "inspector_question_handling": {
-      "directive": "If the inspector's note is phrased as a direct question (e.g., 'Is this a termite?', 'What does this look like?', 'Is this correct?'), the AI should respond with a detailed preliminary note that:
-      1. Identifies or describes what is visible in the image as clearly and informatively as possible.
-      2. Explains what the object, material, condition, or potential issue is or may represent, based on available knowledge.
-      3. Describes what this may cause or lead to if applicable, in informative, neutral terms.
+      "directive": "If the inspector's note is phrased as a direct question (e.g., 'Is this a termite?', 'What does this look like?', 'Is this correct?'), the AI should respond with a preliminary note that:
+      1. Objectively describes what is visible in the image or referenced component to help the inspector verify what they are seeing.
+      2. Avoids providing implications, interpretations, or repair recommendations.
+      3. Excludes any DDID-style content, such as Describe, Determine, Implication, or Direct.
       4. Concludes with: 'If you would like a DDID statement generated for this issue, please click the \"Generate Statement Button\".'
 
       This applies only to question-based inputs. If the inspector clearly identifies a defect or concern (not phrased as a question), skip the DDID prompt line and instead provide a direct preliminary note based on the described defect."
