@@ -248,7 +248,7 @@ const InspectionList: React.FC = () => {
                      />
                 </View>
                 <TouchableOpacity onPress={() => handleSortChange('created_at')} style={styles.sortButton}>
-                    <Text style={styles.sortButtonText}>Date {sortBy === 'created_at' ? (sortOrder === 'desc' ? '▼' : '▲') : ''}</Text>
+                    <Text style={styles.sortButtonText}>Date {sortBy === 'created_at' && (sortOrder === 'asc' ? '▲' : '▼')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => handleSortChange('userName')} style={styles.sortButton}>
                     <Text style={styles.sortButtonText}>User {sortBy === 'userName' ? (sortOrder === 'desc' ? '▼' : '▲') : ''}</Text>
@@ -258,55 +258,45 @@ const InspectionList: React.FC = () => {
             <FlatList
                 data={inspections}
                 renderItem={renderInspectionItem}
-                keyExtractor={(item) => `insp-${item.id}`}
-                style={styles.list}
-                contentContainerStyle={{ paddingHorizontal: 5, paddingBottom: 20 }}
-                ListEmptyComponent={<Text style={styles.emptyText}>No inspections found.</Text>}
-                refreshControl={
-                    <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} colors={[COLORS.primary]} tintColor={COLORS.primary} />
-                }
+                keyExtractor={(item) => item.id.toString()}
+                contentContainerStyle={styles.listContainer}
                 onEndReached={handleLoadMore}
                 onEndReachedThreshold={0.5}
                 ListFooterComponent={renderFooter}
-            />
-             <DdidModal
-                 visible={isModalVisible}
-                 onClose={() => setIsModalVisible(false)}
-                 ddidText={selectedInspection?.ddid || ''}
-                 imageUrl={selectedInspection?.image_url || undefined}
-                 description={selectedInspection?.description}
-                 userName={selectedInspection?.userName}
-                 userEmail={selectedInspection?.userEmail}
+                refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} colors={[COLORS.primary]} />}
+                ListEmptyComponent={<Text style={styles.emptyListText}>No inspections found.</Text>}
             />
 
-            {/* Full Screen Image Preview Modal */}
-            {fullScreenImageUrl && (
-                <RNModal
-                    transparent={true}
-                    visible={isFullImageModalVisible}
-                    onRequestClose={() => {
-                        setIsFullImageModalVisible(false);
-                        setFullScreenImageUrl(null);
-                    }}
-                >
-                    <View style={styles.fullImageModalOverlay}>
-                        <TouchableOpacity 
-                            style={styles.fullImageCloseButton} 
-                            onPress={() => {
-                                setIsFullImageModalVisible(false);
-                                setFullScreenImageUrl(null);
-                            }}
-                        >
-                            <XIcon size={30} color={COLORS.white} />
-                        </TouchableOpacity>
-                        <Image 
-                            source={{ uri: fullScreenImageUrl }}
-                            style={styles.fullScreenImage}
-                            resizeMode="contain"
-                        />
-                    </View>
-                </RNModal>
+            {selectedInspection && (
+                <DdidModal
+                    visible={isModalVisible}
+                    onClose={() => setIsModalVisible(false)}
+                    ddidText={selectedInspection.ddid}
+                    imageUri={selectedInspection.image_url}
+                />
             )}
+
+             {/* Full-screen Image Preview Modal */}
+            <RNModal
+                visible={isFullImageModalVisible}
+                transparent={true}
+                onRequestClose={() => setIsFullImageModalVisible(false)}
+                animationType="fade"
+            >
+                <View style={styles.fullImageModalContainer}>
+                    <TouchableOpacity
+                        style={styles.fullImageCloseButton}
+                        onPress={() => setIsFullImageModalVisible(false)}
+                    >
+                        <XIcon size={30} color="#fff" />
+                    </TouchableOpacity>
+                    <Image
+                        source={{ uri: fullScreenImageUrl || undefined }}
+                        style={styles.fullImage}
+                        resizeMode="contain"
+                    />
+                </View>
+            </RNModal>
         </View>
     );
 };
@@ -1000,6 +990,197 @@ const styles = StyleSheet.create({
         zIndex: 10, // Ensure it's above the image
         padding: 10, // Make it easier to tap
     },
+    // Add a style for the modal content
+    modalContent: {
+        width: '80%', // Or a fixed width like 500
+        maxWidth: 600,
+        maxHeight: '80%',
+        backgroundColor: 'white',
+        borderRadius: 10,
+        padding: 20,
+        alignItems: 'stretch', // Changed from center
+        shadowColor: '#000',
+        shadowOffset: {
+            width: 0,
+            height: 2,
+        },
+        shadowOpacity: 0.25,
+        shadowRadius: 4,
+        elevation: 5,
+    },
+    // Add a style for the modal backdrop
+    modalBackdrop: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    },
+    container: {
+        flex: 1,
+        backgroundColor: COLORS.background,
+    },
+    listContainer: {
+        paddingHorizontal: 16,
+        paddingTop: 16,
+        paddingBottom: 20,
+    },
+    emptyListText: {
+        textAlign: 'center',
+        marginTop: 50,
+        color: COLORS.textMuted,
+        fontSize: 16,
+    },
+    cardUserText: {
+        fontWeight: 'bold',
+        fontSize: 14,
+        color: COLORS.text,
+        flexShrink: 1,
+    },
+    cardDetailText: {
+        fontSize: 12,
+        color: COLORS.textMuted,
+        flexShrink: 1,
+    },
+    cardDateText: {
+        fontSize: 12,
+        color: COLORS.textMuted,
+        textAlign: 'right',
+        minWidth: 120, // Ensure date doesn't wrap awkwardly
+    },
+    inspectionDetailsContainer: {
+        flexDirection: 'row',
+        marginTop: 10,
+        paddingTop: 10,
+        borderTopWidth: 1,
+        borderTopColor: '#eee',
+    },
+    inspectionImageContainer: {
+        marginRight: 15,
+    },
+    inspectionTextContainer: {
+        flex: 1,
+        justifyContent: 'center',
+    },
+    cardImage: {
+        width: 80,
+        height: 80,
+        borderRadius: 8,
+    },
+    cardImagePlaceholder: {
+        width: 80,
+        height: 80,
+        borderRadius: 8,
+        backgroundColor: '#f0f0f0',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    placeholderText: {
+        color: '#999',
+        fontSize: 12,
+    },
+    cardDescriptionLabel: {
+        fontSize: 12,
+        color: COLORS.textMuted,
+        marginBottom: 2,
+    },
+    cardDescriptionText: {
+        fontSize: 14,
+        color: COLORS.text,
+        marginBottom: 8,
+    },
+    inspectionActionsRow: {
+        flexDirection: 'row',
+        justifyContent: 'flex-start',
+        alignItems: 'center',
+        marginTop: 'auto', // Push to bottom
+    },
+    viewReportButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 6,
+        paddingHorizontal: 10,
+        backgroundColor: '#E9E9E9',
+        borderRadius: 20,
+    },
+    viewReportButtonText: {
+        marginLeft: 6,
+        color: COLORS.primary,
+        fontWeight: '600',
+        fontSize: 13,
+    },
+    // User List Styles
+    userCardContainer: {
+        backgroundColor: '#FFFFFF',
+        borderRadius: 8,
+        padding: 15,
+        marginHorizontal: 16,
+        marginBottom: 12,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 2,
+        elevation: 2,
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    userContentContainer: {
+        flex: 1,
+        marginLeft: 15,
+    },
+     userImageLarge: {
+        width: 50,
+        height: 50,
+        borderRadius: 25,
+    },
+    userImagePlaceholderLarge: {
+        width: 50,
+        height: 50,
+        borderRadius: 25,
+        backgroundColor: '#f0f0f0',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    userName: {
+        fontWeight: 'bold',
+        fontSize: 16,
+        color: COLORS.text,
+    },
+    userDetails: {
+        fontSize: 14,
+        color: COLORS.textMuted,
+        marginTop: 2,
+    },
+    userActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    actionButton: {
+        padding: 8,
+        marginLeft: 8,
+    },
+
+    // Full Screen Image Modal
+    fullImageModalContainer: {
+        flex: 1,
+        backgroundColor: 'rgba(0, 0, 0, 0.85)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    fullImage: {
+        width: '90%',
+        height: '90%',
+    },
+    fullImageCloseButton: {
+        position: 'absolute',
+        top: Platform.OS === 'web' ? 20 : 50,
+        right: 20,
+        zIndex: 10,
+        padding: 10,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        borderRadius: 50,
+    },
+
+
 });
 
-export default AdminDashboardScreen; 
+export default AdminDashboardScreen;

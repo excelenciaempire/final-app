@@ -20,10 +20,7 @@ interface DdidModalProps {
     visible: boolean;
     onClose: () => void;
     ddidText: string;
-    imageUrl?: string;
-    description?: string;
-    userName?: string;
-    userEmail?: string;
+    imageUri?: string;
 }
 
 const { width, height } = Dimensions.get('window');
@@ -32,63 +29,56 @@ const DdidModal: React.FC<DdidModalProps> = ({
     visible, 
     onClose, 
     ddidText, 
-    imageUrl, 
-    description,
-    userName,
-    userEmail
+    imageUri
 }) => {
 
-    console.log(`[DdidModal] Received imageUrl: ${imageUrl}`);
+    console.log(`[DdidModal] Received imageUri: ${imageUri}`);
 
     const handleCopy = async () => {
-        // Remove potential markdown formatting before copying
-        const plainText = ddidText.replace(/\*\*/g, ''); // Remove **
+        const plainText = ddidText.replace(/\*\*/g, '');
 
         try {
             await Clipboard.setStringAsync(plainText);
-            // Optionally provide feedback (e.g., a temporary message or toast)
-            Alert.alert("Copied", "Statement copied to clipboard.");
+            if (Platform.OS !== 'web') {
+                Alert.alert("Copied", "Statement copied to clipboard.");
+            } else {
+                // For web, you might rely on a toast/notification library
+                // as alerts can be disruptive. For now, we'll just log it.
+                console.log("Statement copied to clipboard.");
+                // A simple alert is fine for now for web as well.
+                alert("Statement copied to clipboard.");
+            }
         } catch (e) {
             console.error("Failed to copy text: ", e);
-            Alert.alert("Error", "Could not copy text to clipboard.");
+            alert("Error: Could not copy text to clipboard.");
         }
     };
 
     return (
         <Modal
-            animationType="slide"
+            animationType="fade"
             transparent={true}
             visible={visible}
-            onRequestClose={onClose} // Handle back button on Android
+            onRequestClose={onClose}
         >
             <View style={styles.centeredView}>
                 <View style={styles.modalView}>
                     <View style={styles.modalHeader}>
-                        <View style={styles.headerUserInfo}>
-                           <Text style={styles.headerUserName} numberOfLines={1}>Statement</Text>
-                        </View>
+                        <Text style={styles.headerTitle}>Generated Statement</Text>
                         <TouchableOpacity onPress={onClose} style={styles.closeButton}>
                             <X size={24} color="#6c757d" />
                         </TouchableOpacity>
                     </View>
 
                     <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollViewContent}>
-                        {/* REMOVE Image display from final modal
-                        {imageUrl && (
-                            <Image source={{ uri: imageUrl }} style={styles.modalImage} resizeMode="contain" />
-                        )}
-                        */}
-                        <View style={styles.sectionContainer}>
-                             <Text style={styles.sectionTitle}>Generated Statement:</Text>
-                             <Markdown style={markdownStyles}>
-                                {ddidText || 'No content available.'}
-                             </Markdown>
-                        </View>
+                        <Markdown style={markdownStyles}>
+                            {ddidText || 'No content available.'}
+                        </Markdown>
                     </ScrollView>
 
                     <View style={styles.modalFooter}>
                          <TouchableOpacity style={styles.copyButton} onPress={handleCopy}>
-                             <Copy size={18} color="#fff" style={styles.copyIcon} />
+                             <Copy size={18} color="#fff" />
                              <Text style={styles.copyButtonText}>Copy Statement</Text>
                          </TouchableOpacity>
                     </View>
@@ -103,115 +93,80 @@ const styles = StyleSheet.create({
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: 'rgba(0, 0, 0, 0.6)', // Dimmed background
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
     },
     modalView: {
-        width: width * 0.9, // 90% of screen width
-        maxHeight: height * 0.8, // 80% of screen height
-        margin: 20,
+        width: Platform.OS === 'web' ? '50%' : '90%',
+        maxWidth: 700,
+        maxHeight: '85%',
         backgroundColor: 'white',
-        borderRadius: 15, // More rounded corners
-        padding: 0, // Padding handled internally by sections
-        alignItems: 'center',
+        borderRadius: 12,
         shadowColor: '#000',
         shadowOffset: {
             width: 0,
-            height: 2,
+            height: 4,
         },
-        shadowOpacity: 0.25,
-        shadowRadius: 4,
-        elevation: 5,
-        overflow: 'hidden', // Ensure children conform to rounded corners
+        shadowOpacity: 0.3,
+        shadowRadius: 5,
+        elevation: 10,
+        overflow: 'hidden',
+        display: 'flex',
+        flexDirection: 'column',
     },
     modalHeader: {
-        width: '100%',
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
         paddingHorizontal: 20,
         paddingVertical: 15,
         borderBottomWidth: 1,
-        borderBottomColor: '#eee',
+        borderBottomColor: '#e9ecef',
+        backgroundColor: '#f8f9fa',
     },
-    headerUserInfo: {
-        flex: 1, // Allow text to take space
-        marginRight: 10,
-    },
-    headerUserName: {
+    headerTitle: {
         fontSize: 18,
-        fontWeight: 'bold',
-        color: '#333',
-    },
-    headerUserEmail: {
-        fontSize: 13,
-        color: '#555',
+        fontWeight: '600',
+        color: '#343a40',
     },
     closeButton: {
-         padding: 5, // Increase tappable area
+         padding: 8,
+         borderRadius: 50,
+         backgroundColor: 'transparent',
+         marginLeft: 10,
     },
     scrollView: {
-        width: '100%',
+        flex: 1,
     },
     scrollViewContent: {
-         padding: 20, // Add padding around scroll content
-    },
-    modalImage: { 
-        width: '100%', // Use full width within padding
-        height: 200, // Increase height slightly
-        borderRadius: 8,
-        marginBottom: 20, // More space
-        backgroundColor: '#eee',
-        alignSelf: 'center',
-    },
-    sectionContainer: {
-        marginBottom: 20,
-    },
-    sectionTitle: {
-        fontSize: 14,
-        fontWeight: 'bold',
-        color: COLORS.primary,
-        marginBottom: 8,
-        borderBottomWidth: 1,
-        borderBottomColor: '#eee',
-        paddingBottom: 4,
-    },
-    descriptionText: {
-        fontSize: 15,
-        lineHeight: 22,
-        color: '#333',
+         paddingHorizontal: 20,
+         paddingVertical: 15,
     },
     modalFooter: {
-        width: '100%',
-        paddingVertical: 15,
-        paddingHorizontal: 20,
+        padding: 15,
         borderTopWidth: 1,
-        borderTopColor: '#eee',
-        alignItems: 'center',
-        backgroundColor: '#f8f9fa' // Slight background differentiation
+        borderTopColor: '#e9ecef',
+        backgroundColor: '#f8f9fa',
     },
     copyButton: {
         flexDirection: 'row',
-        backgroundColor: '#2c3e50',
+        backgroundColor: COLORS.primary,
         paddingVertical: 12,
-        paddingHorizontal: 30,
+        paddingHorizontal: 25,
         borderRadius: 8,
         alignItems: 'center',
         justifyContent: 'center',
-        width: '100%',
     },
     copyButtonText: {
         color: 'white',
         fontWeight: 'bold',
         fontSize: 16,
+        marginLeft: 8,
     },
-    copyIcon: {
-        marginRight: 8,
-    }
 });
 
 const markdownStyles = StyleSheet.create({
     body: {
-        fontSize: 15, // Match descriptionText
+        fontSize: 15,
         color: '#333',
         lineHeight: 22,
     },
@@ -239,12 +194,11 @@ const markdownStyles = StyleSheet.create({
         marginVertical: 4,
     },
     bullet_list: {
-        marginLeft: 15, // Indent list
+        marginLeft: 15,
     },
     ordered_list: {
-         marginLeft: 15, // Indent list
+         marginLeft: 15,
     },
-    // Add other markdown element styles as needed
 });
 
 export default DdidModal; 
