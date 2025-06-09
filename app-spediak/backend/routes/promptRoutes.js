@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { getPrompts, updatePrompts } = require('../controllers/promptController');
-const { requireAuth } = require('../middleware/authMiddleware'); // Assuming you have auth middleware
+const { requireAuth } = require('../middleware/clerkAuth');
 
 // Define the routes
 router.get('/prompts', requireAuth, getPrompts);
