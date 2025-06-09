@@ -96,7 +96,7 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(0, 0, 0, 0.5)',
     },
     modalView: {
-        width: Platform.OS === 'web' ? '50%' : '90%',
+        width: Platform.OS === 'web' ? '50%' : '95%',
         maxWidth: 700,
         maxHeight: '85%',
         backgroundColor: 'white',
