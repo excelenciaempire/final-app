@@ -21,20 +21,12 @@ const generateDdidController = async (req, res) => {
     "image_reference_restriction": true
   },
   "ddid_template": {
-    "describe": "Clearly outline the observed condition or defect, using the inspector's wording if provided. Add necessary context to ensure clarity for non-technical readers. Do not include phrases such as 'as noted by the inspector' or 'based on the inspector's observation'—simply state the condition as described.",
-    "determine": "Briefly explain what system or component is affected, helping the reader understand the area of concern.",
-    "implication": "Describe potential consequences of leaving the issue unaddressed. Use neutral, factual language and focus on possible outcomes, not guaranteed results.",
-    "direct": "Recommend the most appropriate next step, including evaluation or repair by a licensed professional based on the issue type."
+    "DESCRIBE": "Clearly outline the observed condition or defect, using the inspector's wording if provided. Add necessary context to ensure clarity for non-technical readers. Do not include phrases such as 'as noted by the inspector' or 'based on the inspector's observation'—simply state the condition as described.",
+    "DETERMINE": "Briefly explain what system or component is affected, helping the reader understand the area of concern.",
+    "IMPLICATION": "Describe potential consequences of leaving the issue unaddressed. Use neutral, factual language and focus on possible outcomes, not guaranteed results.",
+    "DIRECTION": "Recommend the most appropriate next step, including evaluation or repair by a licensed professional based on the issue type."
   },
   "modules": {
-    "image_analysis": {
-      "trigger": "image_analysis=true",
-      "use_for_preliminary_only": true
-    },
-    "full_image_ddid": {
-      "status": "inactive",
-      "use_visual_for_describe_and_determine": true
-    },
     "conditional_modules": [
       "new_build",
       "infrared",
@@ -44,37 +36,31 @@ const generateDdidController = async (req, res) => {
       "cosmetic_defects",
       "concealed_damage",
       "no_issues_observed",
-      "rule_hierarchy_handling"
+      "rule_hierarchy_handling",
+      "multiple_issues"
     ]
+"module_tags": [
+  {"module": "access_limitations", "tags": ["visual-only", "obstruction"]},
+  {"module": "organic_growth", "tags": ["bio-risk", "hidden-risk"]},
+  {"module": "multi_issue_handling", "tags": ["logic-control", "grouping"]}
+]
   },
   "logic_controls": {
-    "vague_input_phrasing": {
-      "trigger_keywords": ["possibly", "unclear", "potential"],
-      "template": "The condition noted may affect the component's integrity over time if not addressed. Recommend evaluation by a qualified contractor to confirm and address hidden issues."
+    "Refer to Main Prompt version 1.2 for logic routing, exception handling, and fallback scenarios for this module."
     },
-    "alarmist_language_filter": {
-      "avoid_terms": ["collapse", "death", "emergency"],
-      "preferred_phrases": ["may lead to further deterioration", "could affect long-term performance"]
+    "code_reference_handling": {
+      "directive": "Do not include building code references in any DDID output. All DDID content must remain neutral and instructional."
+    },
+    "multi_issue_handling": {
+      "grouping_phrase": "Combine into a single DDID statement, listing each defect clearly in the 'Describe' section.",
+      "separation_phrase": "Generate a separate, complete DDID block for each issue.",
+      "direction_logic": {
+        "concealed_damage": "Recommend contractor evaluation of all related areas and note the potential for hidden or concealed damage.",
+        "visible_safety_trade": "Refer the issue to the appropriate licensed trade (e.g., electrician, plumber) for correction."
+      }
     }
-  },
-  "direction_logic_table": {
-    "general_defect": "Recommend further evaluation by qualified licensed contractor.",
-    "electrical_issue": "Consult with a licensed electrical contractor for additional repairs.",
-    "plumbing_defect": "Consult with a licensed plumbing contractor for additional repairs.",
-    "hvac_major": "Consult with a licensed HVAC contractor for additional repairs.",
-    "hvac_minor": "Recommend maintenance by qualified licensed contractor.",
-    "roofing_attic": "Recommend evaluation by roofing or licensed contractor.",
-    "structural_issue": "Consult with a structural engineer for further evaluation to determine the repairs needed.",
-    "multiple_critical": "Consolidate if implications match; separate if implications differ.",
-    "new_build_defect": "Have the builder further evaluate and make any additional repairs as deemed necessary.",
-    "organic_growth_minor": "Recommend monitoring after removal; further evaluation by environmental specialist if recurrence occurs.",
-    "organic_growth_extensive": "Recommend environmental testing and evaluation by a specialist.",
-    "wear_and_tear": "Recommend continued monitoring and repair as needed."
   }
 }
-
----
-
 CRITICAL:
 Your response must be plain text only and follow the format precisely. No extra spacing, no code, no formatting. Ensure clarity, brevity, and professionalism.
 Inspector Data:
