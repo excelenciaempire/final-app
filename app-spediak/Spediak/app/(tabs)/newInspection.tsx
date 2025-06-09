@@ -967,8 +967,8 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(0,0,0,0.6)',
     },
     popupContainer: {
-        width: Platform.OS === 'web' ? (width > 768 ? '50%' : '90%') : '95%',
-        maxWidth: 600,
+        width: Platform.OS === 'web' ? '80%' : '98%',
+        maxHeight: '90%',
         backgroundColor: '#fff',
         borderRadius: 12,
         padding: 20,

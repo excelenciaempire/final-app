@@ -96,9 +96,8 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(0, 0, 0, 0.5)',
     },
     modalView: {
-        width: Platform.OS === 'web' ? '50%' : '95%',
-        maxWidth: 700,
-        maxHeight: '85%',
+        width: Platform.OS === 'web' ? '80%' : '98%',
+        maxHeight: '90%',
         backgroundColor: 'white',
         borderRadius: 12,
         shadowColor: '#000',
@@ -166,9 +165,9 @@ const styles = StyleSheet.create({
 
 const markdownStyles = StyleSheet.create({
     body: {
-        fontSize: 15,
+        fontSize: 16,
         color: '#333',
-        lineHeight: 22,
+        lineHeight: 24,
     },
     heading1: {
         fontSize: 22,
