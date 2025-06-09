@@ -3,6 +3,13 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 const apiRoutes = require('./routes/api');
 const { handleClerkWebhook } = require('./controllers/webhookController');
+const ddidRoutes = require('./routes/ddidRoutes');
+const preDescriptionRoutes = require('./routes/preDescriptionRoutes');
+const inspectionRoutes = require('./routes/inspectionRoutes');
+const webhookRoutes = require('./routes/webhookRoutes');
+const imageUploadRoutes = require('./routes/imageUploadRoutes');
+const adminRoutes = require('./routes/adminRoutes');
+const promptRoutes = require('./routes/promptRoutes');
 
 dotenv.config();
 
@@ -42,6 +49,13 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Routes
 app.use('/api', apiRoutes);
+app.use('/api', ddidRoutes);
+app.use('/api', preDescriptionRoutes);
+app.use('/api', inspectionRoutes);
+app.use('/api', webhookRoutes);
+app.use('/api', imageUploadRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api', promptRoutes);
 
 // Root route
 app.get('/', (req, res) => {
@@ -52,4 +66,9 @@ app.get('/', (req, res) => {
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Servidor corriendo en http://0.0.0.0:${PORT}`);
   console.log('Orígenes CORS permitidos:', allowedOrigins);
+});
+
+// Global error handler (optional but good practice)
+app.use((err, req, res, next) => {
+  // ... existing code ...
 });

@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, Text, FlatList, StyleSheet, ActivityIndicator, RefreshControl, Alert, Image, SafeAreaView, TouchableOpacity, Platform, TextInput, Modal as RNModal, Dimensions } from 'react-native';
+import { View, Text, FlatList, StyleSheet, ActivityIndicator, RefreshControl, Alert, Image, SafeAreaView, TouchableOpacity, Platform, TextInput, Modal as RNModal, Dimensions, ScrollView } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import axios from 'axios';
 import { useAuth } from '@clerk/clerk-expo';
 import { BASE_URL } from '../config/api';
 import { COLORS } from '../styles/colors';
 import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
-import { Search, Eye, UserCircle, Download, Trash2, X as XIcon } from 'lucide-react-native';
+import { Search, Eye, UserCircle, Download, Trash2, X as XIcon, Save } from 'lucide-react-native';
 import DdidModal from '../components/DdidModal';
 import { useDebounce } from '../hooks/useDebounce';
 import * as FileSystem from 'expo-file-system'; // For native download
@@ -62,6 +62,122 @@ interface PaginatedResponse<T> {
     users?: T[];
 }
 
+const PromptEditor: React.FC = () => {
+    const [ddidPrompt, setDdidPrompt] = useState('');
+    const [preDescPrompt, setPreDescPrompt] = useState('');
+    const [isLoading, setIsLoading] = useState(true);
+    const [isSaving, setIsSaving] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const { getToken } = useAuth();
+
+    const fetchPrompts = useCallback(async () => {
+        setIsLoading(true);
+        setError(null);
+        try {
+            const token = await getToken();
+            if (!token) throw new Error("Authentication token not found.");
+            const response = await axios.get(`${BASE_URL}/api/prompts`, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            setDdidPrompt(response.data.ddid_prompt);
+            setPreDescPrompt(response.data.pre_description_prompt);
+        } catch (err: any) {
+            console.error("[PromptEditor] Error fetching prompts:", err);
+            setError("Failed to load prompts. Please try refreshing.");
+        } finally {
+            setIsLoading(false);
+        }
+    }, [getToken]);
+
+    useEffect(() => {
+        fetchPrompts();
+    }, [fetchPrompts]);
+
+    const handleSaveChanges = async () => {
+        setIsSaving(true);
+        setError(null);
+        try {
+            const token = await getToken();
+            if (!token) throw new Error("Authentication token not found.");
+            await axios.put(`${BASE_URL}/api/prompts`, {
+                ddid_prompt: ddidPrompt,
+                pre_description_prompt: preDescPrompt,
+            }, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            Alert.alert("Success", "Prompts have been updated successfully.");
+        } catch (err: any) {
+            console.error("[PromptEditor] Error saving prompts:", err);
+            const errorMessage = err.response?.data?.message || "An unknown error occurred.";
+            setError(`Failed to save prompts: ${errorMessage}`);
+            Alert.alert("Error", `Failed to save prompts: ${errorMessage}`);
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    if (isLoading) {
+        return <ActivityIndicator size="large" color={COLORS.primary} style={styles.loader} />;
+    }
+
+    if (error && !ddidPrompt && !preDescPrompt) {
+        return (
+            <View style={styles.centeredMessage}>
+                <Text style={styles.errorText}>{error}</Text>
+                <TouchableOpacity onPress={fetchPrompts} style={styles.retryButton}>
+                    <Text style={styles.retryButtonText}>Retry</Text>
+                </TouchableOpacity>
+            </View>
+        );
+    }
+    
+    return (
+        <ScrollView style={styles.promptEditorContainer}>
+            <Text style={styles.promptEditorTitle}>Edit Application Prompts</Text>
+            {error && <Text style={[styles.errorText, { marginBottom: 15 }]}>{error}</Text>}
+            
+            <View style={styles.promptInputContainer}>
+                <Text style={styles.promptLabel}>DDID Generation Prompt</Text>
+                <TextInput
+                    style={styles.promptInput}
+                    value={ddidPrompt}
+                    onChangeText={setDdidPrompt}
+                    multiline
+                    textAlignVertical="top"
+                    placeholder="Enter the main DDID generation prompt"
+                />
+            </View>
+
+            <View style={styles.promptInputContainer}>
+                <Text style={styles.promptLabel}>Preliminary Description Prompt</Text>
+                <TextInput
+                    style={styles.promptInput}
+                    value={preDescPrompt}
+                    onChangeText={setPreDescPrompt}
+                    multiline
+                    textAlignVertical="top"
+                    placeholder="Enter the preliminary description generation prompt"
+                />
+            </View>
+
+            <TouchableOpacity 
+                style={[styles.savePromptsButton, isSaving && styles.buttonDisabled]} 
+                onPress={handleSaveChanges}
+                disabled={isSaving}
+            >
+                {isSaving ? (
+                    <ActivityIndicator color="#fff" />
+                ) : (
+                    <>
+                        <Save size={18} color="#fff" />
+                        <Text style={styles.savePromptsButtonText}>Save Changes</Text>
+                    </>
+                )}
+            </TouchableOpacity>
+        </ScrollView>
+    );
+};
+
 // Component for the Inspection List
 const InspectionList: React.FC = () => {
     const [inspections, setInspections] = useState<AdminInspectionData[]>([]);
@@ -79,6 +195,7 @@ const InspectionList: React.FC = () => {
     const [isModalVisible, setIsModalVisible] = useState(false);
     const { getToken } = useAuth();
     const debouncedSearchQuery = useDebounce(searchQuery, 500);
+    const [mediaLibraryPermission, requestMediaLibraryPermission] = MediaLibrary.usePermissions(); // For saving to gallery
 
     // State for full image preview modal
     const [fullScreenImageUrl, setFullScreenImageUrl] = useState<string | null>(null);
@@ -129,19 +246,23 @@ const InspectionList: React.FC = () => {
     }, [getToken, debouncedSearchQuery, sortBy, sortOrder]);
 
     useEffect(() => {
+        if (Platform.OS !== 'web' && (!mediaLibraryPermission || mediaLibraryPermission.status !== MediaLibrary.PermissionStatus.GRANTED)) {
+            requestMediaLibraryPermission();
+        }
+    }, [mediaLibraryPermission]);
+
+    useEffect(() => {
         fetchData(1);
     }, []);
 
     useEffect(() => {
         if (debouncedSearchQuery !== undefined || sortBy !== 'created_at' || sortOrder !== 'desc') {
-            setCurrentPage(1);
             fetchData(1);
         }
     }, [debouncedSearchQuery, sortBy, sortOrder]);
 
     const handleRefresh = useCallback(() => {
         setIsRefreshing(true);
-        setCurrentPage(1);
         fetchData(1, searchQuery, sortBy, sortOrder, true);
     }, [fetchData, searchQuery, sortBy, sortOrder]);
 
@@ -160,13 +281,75 @@ const InspectionList: React.FC = () => {
         setSortOrder(newSortOrder);
     };
 
+    const handleDownloadImage = async (imageUrl: string | null) => {
+        if (!imageUrl) {
+            Alert.alert("Error", "No image URL available for download.");
+            return;
+        }
+        const inspectionId = selectedInspection?.id || fullScreenImageUrl?.split('/').pop() || 'unknown';
+        console.log(`[handleDownloadImage] Attempting to download image: ${imageUrl}`);
+
+        if (Platform.OS === 'web') {
+            try {
+                // Fetch the image as a blob
+                const response = await fetch(imageUrl);
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch image. Status: ${response.status} ${response.statusText}`);
+                }
+                const blob = await response.blob();
+                
+                // Create an object URL for the blob
+                const url = window.URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `spediak_inspection_${inspectionId}_${Date.now()}.jpg`; 
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                window.URL.revokeObjectURL(url); // Clean up the object URL
+                Alert.alert("Success", "Image download started.");
+            } catch (error: any) {
+                console.error("[handleDownloadImage Web] Error:", error);
+                Alert.alert("Error", error.message || "Failed to download image on web.");
+            }
+        } else {
+            // Native: Download using FileSystem and save to MediaLibrary
+            if (!mediaLibraryPermission || mediaLibraryPermission.status !== MediaLibrary.PermissionStatus.GRANTED) {
+                const { status } = await requestMediaLibraryPermission();
+                if (status !== MediaLibrary.PermissionStatus.GRANTED) {
+                    Alert.alert("Permission Denied", "Storage permission is required to save the image.");
+                    return;
+                }
+            }
+
+            try {
+                const fileName = `spediak_inspection_${inspectionId}_${Date.now()}.jpg`;
+                const fileUri = FileSystem.documentDirectory + fileName;
+
+                console.log(`[handleDownloadImage Native] Downloading to URI: ${fileUri}`);
+                const downloadResult = await FileSystem.downloadAsync(imageUrl, fileUri);
+                console.log('[handleDownloadImage Native] Download result:', downloadResult);
+
+                if (downloadResult.status !== 200) {
+                    throw new Error(`Failed to download image. Status: ${downloadResult.status}`);
+                }
+
+                const asset = await MediaLibrary.createAssetAsync(downloadResult.uri);
+                await MediaLibrary.createAlbumAsync('Spediak Inspections', asset, false);
+                Alert.alert("Success", "Image saved to your gallery in 'Spediak Inspections' album!");
+            } catch (error: any) {
+                console.error("[handleDownloadImage Native] Error:", error);
+                Alert.alert("Error", error.message || "Failed to download and save image.");
+            }
+        }
+    };
+
     const renderInspectionItem = ({ item }: { item: AdminInspectionData }): JSX.Element => {
         const optimizedCardImageUrl = getOptimizedImageUrl(item.image_url, 80, 80);
 
         return (
             <View style={styles.cardContainer}>
                 <View style={styles.cardHeaderInfo}>
-                    {/* User Info with Photo */}
                     <View style={styles.userInfoRow}>
                         {item.userProfilePhoto ? (
                             <Image source={{ uri: item.userProfilePhoto }} style={styles.userImageSmall} />
@@ -190,7 +373,8 @@ const InspectionList: React.FC = () => {
                     <View style={styles.inspectionImageContainer}>
                         {optimizedCardImageUrl ? (
                             <TouchableOpacity onPress={() => {
-                                setFullScreenImageUrl(item.image_url); // Use original for full screen
+                                setFullScreenImageUrl(item.image_url);
+                                setSelectedInspection(item);
                                 setIsFullImageModalVisible(true);
                             }}>
                                 <Image source={{ uri: optimizedCardImageUrl }} style={styles.cardImage} resizeMode="cover" />
@@ -250,9 +434,6 @@ const InspectionList: React.FC = () => {
                 <TouchableOpacity onPress={() => handleSortChange('created_at')} style={styles.sortButton}>
                     <Text style={styles.sortButtonText}>Date {sortBy === 'created_at' && (sortOrder === 'asc' ? '▲' : '▼')}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => handleSortChange('userName')} style={styles.sortButton}>
-                    <Text style={styles.sortButtonText}>User {sortBy === 'userName' ? (sortOrder === 'desc' ? '▼' : '▲') : ''}</Text>
-                </TouchableOpacity>
             </View>
 
             <FlatList
@@ -277,6 +458,7 @@ const InspectionList: React.FC = () => {
             )}
 
              {/* Full-screen Image Preview Modal */}
+            {isFullImageModalVisible && fullScreenImageUrl && (
             <RNModal
                 visible={isFullImageModalVisible}
                 transparent={true}
@@ -295,8 +477,15 @@ const InspectionList: React.FC = () => {
                         style={styles.fullImage}
                         resizeMode="contain"
                     />
+                     <TouchableOpacity
+                        style={styles.downloadButtonFloating}
+                        onPress={() => fullScreenImageUrl && handleDownloadImage(fullScreenImageUrl)}
+                    >
+                        <Download size={24} color="#fff" />
+                    </TouchableOpacity>
                 </View>
             </RNModal>
+            )}
         </View>
     );
 };
@@ -606,6 +795,7 @@ const AdminDashboardScreen = () => {
              >
                  <Tab.Screen name="All Inspections" component={InspectionList} />
                  <Tab.Screen name="All Users" component={UserList} />
+                 <Tab.Screen name="Prompt Editor" component={PromptEditor} />
              </Tab.Navigator>
         </SafeAreaView>
     );
@@ -616,35 +806,22 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: '#f0f2f5',
     },
-    container: {
-        flex: 1,
-        // Removed padding as it's handled by list/header
-    },
-    headerTitle: {
-        fontSize: 24,
-        fontWeight: 'bold',
-        paddingHorizontal: 20,
-        paddingTop: Platform.OS === 'ios' ? 10 : 20, // Adjust top padding
-        paddingBottom: 15,
-        color: COLORS.primary,
-        // backgroundColor: 'white', // Removed to allow headerContainer to manage background
-        // borderBottomColor: '#eee',
-        // borderBottomWidth: 1,
-        flex: 1, // Allow title to take space
-    },
     headerContainer: { // New style for the header row
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
         backgroundColor: 'white',
-        borderBottomColor: '#eee',
+        borderBottomColor: '#e0e0e0', // Subtle separator
         borderBottomWidth: 1,
-        // paddingHorizontal: 20, // Already in headerTitle, adjust as needed
-        // paddingTop: Platform.OS === 'ios' ? 10 : 20, // Already in headerTitle
-        // paddingBottom: 15, // Already in headerTitle
+        paddingHorizontal: 20,
     },
-    buttonDisabled: {
-        backgroundColor: '#adb5bd',
+    headerTitle: {
+        fontSize: 24,
+        fontWeight: 'bold',
+        paddingTop: Platform.OS === 'ios' ? 10 : 20, // Adjust top padding
+        paddingBottom: 15,
+        color: COLORS.primary,
+        flex: 1, // Allow title to take space
     },
     loader: {
         flex: 1,
@@ -652,16 +829,39 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         paddingTop: 20,
     },
-    errorText: { color: 'red', textAlign: 'center', marginTop: 20, paddingHorizontal: 15 },
-    list: { flex: 1 },
-    emptyText: { textAlign: 'center', marginTop: 50, color: '#6c757d', fontSize: 16 },
-    totalCountText: {
-        fontSize: 16,
-        fontWeight: '500',
-        color: '#555',
-        marginRight: 15, // Add some space to the right
-        alignSelf: 'center', // Vertically align in the row
+    errorText: {
+        color: 'red',
+        textAlign: 'center',
+        marginTop: 20,
+        paddingHorizontal: 15
     },
+    list: {
+        flex: 1
+    },
+    listContainer: {
+        paddingHorizontal: 16,
+        paddingTop: 16,
+        paddingBottom: 20,
+    },
+    emptyText: {
+        textAlign: 'center',
+        marginTop: 50,
+        color: '#6c757d',
+        fontSize: 16
+    },
+    emptyListText: {
+        textAlign: 'center',
+        marginTop: 50,
+        color: COLORS.textMuted,
+        fontSize: 16,
+    },
+    buttonDisabled: {
+        backgroundColor: '#adb5bd',
+    },
+
+    //------------------------------------//
+    //---- Inspection List Styles --------//
+    //------------------------------------//
     controlsContainer: {
         flexDirection: 'row',
         justifyContent: 'space-between',
@@ -672,6 +872,13 @@ const styles = StyleSheet.create({
         backgroundColor: 'white',
         borderBottomColor: '#eee',
         borderBottomWidth: 1,
+    },
+    totalCountText: {
+        fontSize: 16,
+        fontWeight: '500',
+        color: '#555',
+        marginRight: 15, // Add some space to the right
+        alignSelf: 'center', // Vertically align in the row
     },
     searchWrapper: {
         flex: 0.6,
@@ -716,13 +923,8 @@ const styles = StyleSheet.create({
         elevation: 2,
         flexDirection: 'column',
     },
-    cardContent: { // Contains everything now
-        flex: 1,
-        paddingVertical: 12, // Keep vertical padding
-        paddingHorizontal: 20, // Increased horizontal padding from 12 to 20
-    },
-    cardHeaderInfo: { 
-        marginBottom: 10, 
+    cardHeaderInfo: {
+        marginBottom: 10,
         paddingBottom: 8,
     },
     userInfoRow: { // New style for horizontal layout of image and text
@@ -752,12 +954,10 @@ const styles = StyleSheet.create({
         fontSize: 14,
         fontWeight: '600',
         color: COLORS.darkText,
-        // Remove margin bottom as spacing is handled by userInfoTextContainer
     },
     cardDetailText: { // For email & state
         fontSize: 12,
         color: '#555',
-        // Remove margin bottom
     },
     cardDateText: {
         fontSize: 10,
@@ -767,24 +967,27 @@ const styles = StyleSheet.create({
     },
     inspectionDetailsContainer: {
         flexDirection: 'row',
-        marginTop: 0, // Remove margin top, handled by header spacing
+        marginTop: 10,
+        paddingTop: 10,
+        borderTopWidth: 1,
+        borderTopColor: '#eee',
     },
     inspectionImageContainer: {
         width: 80,
         height: 80,
-        marginRight: 10,
+        marginRight: 15,
     },
     cardImage: {
-        width: 80, 
+        width: 80,
         height: 80,
-        borderRadius: 4,
+        borderRadius: 8,
         backgroundColor: '#e0e0e0', // Placeholder color
     },
     cardImagePlaceholder: {
         width: 80,
         height: 80,
-        borderRadius: 4,
-        backgroundColor: '#e0e0e0',
+        borderRadius: 8,
+        backgroundColor: '#f0f0f0',
         justifyContent: 'center',
         alignItems: 'center',
     },
@@ -792,94 +995,45 @@ const styles = StyleSheet.create({
         flex: 1,
         justifyContent: 'space-between',
     },
-    cardDescriptionLabel: { 
-        fontSize: 11, // Make labels smaller
-        fontWeight: '600', // Bolder labels
-        color: '#666', // Darker gray label
-        marginBottom: 2, // Less space below label
-        marginTop: 5, // Add space above labels (except first)
+    cardDescriptionLabel: {
+        fontSize: 12,
+        color: COLORS.textMuted,
+        marginBottom: 2,
     },
-    cardDescriptionText: { 
-        fontSize: 13,
-        color: '#444',
-        lineHeight: 18,
-        marginBottom: 5, // Space below text block
+    cardDescriptionText: {
+        fontSize: 14,
+        color: COLORS.darkText, // Corrected from COLORS.text
+        marginBottom: 8,
     },
     placeholderText: {
+        color: '#999',
         fontSize: 12,
-        color: '#757575',
+    },
+    inspectionActionsRow: {
+        flexDirection: 'row',
+        justifyContent: 'flex-start',
+        alignItems: 'center',
+        marginTop: 'auto', // Push to bottom
     },
     viewReportButton: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'center',
         paddingVertical: 6,
         paddingHorizontal: 12,
         backgroundColor: COLORS.primary + '15',
         borderRadius: 5,
         alignSelf: 'flex-start',
-        marginTop: 'auto',
     },
     viewReportButtonText: {
+        marginLeft: 6,
         color: COLORS.primary,
-        fontSize: 13,
-        fontWeight: '500',
-        marginLeft: 5,
-    },
-    userItemContainer: {
-        backgroundColor: '#fff',
-        marginBottom: 10,
-        borderRadius: 6,
-        borderWidth: 1,
-        borderColor: '#e8e8e8',
-        paddingHorizontal: 15, 
-        paddingVertical: 10, 
-    },
-    userItemContent: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    userListImageContainer: {
-        marginRight: 15, 
-    },
-    userListImage: {
-        width: 50,
-        height: 50,
-        borderRadius: 25, 
-    },
-    userListImagePlaceholder: {
-        width: 50,
-        height: 50,
-        borderRadius: 25,
-        backgroundColor: '#f0f2f5',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    userInfoContainer: {
-        flex: 1, 
-        marginRight: 10,
-    },
-    userNameText: {
-        fontSize: 16,
         fontWeight: '600',
-        color: COLORS.darkText,
-        marginBottom: 3,
-    },
-    userEmailText: {
-        fontSize: 14,
-        color: COLORS.textSeco,
-        marginBottom: 4,
-    },
-    userMetaText: {
         fontSize: 13,
-        color: COLORS.textMuted,
-        marginBottom: 1,
     },
-    userDetailText: { // Style for State and Inspection Count
-        fontSize: 13,
-        color: '#777',
-        marginTop: 2, // Add small space between detail lines
-    },
+
+    //------------------------------------//
+    //---- User List Styles --------------//
+    //------------------------------------//
     userControlsContainer: {
         flexDirection: 'row',
         justifyContent: 'space-between',
@@ -955,211 +1109,32 @@ const styles = StyleSheet.create({
     userInfo: {
         flex: 1, // Take remaining space
     },
+    userNameText: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: COLORS.darkText,
+        marginBottom: 3,
+    },
+    userEmailText: {
+        fontSize: 14,
+        color: COLORS.textSeco,
+        marginBottom: 4,
+    },
+    userMetaText: {
+        fontSize: 13,
+        color: COLORS.textMuted,
+        marginBottom: 1,
+    },
     deleteButton: {
         padding: 8, // Make it easier to tap
         marginLeft: 10, // Space from user info
         justifyContent: 'center', // Center icon vertically if needed
         alignItems: 'center',
     },
-    inspectionActionsRow: { // New style for View Report and Download buttons
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginTop: 'auto', // Pushes to the bottom of inspectionTextContainer
-    },
-    downloadIconButton: { // Style for the new download icon button
-        padding: 6, // Make it easy to tap
-        marginLeft: 10, // Space from the view report button
-        // backgroundColor: COLORS.secondary + '80', // Optional: light background
-        // borderRadius: 20, // Optional: make it circular
-    },
-    // Styles for Full Image Modal
-    fullImageModalOverlay: {
-        flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.85)',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    fullScreenImage: {
-        width: Dimensions.get('window').width * 0.9, // 90% of screen width
-        height: Dimensions.get('window').height * 0.8, // 80% of screen height
-    },
-    fullImageCloseButton: {
-        position: 'absolute',
-        top: Platform.OS === 'ios' ? 50 : 20, // Adjust for status bar
-        right: 20,
-        zIndex: 10, // Ensure it's above the image
-        padding: 10, // Make it easier to tap
-    },
-    // Add a style for the modal content
-    modalContent: {
-        width: '80%', // Or a fixed width like 500
-        maxWidth: 600,
-        maxHeight: '80%',
-        backgroundColor: 'white',
-        borderRadius: 10,
-        padding: 20,
-        alignItems: 'stretch', // Changed from center
-        shadowColor: '#000',
-        shadowOffset: {
-            width: 0,
-            height: 2,
-        },
-        shadowOpacity: 0.25,
-        shadowRadius: 4,
-        elevation: 5,
-    },
-    // Add a style for the modal backdrop
-    modalBackdrop: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    },
-    container: {
-        flex: 1,
-        backgroundColor: COLORS.background,
-    },
-    listContainer: {
-        paddingHorizontal: 16,
-        paddingTop: 16,
-        paddingBottom: 20,
-    },
-    emptyListText: {
-        textAlign: 'center',
-        marginTop: 50,
-        color: COLORS.textMuted,
-        fontSize: 16,
-    },
-    cardUserText: {
-        fontWeight: 'bold',
-        fontSize: 14,
-        color: COLORS.text,
-        flexShrink: 1,
-    },
-    cardDetailText: {
-        fontSize: 12,
-        color: COLORS.textMuted,
-        flexShrink: 1,
-    },
-    cardDateText: {
-        fontSize: 12,
-        color: COLORS.textMuted,
-        textAlign: 'right',
-        minWidth: 120, // Ensure date doesn't wrap awkwardly
-    },
-    inspectionDetailsContainer: {
-        flexDirection: 'row',
-        marginTop: 10,
-        paddingTop: 10,
-        borderTopWidth: 1,
-        borderTopColor: '#eee',
-    },
-    inspectionImageContainer: {
-        marginRight: 15,
-    },
-    inspectionTextContainer: {
-        flex: 1,
-        justifyContent: 'center',
-    },
-    cardImage: {
-        width: 80,
-        height: 80,
-        borderRadius: 8,
-    },
-    cardImagePlaceholder: {
-        width: 80,
-        height: 80,
-        borderRadius: 8,
-        backgroundColor: '#f0f0f0',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    placeholderText: {
-        color: '#999',
-        fontSize: 12,
-    },
-    cardDescriptionLabel: {
-        fontSize: 12,
-        color: COLORS.textMuted,
-        marginBottom: 2,
-    },
-    cardDescriptionText: {
-        fontSize: 14,
-        color: COLORS.text,
-        marginBottom: 8,
-    },
-    inspectionActionsRow: {
-        flexDirection: 'row',
-        justifyContent: 'flex-start',
-        alignItems: 'center',
-        marginTop: 'auto', // Push to bottom
-    },
-    viewReportButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingVertical: 6,
-        paddingHorizontal: 10,
-        backgroundColor: '#E9E9E9',
-        borderRadius: 20,
-    },
-    viewReportButtonText: {
-        marginLeft: 6,
-        color: COLORS.primary,
-        fontWeight: '600',
-        fontSize: 13,
-    },
-    // User List Styles
-    userCardContainer: {
-        backgroundColor: '#FFFFFF',
-        borderRadius: 8,
-        padding: 15,
-        marginHorizontal: 16,
-        marginBottom: 12,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 2,
-        elevation: 2,
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    userContentContainer: {
-        flex: 1,
-        marginLeft: 15,
-    },
-     userImageLarge: {
-        width: 50,
-        height: 50,
-        borderRadius: 25,
-    },
-    userImagePlaceholderLarge: {
-        width: 50,
-        height: 50,
-        borderRadius: 25,
-        backgroundColor: '#f0f0f0',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    userName: {
-        fontWeight: 'bold',
-        fontSize: 16,
-        color: COLORS.text,
-    },
-    userDetails: {
-        fontSize: 14,
-        color: COLORS.textMuted,
-        marginTop: 2,
-    },
-    userActions: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    actionButton: {
-        padding: 8,
-        marginLeft: 8,
-    },
 
-    // Full Screen Image Modal
+    //------------------------------------//
+    //---- MODAL AND DDID STYLES ---------//
+    //------------------------------------//
     fullImageModalContainer: {
         flex: 1,
         backgroundColor: 'rgba(0, 0, 0, 0.85)',
@@ -1167,20 +1142,100 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     fullImage: {
-        width: '90%',
-        height: '90%',
+        width: '100%',
+        height: '100%',
     },
     fullImageCloseButton: {
         position: 'absolute',
-        top: Platform.OS === 'web' ? 20 : 50,
+        top: 40,
         right: 20,
         zIndex: 10,
         padding: 10,
         backgroundColor: 'rgba(0,0,0,0.5)',
         borderRadius: 50,
     },
+    downloadButtonFloating: {
+        position: 'absolute',
+        bottom: 40,
+        right: 20,
+        zIndex: 10,
+        backgroundColor: 'rgba(0,0,0,0.7)',
+        borderRadius: 25,
+        padding: 12,
+        elevation: 5, // for Android shadow
+        shadowColor: '#000', // for iOS shadow
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.3,
+        shadowRadius: 3,
+    },
 
-
+    //------------------------------------//
+    //---- PROMPT EDITOR STYLES ----------//
+    //------------------------------------//
+    promptEditorContainer: {
+        flex: 1,
+        padding: Platform.OS === 'web' ? 24 : 16,
+        backgroundColor: '#f9f9f9',
+    },
+    promptEditorTitle: {
+        fontSize: 22,
+        fontWeight: 'bold',
+        color: COLORS.primary,
+        marginBottom: 20,
+    },
+    promptInputContainer: {
+        marginBottom: 24,
+    },
+    promptLabel: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#333',
+        marginBottom: 8,
+    },
+    promptInput: {
+        backgroundColor: '#fff',
+        borderWidth: 1,
+        borderColor: '#ddd',
+        borderRadius: 8,
+        padding: 15,
+        fontSize: 14,
+        minHeight: 250,
+        color: '#333',
+        textAlignVertical: 'top',
+    },
+    savePromptsButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: COLORS.success,
+        paddingVertical: 12,
+        borderRadius: 8,
+        marginTop: 10,
+    },
+    savePromptsButtonText: {
+        color: '#fff',
+        fontSize: 16,
+        fontWeight: 'bold',
+        marginLeft: 10,
+    },
+    centeredMessage: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 20,
+    },
+    retryButton: {
+        marginTop: 20,
+        backgroundColor: COLORS.primary,
+        paddingVertical: 10,
+        paddingHorizontal: 25,
+        borderRadius: 5,
+    },
+    retryButtonText: {
+        color: '#fff',
+        fontSize: 16,
+        fontWeight: '500',
+    },
 });
 
 export default AdminDashboardScreen;
