@@ -66,7 +66,7 @@ const PreDescriptionModal: React.FC<PreDescriptionModalProps> = ({
               onChangeText={setEditableDescription}
               multiline
               editable={isEditing}
-              numberOfLines={5} 
+              numberOfLines={10} 
             />
           </ScrollView>
           <View style={styles.preDescButtonRow}>
@@ -838,8 +838,7 @@ export default function NewInspectionScreen() {
                 visible={showDdidModal}
                 onClose={() => setShowDdidModal(false)}
                 ddidText={generatedDdid || ''}
-                description={finalDescriptionForDdid}
-                imageUrl={cloudinaryUrl || undefined}
+                imageUri={cloudinaryUrl || undefined}
              />
 
             <Modal
@@ -966,34 +965,48 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(0, 0, 0, 0.4)',
     },
     popupContainer: {
-        backgroundColor: 'white', paddingVertical: 30, paddingHorizontal: 40,
-        borderRadius: 10, alignItems: 'center', shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25,
-        shadowRadius: 4, elevation: 5, minWidth: 200,
+        backgroundColor: COLORS.white,
+        borderRadius: 15,
+        padding: 20,
+        width: Platform.OS === 'web' ? '40%' : '90%',
+        maxWidth: 500, // Max width for web
+        maxHeight: '80%', // Ensure it doesn't take the whole screen
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.25,
+        shadowRadius: 4,
+        elevation: 5,
+        display: 'flex',
+        flexDirection: 'column',
     },
     popupTitle: {
-        fontSize: 18, fontWeight: 'bold', marginBottom: 20, color: COLORS.darkText,
+        fontSize: 22,
+        fontWeight: 'bold',
+        color: COLORS.primary,
+        textAlign: 'center',
+        marginBottom: 15,
     },
     popupText: { marginTop: 15, fontSize: 16, color: '#333', },
     preDescScrollView: {
-        maxHeight: Dimensions.get('window').height * 0.4,
-        width: '100%',
-        marginBottom: 20,
-        borderWidth: 1,
-        borderColor: '#eee',
-        borderRadius: 5,
+       maxHeight: 300, // Increased max height for the scroll view
+       marginBottom: 15,
+       borderWidth: 1,
+       borderColor: '#ddd',
+       borderRadius: 8,
     },
     preDescInput: {
-        padding: 10,
+        padding: 15,
         fontSize: 16,
-        lineHeight: 22,
         color: '#333',
-        backgroundColor: '#f8f9fa',
-        minHeight: 100,
+        backgroundColor: '#f9f9f9',
+        minHeight: 150, // Increased min height for the text input
+        textAlignVertical: 'top', // Align text to the top
     },
     preDescInputEditing: {
         backgroundColor: '#fff',
+        borderWidth: 1,
         borderColor: COLORS.primary,
+        borderRadius: 8,
     },
     preDescButtonRow: {
         flexDirection: 'row',
