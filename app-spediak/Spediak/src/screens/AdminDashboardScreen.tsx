@@ -91,7 +91,7 @@ const PromptEditor: React.FC = () => {
 
     useEffect(() => {
         fetchPrompts();
-    }, [fetchPrompts]);
+    }, []);
 
     const handleSaveChanges = async () => {
         setIsSaving(true);
@@ -137,18 +137,6 @@ const PromptEditor: React.FC = () => {
             {error && <Text style={[styles.errorText, { marginBottom: 15 }]}>{error}</Text>}
             
             <View style={styles.promptInputContainer}>
-                <Text style={styles.promptLabel}>DDID Generation Prompt</Text>
-                <TextInput
-                    style={styles.promptInput}
-                    value={ddidPrompt}
-                    onChangeText={setDdidPrompt}
-                    multiline
-                    textAlignVertical="top"
-                    placeholder="Enter the main DDID generation prompt"
-                />
-            </View>
-
-            <View style={styles.promptInputContainer}>
                 <Text style={styles.promptLabel}>Preliminary Description Prompt</Text>
                 <TextInput
                     style={styles.promptInput}
@@ -157,6 +145,18 @@ const PromptEditor: React.FC = () => {
                     multiline
                     textAlignVertical="top"
                     placeholder="Enter the preliminary description generation prompt"
+                />
+            </View>
+
+            <View style={styles.promptInputContainer}>
+                <Text style={styles.promptLabel}>DDID Generation Prompt</Text>
+                <TextInput
+                    style={styles.promptInput}
+                    value={ddidPrompt}
+                    onChangeText={setDdidPrompt}
+                    multiline
+                    textAlignVertical="top"
+                    placeholder="Enter the main DDID generation prompt"
                 />
             </View>
 
