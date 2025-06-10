@@ -114,7 +114,6 @@ export default function NewInspectionScreen() {
     const { user } = useUser();
     const [userState, setUserState] = useState<string>('NC'); // Default to NC
     const [isUploading, setIsUploading] = useState<boolean>(false);
-    const recordingInstance = useRef<Audio.Recording | null>(null);
     const { width } = useWindowDimensions(); // Get width for responsive logic
     const isWebLarge = Platform.OS === 'web' && width > 768; // Define isWebLarge
 
@@ -397,15 +396,11 @@ export default function NewInspectionScreen() {
     };
 
     async function startRecording() {
-        console.log('[Audio] Requesting permissions...');
-        setError(null);
         try {
-            const permissionResponse = await Audio.requestPermissionsAsync();
-            if (!permissionResponse.granted) {
-                console.error('[Audio] Microphone permission not granted.');
-                const permissionError = 'Microphone permission is required to record audio descriptions. Please enable it in your device settings.';
-                setError(permissionError);
-                Alert.alert("Permission Required", permissionError);
+            console.log('[Audio] Requesting permissions..');
+            const permission = await Audio.requestPermissionsAsync();
+            if (permission.status !== 'granted') {
+                Alert.alert('Permission required', 'Audio recording permission is needed to use this feature.');
                 return;
             }
             console.log('[Audio] Permissions granted.');
@@ -413,69 +408,66 @@ export default function NewInspectionScreen() {
             await Audio.setAudioModeAsync({
                 allowsRecordingIOS: true,
                 playsInSilentModeIOS: true,
-                ...(Platform.OS === 'web' && {
-                    staysActiveInBackground: true,
-                }),
+                interruptionModeIOS: InterruptionModeIOS.DoNotMix,
+                interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
             });
-            console.log('[Audio] Audio mode set.');
 
             console.log('[Audio] Starting recording instance creation...');
-            if (recordingInstance.current) {
-                console.warn('[Audio] Previous recording instance found. Unloading before starting new one.');
-                await recordingInstance.current.stopAndUnloadAsync().catch(e => console.error("Error unloading previous recording:", e));
-                recordingInstance.current = null;
-            }
-
-            const { recording } = await Audio.Recording.createAsync(
-               Audio.RecordingOptionsPresets.HIGH_QUALITY
-            );
-            recordingInstance.current = recording;
+            const newRecording = new Audio.Recording();
+            await newRecording.prepareToRecordAsync({
+                android: {
+                    ...Audio.RecordingOptionsPresets.HIGH_QUALITY.android,
+                    extension: '.amr',
+                    outputFormat: Audio.AndroidOutputFormat.AMR_WB,
+                    audioEncoder: Audio.AndroidAudioEncoder.AMR_WB,
+                },
+                ios: {
+                    ...Audio.RecordingOptionsPresets.HIGH_QUALITY.ios,
+                    extension: '.m4a',
+                    outputFormat: Audio.IOSOutputFormat.MPEG4AAC,
+                    audioQuality: Audio.IOSAudioQuality.MAX,
+                },
+                web: Audio.RecordingOptionsPresets.HIGH_QUALITY.web,
+            });
+            
+            setRecording(newRecording);
+            await newRecording.startAsync();
             setIsRecording(true);
             console.log('[Audio] Recording started successfully.');
+
         } catch (err) {
             console.error('[Audio] Failed to start recording', err);
-            const message = err instanceof Error ? err.message : String(err);
-            const startError = `Could not start recording. Please ensure your microphone is connected and permissions are granted. Error: ${message}`;
-            setError(startError);
-            Alert.alert("Recording Error", startError);
-            setIsRecording(false);
-            recordingInstance.current = null;
+            setError('Failed to start recording. Please try again.');
         }
     }
 
     async function stopRecording() {
-        const currentRecording = recordingInstance.current;
-        if (!currentRecording) {
+        if (!recording) {
             console.warn('[Audio] stopRecording called but no recording object exists.');
             if (isRecording) setIsRecording(false);
             return;
         }
-        console.log('[Audio] Attempting to stop recording...');
+
+        console.log('[Audio] Stopping recording...');
         setIsRecording(false);
 
         try {
-             await currentRecording.stopAndUnloadAsync();
-             console.log('[Audio] Recording stopped and unloaded.');
-             const uri = currentRecording.getURI();
-             recordingInstance.current = null;
-             console.log('[Audio] Recording URI:', uri);
-
-             if (uri) {
-                transcribeAudio(uri);
+            await recording.stopAndUnloadAsync();
+            console.log('[Audio] Recording stopped and unloaded.');
+            const uri = recording.getURI();
+            
+            console.log('[Audio] Recording URI:', uri);
+            if (uri) {
+                await transcribeAudio(uri);
             } else {
-                 console.error('[Audio] Failed to get recording URI after stopping.');
-                 const uriError = "Could not retrieve the recorded audio file path after stopping.";
-                 setError(uriError);
-                 Alert.alert("Recording Error", uriError);
+                console.error('[Audio] Recording URI is null after stopping.');
+                setError('Failed to get recording. Please try again.');
             }
-        } catch(err) {
-             console.error('[Audio] Error stopping recording or getting URI:', err);
-             const message = err instanceof Error ? err.message : String(err);
-             const stopError = `Failed to stop recording properly. Error: ${message}`;
-             setError(stopError);
-             Alert.alert("Recording Error", stopError);
-             recordingInstance.current = null;
-             setIsRecording(false);
+        } catch (error) {
+            console.error('[Audio] Failed to stop or transcribe recording', error);
+            setError('Failed to process recording. Please try again.');
+        } finally {
+            setRecording(null); 
         }
     }
 
@@ -601,10 +593,9 @@ export default function NewInspectionScreen() {
         setGeneratedDdid(null);
         setError(null);
         setShowDdidModal(false);
-        if (recordingInstance.current) {
-             try { recordingInstance.current.stopAndUnloadAsync(); } catch (e: any) { console.error("Stop rec error on reset", e); }
+        if (recording) {
+             try { recording.stopAndUnloadAsync(); } catch (e: any) { console.error("Stop rec error on reset", e); }
         }
-        recordingInstance.current = null;
         setIsRecording(false);
         setIsTranscribing(false);
         setPreDescription('');
@@ -617,7 +608,7 @@ export default function NewInspectionScreen() {
     };
 
     useEffect(() => {
-        const currentRec = recordingInstance.current;
+        const currentRec = recording;
         return () => {
             if (currentRec) {
                 console.log('Unmounting/Cleanup - stopping and unloading recording instance.');
