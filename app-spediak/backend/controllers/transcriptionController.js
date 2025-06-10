@@ -16,8 +16,13 @@ const transcribeAudioController = async (req, res) => {
     const audioBuffer = Buffer.from(audioBase64, 'base64');
     console.log(`Received audio buffer, size: ${audioBuffer.length}. Sending to Deepgram...`);
 
+    const source = {
+      buffer: audioBuffer,
+      mimetype: 'audio/mp4',
+    };
+
     const { result, error } = await deepgram.listen.prerecorded.transcribeFile(
-      audioBuffer,
+      source,
       {
         model: 'nova-2',
         smart_format: true,

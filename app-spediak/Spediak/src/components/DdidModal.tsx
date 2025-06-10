@@ -9,7 +9,8 @@ import {
     Alert,
     Platform,
     Dimensions,
-    Image
+    Image,
+    KeyboardAvoidingView
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { X, Copy } from 'lucide-react-native';
@@ -61,43 +62,56 @@ const DdidModal: React.FC<DdidModalProps> = ({
             visible={visible}
             onRequestClose={onClose}
         >
-            <View style={styles.centeredView}>
-                <View style={styles.modalView}>
-                    <View style={styles.modalHeader}>
-                        <Text style={styles.headerTitle}>Generated Statement</Text>
-                        <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-                            <X size={24} color="#6c757d" />
-                        </TouchableOpacity>
-                    </View>
+            <KeyboardAvoidingView 
+                behavior={Platform.OS === "ios" ? "padding" : "height"}
+                style={styles.keyboardAvoidingView}
+            >
+                <View style={styles.centeredView}>
+                    <View style={styles.modalView}>
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.headerTitle}>Generated Statement</Text>
+                            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+                                <X size={24} color="#6c757d" />
+                            </TouchableOpacity>
+                        </View>
 
-                    <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollViewContent}>
-                        <Markdown style={markdownStyles}>
-                            {ddidText || 'No content available.'}
-                        </Markdown>
-                    </ScrollView>
+                        <ScrollView 
+                            style={styles.scrollView} 
+                            contentContainerStyle={styles.scrollViewContent}
+                            nestedScrollEnabled={true}
+                        >
+                            <Markdown style={markdownStyles}>
+                                {ddidText || 'No content available.'}
+                            </Markdown>
+                        </ScrollView>
 
-                    <View style={styles.modalFooter}>
-                         <TouchableOpacity style={styles.copyButton} onPress={handleCopy}>
-                             <Copy size={18} color="#fff" />
-                             <Text style={styles.copyButtonText}>Copy Statement</Text>
-                         </TouchableOpacity>
+                        <View style={styles.modalFooter}>
+                             <TouchableOpacity style={styles.copyButton} onPress={handleCopy}>
+                                 <Copy size={18} color="#fff" />
+                                 <Text style={styles.copyButtonText}>Copy Statement</Text>
+                             </TouchableOpacity>
+                        </View>
                     </View>
                 </View>
-            </View>
+            </KeyboardAvoidingView>
         </Modal>
     );
 };
 
 const styles = StyleSheet.create({
+    keyboardAvoidingView: {
+        flex: 1,
+    },
     centeredView: {
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
         backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        paddingVertical: 20, // Add padding for very small screens
     },
     modalView: {
         width: Platform.OS === 'web' ? '80%' : '98%',
-        maxHeight: '90%',
+        maxHeight: '95%', // Increase maxHeight slightly
         backgroundColor: 'white',
         borderRadius: 12,
         shadowColor: '#000',
@@ -126,6 +140,7 @@ const styles = StyleSheet.create({
         fontSize: 18,
         fontWeight: '600',
         color: '#343a40',
+        flexShrink: 1, // Allow text to wrap if needed
     },
     closeButton: {
          padding: 8,
@@ -134,11 +149,11 @@ const styles = StyleSheet.create({
          marginLeft: 10,
     },
     scrollView: {
-        flex: 1,
+        flex: 1, // This is crucial
     },
     scrollViewContent: {
          paddingHorizontal: 20,
-         paddingVertical: 15,
+         paddingBottom: 20, // Add padding at the bottom
     },
     modalFooter: {
         padding: 15,
