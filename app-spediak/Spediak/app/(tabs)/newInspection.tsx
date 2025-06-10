@@ -427,7 +427,10 @@ export default function NewInspectionScreen() {
                     outputFormat: Audio.IOSOutputFormat.MPEG4AAC,
                     audioQuality: Audio.IOSAudioQuality.MAX,
                 },
-                web: Audio.RecordingOptionsPresets.HIGH_QUALITY.web,
+                web: {
+                    mimeType: 'audio/mp4',
+                    bitsPerSecond: 128000,
+                },
             });
             
             setRecording(newRecording);
