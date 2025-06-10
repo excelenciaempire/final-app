@@ -5,7 +5,7 @@ const transcribeAudioController = async (req, res) => {
   // Log the entire request body first
   console.log('[TranscribeController] Received req.body:', JSON.stringify(req.body, null, 2));
 
-  const { audioBase64 } = req.body;
+  const { audioBase64, mimetype } = req.body;
 
   if (!audioBase64) {
     console.error('[TranscribeController] audioBase64 is missing or undefined in req.body.');
@@ -18,8 +18,10 @@ const transcribeAudioController = async (req, res) => {
 
     const source = {
       buffer: audioBuffer,
-      mimetype: 'audio/mp4',
+      mimetype: mimetype || 'audio/mp4',
     };
+    
+    console.log(`[TranscribeController] Using mimetype: ${source.mimetype}`);
 
     const { result, error } = await deepgram.listen.prerecorded.transcribeFile(
       source,
@@ -32,6 +34,7 @@ const transcribeAudioController = async (req, res) => {
 
     if (error) {
       console.error('Deepgram transcription error:', error);
+      console.error('Error details:', JSON.stringify(error, null, 2));
       throw new Error(error.message || 'Deepgram API request failed');
     }
 

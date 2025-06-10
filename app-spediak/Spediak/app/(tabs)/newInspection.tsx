@@ -477,6 +477,7 @@ export default function NewInspectionScreen() {
         console.log('[Transcribe] Starting transcription for URI:', audioUri);
         let audioBase64: string | null = null;
         let fileInfo: FileSystem.FileInfo | null = null;
+        let audioMimeType: string = 'audio/mp4'; // Default mimetype, will be updated
 
         try {
             console.log('[Transcribe] Attempting to read audio file to Base64...');
@@ -487,10 +488,14 @@ export default function NewInspectionScreen() {
                     if (!response.ok) throw new Error(`Failed to fetch blob: ${response.statusText} (Status: ${response.status})`);
                     const blob = await response.blob();
 
+                    // Dynamically get mimetype from the blob
+                    audioMimeType = blob.type || 'audio/webm';
+                    console.log(`[Transcribe] Web blob detected mimetype: ${audioMimeType}, size: ${blob.size} bytes`);
+
+
                     if (blob.size === 0) {
                         throw new Error("Fetched audio blob is empty.");
                     }
-                    console.log(`[Transcribe] Web blob size: ${blob.size} bytes`);
 
                     audioBase64 = await new Promise((resolve, reject) => {
                         const reader = new FileReader();
@@ -500,7 +505,6 @@ export default function NewInspectionScreen() {
                                 reject(new Error("FileReader result is null."));
                                 return;
                             }
-                            // Find the start of the base64 data
                             const base64Marker = ';base64,';
                             const markerIndex = result.indexOf(base64Marker);
                             if (markerIndex === -1) {
@@ -509,7 +513,7 @@ export default function NewInspectionScreen() {
                             }
                             resolve(result.substring(markerIndex + base64Marker.length));
                         };
-                        reader.onerror = (error) => reject(new Error(`FileReader error: ${error.toString()}`)); // Add .toString()
+                        reader.onerror = (error) => reject(new Error(`FileReader error: ${error.toString()}`));
                         reader.readAsDataURL(blob);
                     });
                     console.log("[Transcribe] Web audio read successfully.");
@@ -530,6 +534,18 @@ export default function NewInspectionScreen() {
                          throw new Error(`Audio file is empty at URI: ${audioUri}`);
                      }
                      console.log(`[Transcribe] Native file size: ${fileInfo.size} bytes`);
+                     
+                     // Determine mimetype from file extension for native platforms
+                    const fileExtension = audioUri.split('.').pop()?.toLowerCase();
+                    if (fileExtension === 'm4a') {
+                        audioMimeType = 'audio/m4a';
+                    } else if (fileExtension === 'amr') {
+                        audioMimeType = 'audio/amr';
+                    } else if (fileExtension) {
+                        // Fallback for other extensions, e.g. mp3, wav
+                        audioMimeType = `audio/${fileExtension}`;
+                    }
+                    console.log(`[Transcribe] Determined native mimetype as: ${audioMimeType}`);
 
                      audioBase64 = await FileSystem.readAsStringAsync(audioUri, {
                         encoding: FileSystem.EncodingType.Base64,
@@ -549,9 +565,11 @@ export default function NewInspectionScreen() {
 
             const token = await getToken();
             if (!token) throw new Error("Authentication token not found.");
-            console.log('[Transcribe] Sending audio to backend...');
+            console.log(`[Transcribe] Sending audio to backend with mimetype: ${audioMimeType}...`);
+            
             const response = await axios.post(`${BASE_URL}/api/transcribe`, {
                 audioBase64: audioBase64,
+                mimetype: audioMimeType, // Pass the determined mimetype
             }, {
                 headers: { 
                     Authorization: `Bearer ${token}`,
