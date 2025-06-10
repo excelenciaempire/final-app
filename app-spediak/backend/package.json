@@ -13,7 +13,6 @@
   "description": "",
   "dependencies": {
     "@clerk/clerk-sdk-node": "^4.13.23",
-    "@deepgram/sdk": "^3.12.1",
     "archiver": "^7.0.1",
     "cloudinary": "^2.6.0",
     "cors": "^2.8.5",

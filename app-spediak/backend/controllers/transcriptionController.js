@@ -1,50 +1,72 @@
-const { createClient } = require('@deepgram/sdk');
-const deepgram = createClient(process.env.DEEPGRAM_API_KEY);
+const OpenAI = require('openai');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+
+// Initialize OpenAI client with API key from environment variables
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+
+// A map to get the correct file extension from the mimetype
+const mimeTypeExtensions = {
+  'audio/mp4': 'mp4',
+  'audio/m4a': 'm4a',
+  'audio/amr': 'amr',
+  'audio/webm': 'webm',
+  // Add other supported mimetypes here if needed
+};
 
 const transcribeAudioController = async (req, res) => {
-  // Log the entire request body first
-  console.log('[TranscribeController] Received req.body:', JSON.stringify(req.body, null, 2));
+  console.log('[TranscribeController] Received request for OpenAI transcription.');
 
   const { audioBase64, mimetype } = req.body;
 
-  if (!audioBase64) {
-    console.error('[TranscribeController] audioBase64 is missing or undefined in req.body.');
-    return res.status(400).json({ message: 'Missing audioBase64 in request body' });
+  if (!audioBase64 || !mimetype) {
+    const missingParam = !audioBase64 ? 'audioBase64' : 'mimetype';
+    console.error(`[TranscribeController] ${missingParam} is missing in req.body.`);
+    return res.status(400).json({ message: `Missing ${missingParam} in request body` });
   }
 
+  const fileExtension = mimeTypeExtensions[mimetype];
+  if (!fileExtension) {
+    console.error(`[TranscribeController] Unsupported mimetype: ${mimetype}`);
+    return res.status(400).json({ message: `Unsupported mimetype: ${mimetype}` });
+  }
+
+  // Create a temporary file path
+  const tempFileName = `temp_audio_${Date.now()}.${fileExtension}`;
+  const tempFilePath = path.join(os.tmpdir(), tempFileName);
+  console.log(`[TranscribeController] Creating temporary file at: ${tempFilePath}`);
+
   try {
+    // Convert base64 to a buffer and write to the temporary file
     const audioBuffer = Buffer.from(audioBase64, 'base64');
-    console.log(`Received audio buffer, size: ${audioBuffer.length}. Sending to Deepgram...`);
+    fs.writeFileSync(tempFilePath, audioBuffer);
+    console.log(`[TranscribeController] Temporary file created, size: ${audioBuffer.length} bytes.`);
 
-    const source = {
-      buffer: audioBuffer,
-      mimetype: mimetype || 'audio/mp4',
-    };
-    
-    console.log(`[TranscribeController] Using mimetype: ${source.mimetype}`);
+    // Call the OpenAI Whisper API for transcription
+    console.log('[TranscribeController] Sending audio to OpenAI Whisper API...');
+    const transcription = await openai.audio.transcriptions.create({
+      file: fs.createReadStream(tempFilePath),
+      model: 'whisper-1', // Use the whisper-1 model
+    });
 
-    const { result, error } = await deepgram.listen.prerecorded.transcribeFile(
-      source,
-      {
-        model: 'nova-2',
-        smart_format: true,
-        language: 'en-US',
-      }
-    );
-
-    if (error) {
-      console.error('Deepgram transcription error:', error);
-      console.error('Error details:', JSON.stringify(error, null, 2));
-      throw new Error(error.message || 'Deepgram API request failed');
-    }
-
-    const transcript = result?.results?.channels?.[0]?.alternatives?.[0]?.transcript ?? '';
-    console.log("Transcript:", transcript);
+    console.log('[TranscribeController] Transcription successful.');
+    const transcript = transcription.text;
+    console.log('Transcript:', transcript);
 
     return res.status(200).json({ transcript });
   } catch (err) {
-    console.error('Transcription failed:', err);
-    return res.status(500).json({ message: 'Transcription failed', details: err.message });
+    console.error('OpenAI transcription failed:', err);
+    const errorMessage = err.response ? JSON.stringify(err.response.data) : err.message;
+    return res.status(500).json({ message: 'Transcription failed', details: errorMessage });
+  } finally {
+    // Clean up: delete the temporary file
+    if (fs.existsSync(tempFilePath)) {
+      fs.unlinkSync(tempFilePath);
+      console.log(`[TranscribeController] Deleted temporary file: ${tempFilePath}`);
+    }
   }
 };
 
