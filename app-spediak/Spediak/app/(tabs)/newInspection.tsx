@@ -11,6 +11,23 @@ import { BASE_URL } from '../../src/config/api'; // Import centralized BASE_URL
 import { COLORS } from '../../src/styles/colors'; // Corrected import path
 import * as Clipboard from 'expo-clipboard'; // Corrected import
 
+// --- API Response Interfaces ---
+interface UploadImageResponse {
+  imageUrl: string;
+}
+interface GeneratePreDescriptionResponse {
+  preDescription: string;
+}
+interface GenerateDdidResponse {
+  ddid: string;
+}
+interface TranscribeAudioResponse {
+  transcript: string;
+}
+interface ApiError {
+  message: string;
+}
+
 // --- Define Base URL (Platform Specific) ---
 // const YOUR_COMPUTER_IP_ADDRESS = '<YOUR-COMPUTER-IP-ADDRESS>'; // Removed
 // const YOUR_BACKEND_PORT = '<PORT>'; // Removed
@@ -304,8 +321,10 @@ export default function NewInspectionScreen() {
                 headers: { Authorization: `Bearer ${token}` },
             });
 
-            if (response.data && response.data.imageUrl) {
-                uploadedUrl = response.data.imageUrl;
+            const data = response.data as UploadImageResponse;
+
+            if (data && data.imageUrl) {
+                uploadedUrl = data.imageUrl;
                 console.log("[uploadImageToCloudinary] Upload successful, URL:", uploadedUrl);
                 setCloudinaryUrl(uploadedUrl);
                 return uploadedUrl;
@@ -388,10 +407,12 @@ export default function NewInspectionScreen() {
                 headers: { Authorization: `Bearer ${token}` },
             });
 
-            if (response.data && response.data.preDescription) {
-                console.log("[handleAnalyze] Pre-description received:", response.data.preDescription);
-                setPreDescription(response.data.preDescription);
-                setFinalDescriptionForDdid(response.data.preDescription);
+            const data = response.data as GeneratePreDescriptionResponse;
+
+            if (data && data.preDescription) {
+                console.log("[handleAnalyze] Pre-description received:", data.preDescription);
+                setPreDescription(data.preDescription);
+                setFinalDescriptionForDdid(data.preDescription);
                 setShowPreDescriptionModal(true);
             } else {
                 throw new Error("Invalid response from pre-description server.");
@@ -427,8 +448,10 @@ export default function NewInspectionScreen() {
                 headers: { Authorization: `Bearer ${token}` },
             });
 
-            if (ddidResponse.data && ddidResponse.data.ddid) {
-                const receivedDdid = ddidResponse.data.ddid;
+            const ddidData = ddidResponse.data as GenerateDdidResponse;
+
+            if (ddidData && ddidData.ddid) {
+                const receivedDdid = ddidData.ddid;
                 console.log("[handleGenerateFinalDdid] Final DDID received:", receivedDdid);
                 setGeneratedDdid(receivedDdid);
 
@@ -639,12 +662,14 @@ export default function NewInspectionScreen() {
             });
             console.log('[Transcribe] Backend response status:', response.status);
 
-            if (response.data && response.data.transcript) {
-                console.log('[Transcribe] Transcription received:', response.data.transcript);
-                setInitialDescription(prev => prev ? `${prev} ${response.data.transcript}`.trim() : response.data.transcript);
+            const data = response.data as TranscribeAudioResponse;
+
+            if (data && data.transcript) {
+                console.log('[Transcribe] Transcription received:', data.transcript);
+                setInitialDescription((prev: string) => prev ? `${prev} ${data.transcript}`.trim() : data.transcript);
             } else {
                  console.error('[Transcribe] Invalid response from backend:', response.data);
-                 const backendError = response.data?.message || "Invalid or empty response from transcription server.";
+                 const backendError = (response.data as unknown as ApiError)?.message || "Invalid or empty response from transcription server.";
                 throw new Error(backendError);
             }
 
