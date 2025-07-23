@@ -1,16 +1,16 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, Text, FlatList, StyleSheet, ActivityIndicator, RefreshControl, Alert, Image, SafeAreaView, TouchableOpacity, Platform, TextInput, Modal as RNModal, Dimensions, ScrollView } from 'react-native';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { View, Text, FlatList, StyleSheet, ActivityIndicator, RefreshControl, Alert, Image, SafeAreaView, TouchableOpacity, Platform, TextInput, Modal as RNModal, Dimensions, ScrollView, Switch, Button } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import axios from 'axios';
-import { useAuth } from '@clerk/clerk-expo';
+import { useAuth, useUser } from '@clerk/clerk-expo';
 import { BASE_URL } from '../config/api';
 import { COLORS } from '../styles/colors';
 import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
-import { Search, Eye, UserCircle, Download, Trash2, X as XIcon, Save } from 'lucide-react-native';
+import { Search, Eye, UserCircle, Download, Trash2, X as XIcon, Save, Lock, Unlock, History, CheckCircle } from 'lucide-react-native';
 import DdidModal from '../components/DdidModal';
 import { useDebounce } from '../hooks/useDebounce';
-import * as FileSystem from 'expo-file-system'; // For native download
-import * as MediaLibrary from 'expo-media-library'; // For saving to gallery on native
+import * as FileSystem from 'expo-file-system';
+import * as MediaLibrary from 'expo-media-library';
 
 // Helper function to get optimized Cloudinary image URL (copied from InspectionHistoryScreen)
 const getOptimizedImageUrl = (url: string | null | undefined, width: number, height: number): string | undefined => {
@@ -62,119 +62,254 @@ interface PaginatedResponse<T> {
     users?: T[];
 }
 
+// --- Interfaces ---
+interface Prompt {
+    id: number;
+    prompt_name: string;
+    content: string;
+    locked_by: string | null;
+    locked_at: string | null;
+    locked_by_user_name: string | null;
+}
+
+interface PromptVersion {
+    id: number;
+    version: number;
+    content: string;
+    updated_at: string;
+    updated_by_user_name: string | null;
+}
+
+interface HistoryModalProps {
+    visible: boolean;
+    onClose: () => void;
+    history: PromptVersion[];
+    onRestore: (id: number) => void;
+}
+
+// --- Prompt Editor ---
 const PromptEditor: React.FC = () => {
-    const [ddidPrompt, setDdidPrompt] = useState('');
-    const [preDescPrompt, setPreDescPrompt] = useState('');
+    const [prompts, setPrompts] = useState<Prompt[]>([]);
+    const [selectedPrompt, setSelectedPrompt] = useState<Prompt | null>(null);
+    const [editableContent, setEditableContent] = useState('');
+    const [history, setHistory] = useState<PromptVersion[]>([]);
+    const [isHistoryModalVisible, setIsHistoryModalVisible] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const { getToken } = useAuth();
+    const { user } = useUser();
+    const pollingInterval = useRef<NodeJS.Timeout | null>(null);
 
     const fetchPrompts = useCallback(async () => {
-        setIsLoading(true);
-        setError(null);
+        if (isSaving) return;
         try {
             const token = await getToken();
-            if (!token) throw new Error("Authentication token not found.");
-            const response = await axios.get(`${BASE_URL}/api/prompts`, {
+            const response = await axios.get(`${BASE_URL}/api/admin/prompts`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
-            setDdidPrompt(response.data.ddid_prompt);
-            setPreDescPrompt(response.data.pre_description_prompt);
-        } catch (err: any) {
-            console.error("[PromptEditor] Error fetching prompts:", err);
-            setError("Failed to load prompts. Please try refreshing.");
+            setPrompts(response.data);
+            if (selectedPrompt) {
+                const updatedSelected = response.data.find((p: Prompt) => p.id === selectedPrompt.id);
+                if (updatedSelected) {
+                    setSelectedPrompt(updatedSelected);
+                }
+            }
+        } catch (err) {
+            setError("Failed to fetch prompts.");
         } finally {
             setIsLoading(false);
         }
-    }, [getToken]);
+    }, [getToken, isSaving, selectedPrompt]);
 
     useEffect(() => {
         fetchPrompts();
-    }, []);
+        pollingInterval.current = setInterval(fetchPrompts, 5000);
+        return () => {
+            if (pollingInterval.current) clearInterval(pollingInterval.current);
+        };
+    }, [fetchPrompts]);
 
-    const handleSaveChanges = async () => {
-        setIsSaving(true);
-        setError(null);
+    const handleSelectPrompt = (prompt: Prompt) => {
+        if (prompt.locked_by && prompt.locked_by !== user?.id) {
+            Alert.alert(
+                "Prompt Locked",
+                `${prompt.locked_by_user_name || 'Another admin'} is currently editing this prompt.`
+            );
+            return;
+        }
+        setSelectedPrompt(prompt);
+        setEditableContent(prompt.content);
+    };
+
+    const handleLockToggle = async (isLocked: boolean) => {
+        if (!selectedPrompt || !user) return;
+        const endpoint = isLocked ? 'lock' : 'unlock';
         try {
             const token = await getToken();
-            if (!token) throw new Error("Authentication token not found.");
-            await axios.put(`${BASE_URL}/api/prompts`, {
-                ddid_prompt: ddidPrompt,
-                pre_description_prompt: preDescPrompt,
+            await axios.post(`${BASE_URL}/api/admin/prompts/${selectedPrompt.id}/${endpoint}`, {}, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            fetchPrompts();
+        } catch (err: any) {
+            const errorMsg = err.response?.data?.message || `Failed to ${endpoint} prompt.`;
+            Alert.alert("Error", errorMsg);
+        }
+    };
+
+    const handleSave = async () => {
+        if (!selectedPrompt || !user) return;
+        if (selectedPrompt.locked_by !== user.id) {
+            Alert.alert("Error", "You must lock the prompt to save changes.");
+            return;
+        }
+        setIsSaving(true);
+        try {
+            const token = await getToken();
+            await axios.put(`${BASE_URL}/api/admin/prompts/update`, {
+                id: selectedPrompt.id,
+                content: editableContent,
             }, {
                 headers: { Authorization: `Bearer ${token}` },
             });
-            Alert.alert("Success", "Prompts have been updated successfully.");
+            Alert.alert("Success", "Prompt updated successfully.");
+            setSelectedPrompt(null);
+            fetchPrompts();
         } catch (err: any) {
-            console.error("[PromptEditor] Error saving prompts:", err);
-            const errorMessage = err.response?.data?.message || "An unknown error occurred.";
-            setError(`Failed to save prompts: ${errorMessage}`);
-            Alert.alert("Error", `Failed to save prompts: ${errorMessage}`);
+            Alert.alert("Error", err.response?.data?.message || "Failed to save prompt.");
         } finally {
             setIsSaving(false);
         }
     };
 
+    const handleShowHistory = async () => {
+        if (!selectedPrompt) return;
+        try {
+            const token = await getToken();
+            const response = await axios.get(`${BASE_URL}/api/admin/prompts/${selectedPrompt.id}/history`, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            setHistory(response.data);
+            setIsHistoryModalVisible(true);
+        } catch (err) {
+            Alert.alert("Error", "Failed to fetch prompt history.");
+        }
+    };
+
+    const handleRestoreVersion = async (versionId: number) => {
+        try {
+            const token = await getToken();
+            await axios.post(`${BASE_URL}/api/admin/prompts/restore`, { versionId }, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            Alert.alert("Success", "Prompt version restored.");
+            setIsHistoryModalVisible(false);
+            setSelectedPrompt(null);
+            fetchPrompts();
+        } catch (err: any) {
+            Alert.alert("Error", err.response?.data?.message || "Failed to restore version.");
+        }
+    };
+
     if (isLoading) {
-        return <ActivityIndicator size="large" color={COLORS.primary} style={styles.loader} />;
+        return <ActivityIndicator size="large" color={COLORS.primary} style={{ flex: 1, justifyContent: 'center' }} />;
     }
 
-    if (error && !ddidPrompt && !preDescPrompt) {
+    if (error) {
+        return <Text style={{ color: 'red', textAlign: 'center', marginTop: 20 }}>{error}</Text>;
+    }
+
+    if (selectedPrompt) {
+        const isLockedByCurrentUser = selectedPrompt.locked_by === user?.id;
         return (
-            <View style={styles.centeredMessage}>
-                <Text style={styles.errorText}>{error}</Text>
-                <TouchableOpacity onPress={fetchPrompts} style={styles.retryButton}>
-                    <Text style={styles.retryButtonText}>Retry</Text>
+            <View style={styles.promptEditorContainer}>
+                <TouchableOpacity onPress={() => setSelectedPrompt(null)} style={{ marginBottom: 15 }}>
+                    <Text style={{ color: COLORS.primary }}>&larr; Back to Prompts</Text>
                 </TouchableOpacity>
+                <Text style={styles.promptEditorTitle}>{selectedPrompt.prompt_name.replace(/_/g, ' ')}</Text>
+                
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 15 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <Switch
+                            value={isLockedByCurrentUser}
+                            onValueChange={handleLockToggle}
+                        />
+                        <Text style={{ marginLeft: 10 }}>{isLockedByCurrentUser ? 'Locked by You' : 'Unlock to Edit'}</Text>
+                    </View>
+                    <TouchableOpacity onPress={handleShowHistory} style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <History size={18} color={COLORS.primary} />
+                        <Text style={{ color: COLORS.primary, marginLeft: 5 }}>View History</Text>
+                    </TouchableOpacity>
+                </View>
+
+                <TextInput
+                    style={[styles.promptInput, !isLockedByCurrentUser && { backgroundColor: '#f0f0f0' }]}
+                    value={editableContent}
+                    onChangeText={setEditableContent}
+                    multiline
+                    editable={isLockedByCurrentUser}
+                />
+                <TouchableOpacity onPress={handleSave} disabled={!isLockedByCurrentUser || isSaving} style={[styles.savePromptsButton, (!isLockedByCurrentUser || isSaving) && styles.buttonDisabled]}>
+                    {isSaving ? <ActivityIndicator color="#fff" /> : <Save size={18} color="#fff" />}
+                    <Text style={styles.savePromptsButtonText}>Save Changes</Text>
+                </TouchableOpacity>
+
+                <HistoryModal
+                    visible={isHistoryModalVisible}
+                    onClose={() => setIsHistoryModalVisible(false)}
+                    history={history}
+                    onRestore={handleRestoreVersion}
+                />
             </View>
         );
     }
-    
+
     return (
-        <ScrollView style={styles.promptEditorContainer}>
-            <Text style={styles.promptEditorTitle}>Edit Application Prompts</Text>
-            {error && <Text style={[styles.errorText, { marginBottom: 15 }]}>{error}</Text>}
-            
-            <View style={styles.promptInputContainer}>
-                <Text style={styles.promptLabel}>Preliminary Description Prompt</Text>
-                <TextInput
-                    style={styles.promptInput}
-                    value={preDescPrompt}
-                    onChangeText={setPreDescPrompt}
-                    multiline
-                    textAlignVertical="top"
-                    placeholder="Enter the preliminary description generation prompt"
-                />
-            </View>
-
-            <View style={styles.promptInputContainer}>
-                <Text style={styles.promptLabel}>DDID Generation Prompt</Text>
-                <TextInput
-                    style={styles.promptInput}
-                    value={ddidPrompt}
-                    onChangeText={setDdidPrompt}
-                    multiline
-                    textAlignVertical="top"
-                    placeholder="Enter the main DDID generation prompt"
-                />
-            </View>
-
-            <TouchableOpacity 
-                style={[styles.savePromptsButton, isSaving && styles.buttonDisabled]} 
-                onPress={handleSaveChanges}
-                disabled={isSaving}
-            >
-                {isSaving ? (
-                    <ActivityIndicator color="#fff" />
-                ) : (
-                    <>
-                        <Save size={18} color="#fff" />
-                        <Text style={styles.savePromptsButtonText}>Save Changes</Text>
-                    </>
+        <View style={styles.promptEditorContainer}>
+            <Text style={styles.promptEditorTitle}>Application Prompts</Text>
+            <FlatList
+                data={prompts}
+                keyExtractor={(item) => item.id.toString()}
+                renderItem={({ item }) => (
+                    <TouchableOpacity onPress={() => handleSelectPrompt(item)} style={styles.promptListItem}>
+                        <View>
+                            <Text style={styles.promptListName}>{item.prompt_name.replace(/_/g, ' ')}</Text>
+                            {item.locked_by && (
+                                <Text style={styles.promptListLockText}>
+                                    <Lock size={12} color={COLORS.danger} /> Locked by {item.locked_by_user_name || 'admin'}
+                                </Text>
+                            )}
+                        </View>
+                        <Text>&rarr;</Text>
+                    </TouchableOpacity>
                 )}
-            </TouchableOpacity>
-        </ScrollView>
+            />
+        </View>
+    );
+};
+
+const HistoryModal: React.FC<HistoryModalProps> = ({ visible, onClose, history, onRestore }) => {
+    return (
+        <RNModal visible={visible} animationType="slide" onRequestClose={onClose}>
+            <SafeAreaView style={{ flex: 1, padding: 20 }}>
+                <Text style={{ fontSize: 20, fontWeight: 'bold', marginBottom: 20 }}>Version History</Text>
+                <FlatList
+                    data={history}
+                    keyExtractor={(item: PromptVersion) => item.id.toString()}
+                    renderItem={({ item }: { item: PromptVersion }) => (
+                        <View style={{ marginBottom: 15, padding: 10, borderWidth: 1, borderColor: '#ccc', borderRadius: 5 }}>
+                            <Text>Version {item.version}</Text>
+                            <Text>Updated by: {item.updated_by_user_name || 'N/A'} on {new Date(item.updated_at).toLocaleString()}</Text>
+                            <Text numberOfLines={3}>{item.content}</Text>
+                            <TouchableOpacity onPress={() => onRestore(item.id)} style={{ marginTop: 10 }}>
+                                <Text style={{ color: COLORS.primary }}>Restore this version</Text>
+                            </TouchableOpacity>
+                        </View>
+                    )}
+                />
+                <Button title="Close" onPress={onClose} />
+            </SafeAreaView>
+        </RNModal>
     );
 };
 
@@ -1183,6 +1318,26 @@ const styles = StyleSheet.create({
         color: COLORS.primary,
         marginBottom: 20,
     },
+    promptListItem: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        backgroundColor: '#fff',
+        padding: 20,
+        borderRadius: 8,
+        marginBottom: 10,
+        borderWidth: 1,
+        borderColor: '#eee'
+    },
+    promptListName: {
+        fontSize: 16,
+        fontWeight: '600'
+    },
+    promptListLockText: {
+        fontSize: 12,
+        color: COLORS.danger,
+        marginTop: 5,
+    },
     promptInputContainer: {
         marginBottom: 24,
     },
@@ -1199,7 +1354,7 @@ const styles = StyleSheet.create({
         borderRadius: 8,
         padding: 15,
         fontSize: 14,
-        minHeight: 250,
+        minHeight: 350,
         color: '#333',
         textAlignVertical: 'top',
     },

@@ -11,6 +11,23 @@ import { BASE_URL } from '../../src/config/api'; // Import centralized BASE_URL
 import { COLORS } from '../../src/styles/colors'; // Corrected import path
 import * as Clipboard from 'expo-clipboard'; // Corrected import
 
+// --- API Response Interfaces ---
+interface UploadImageResponse {
+  imageUrl: string;
+}
+interface GeneratePreDescriptionResponse {
+  preDescription: string;
+}
+interface GenerateDdidResponse {
+  ddid: string;
+}
+interface TranscribeAudioResponse {
+  transcript: string;
+}
+interface ApiError {
+  message: string;
+}
+
 // --- Define Base URL (Platform Specific) ---
 // const YOUR_COMPUTER_IP_ADDRESS = '<YOUR-COMPUTER-IP-ADDRESS>'; // Removed
 // const YOUR_BACKEND_PORT = '<PORT>'; // Removed
@@ -300,7 +317,7 @@ export default function NewInspectionScreen() {
             if (!token) throw new Error("Authentication token not found.");
 
             console.log(`[uploadImageToCloudinary] Calling POST ${BASE_URL}/api/upload-image`);
-            const response = await axios.post(`${BASE_URL}/api/upload-image`, { imageBase64: base64Data }, {
+            const response = await axios.post<UploadImageResponse>(`${BASE_URL}/api/upload-image`, { imageBase64: base64Data }, {
                 headers: { Authorization: `Bearer ${token}` },
             });
 
@@ -314,7 +331,7 @@ export default function NewInspectionScreen() {
             }
         } catch (err: any) {
             console.error("[uploadImageToCloudinary] Error:", err);
-            const errorMessage = err.response?.data?.message || err.message || "Failed to upload image";
+            const errorMessage = (err.response?.data as ApiError)?.message || err.message || "Failed to upload image";
             setError(`Image Upload Failed: ${errorMessage}`);
             Alert.alert("Image Upload Failed", `Could not upload the image to storage: ${errorMessage}`);
             setCloudinaryUrl(null);
@@ -352,7 +369,7 @@ export default function NewInspectionScreen() {
                  console.error("[saveInspection] Error response data:", err.response.data);
                  console.error("[saveInspection] Error response status:", err.response.status);
             }
-            const errorMessage = err.response?.data?.message || err.message || "Could not save the inspection.";
+            const errorMessage = (err.response?.data as ApiError)?.message || err.message || "Could not save the inspection.";
             Alert.alert("Save Failed", `The statement was generated, but saving failed: ${errorMessage}`);
         }
     };
@@ -380,7 +397,7 @@ export default function NewInspectionScreen() {
             if (!token) throw new Error("Authentication token not found.");
 
             console.log(`[handleAnalyze] Calling POST ${BASE_URL}/api/generate-pre-description`);
-            const response = await axios.post(`${BASE_URL}/api/generate-pre-description`, {
+            const response = await axios.post<GeneratePreDescriptionResponse>(`${BASE_URL}/api/generate-pre-description`, {
                 imageBase64,
                 description: initialDescription,
                 userState,
@@ -398,7 +415,7 @@ export default function NewInspectionScreen() {
             }
         } catch (err: any) {
             console.error("[handleAnalyze] Error generating pre-description:", err);
-            const errorMessage = err.response?.data?.message || err.message || "Failed to generate preliminary description";
+            const errorMessage = (err.response?.data as ApiError)?.message || err.message || "Failed to generate preliminary description";
             setError(errorMessage);
             Alert.alert("Analysis Failed", errorMessage);
         } finally {
@@ -420,7 +437,7 @@ export default function NewInspectionScreen() {
             if (!token) throw new Error("Authentication token not found.");
 
             console.log(`[handleGenerateFinalDdid] Calling POST ${BASE_URL}/api/generate-ddid`);
-            const ddidResponse = await axios.post(`${BASE_URL}/api/generate-ddid`, {
+            const ddidResponse = await axios.post<GenerateDdidResponse>(`${BASE_URL}/api/generate-ddid`, {
                 description: finalDescription,
                 userState,
             }, {
@@ -445,7 +462,7 @@ export default function NewInspectionScreen() {
 
         } catch (err: any) {
             console.error("[handleGenerateFinalDdid] Error generating final DDID:", err);
-            const errorMessage = err.response?.data?.message || err.message || "Failed to generate final statement";
+            const errorMessage = (err.response?.data as ApiError)?.message || err.message || "Failed to generate final statement";
             setError(errorMessage);
             Alert.alert("Statement Generation Failed", errorMessage);
             setIsGeneratingFinalDdid(false);
@@ -627,7 +644,7 @@ export default function NewInspectionScreen() {
             if (!token) throw new Error("Authentication token not found.");
             console.log(`[Transcribe] Sending audio to backend with mimetype: ${audioMimeType}...`);
             
-            const response = await axios.post(`${BASE_URL}/api/transcribe`, {
+            const response = await axios.post<TranscribeAudioResponse>(`${BASE_URL}/api/transcribe`, {
                 audioBase64: audioBase64,
                 mimetype: audioMimeType, // Pass the determined mimetype
             }, {
@@ -641,16 +658,16 @@ export default function NewInspectionScreen() {
 
             if (response.data && response.data.transcript) {
                 console.log('[Transcribe] Transcription received:', response.data.transcript);
-                setInitialDescription(prev => prev ? `${prev} ${response.data.transcript}`.trim() : response.data.transcript);
+                setInitialDescription((prev: string) => prev ? `${prev} ${response.data.transcript}`.trim() : response.data.transcript);
             } else {
                  console.error('[Transcribe] Invalid response from backend:', response.data);
-                 const backendError = response.data?.message || "Invalid or empty response from transcription server.";
+                 const backendError = (response.data as unknown as ApiError)?.message || "Invalid or empty response from transcription server.";
                 throw new Error(backendError);
             }
 
         } catch (err: any) {
             console.error('[Transcribe] Full transcription process failed:', err);
-            const errorMessage = err.response?.data?.message || (err instanceof Error ? err.message : String(err)) || 'Failed to transcribe audio';
+            const errorMessage = (err.response?.data as ApiError)?.message || (err instanceof Error ? err.message : String(err)) || 'Failed to transcribe audio';
             setError(`Transcription Failed: ${errorMessage}`);
             Alert.alert("Transcription Failed", `Could not transcribe audio. Please try again. Error: ${errorMessage}`);
         } finally {
