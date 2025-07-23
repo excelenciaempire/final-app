@@ -40,55 +40,112 @@ const PreDescriptionModal: React.FC<PreDescriptionModalProps> = ({
   const [isEditing, setIsEditing] = useState(false);
 
   useEffect(() => {
+    // When the modal becomes visible or the initial description changes,
+    // reset the editable content and exit editing mode.
     setEditableDescription(preDescription);
-    setIsEditing(false);
+    setIsEditing(false); // Default to non-editing mode
   }, [preDescription, visible]);
 
   const handleSaveEdit = () => {
     setIsEditing(false);
-    // We don't need an alert here, just exiting edit mode is enough
-    // Alert.alert("Saved", "Description updated."); 
   };
 
   const handleGenerate = () => {
+    // Pass the potentially edited description to the final generation step
     onGenerateDdid(editableDescription);
   };
+
+  const instructions = `**✅ If yes, click "Generate Statement" and I will take care of the rest.**
+
+✍️ **Need to make a change? Click Edit. (It helps me learn)**
+
+🔄 **To regenerate with more context, click Close, Add details, and click Analyze.**`;
 
   return (
     <Modal animationType="slide" transparent={true} visible={visible} onRequestClose={onClose}>
       <View style={styles.popupOverlay}>
         <View style={styles.popupContainer}>
           <Text style={styles.popupTitle}>Preliminary Description</Text>
-          <ScrollView style={styles.preDescScrollView}>
-            <TextInput
-              style={[styles.preDescInput, isEditing && styles.preDescInputEditing]}
-              value={editableDescription}
-              onChangeText={setEditableDescription}
-              multiline
-              editable={isEditing}
-              numberOfLines={10} 
-            />
+
+          {/* Scrollable Content Area */}
+          <ScrollView
+            style={styles.preDescScrollView}
+            contentContainerStyle={styles.preDescScrollViewContent}
+          >
+            {isEditing ? (
+              <TextInput
+                style={[styles.preDescInput, styles.preDescInputEditing]}
+                value={editableDescription}
+                onChangeText={setEditableDescription}
+                multiline
+                editable={true}
+                autoFocus={true} // Focus the input when editing
+              />
+            ) : (
+              <View>
+                {/* Generated Description */}
+                <Text style={styles.preDescText}>
+                  {editableDescription}
+                </Text>
+
+                {/* Instructions Text (Markdown-like formatting) */}
+                <View style={styles.instructionsContainer}>
+                   <Text style={styles.instructionText}>
+                    <Text style={{fontWeight: 'bold'}}>✅ If yes, click "Generate Statement" and I will take care of the rest.</Text>
+                   </Text>
+                   <Text style={styles.instructionText}>
+                    <Text style={{fontWeight: 'bold'}}>✍️ Need to make a change? Click Edit. (It helps me learn)</Text>
+                   </Text>
+                   <Text style={styles.instructionText}>
+                    <Text style={{fontWeight: 'bold'}}>🔄 To regenerate with more context, click Close, Add details, and click Analyze.</Text>
+                   </Text>
+                </View>
+              </View>
+            )}
           </ScrollView>
+
+          {/* Fixed Bottom Buttons */}
           <View style={styles.preDescButtonRow}>
-            {/* Edit / Save Edit Button */}
             {!isEditing ? (
-              <TouchableOpacity style={[styles.preDescButton, styles.editButton]} onPress={() => setIsEditing(true)}>
+              <TouchableOpacity
+                style={[styles.preDescButton, styles.editButton]}
+                onPress={() => setIsEditing(true)}
+              >
                 <Edit3 size={18} color={COLORS.primary} />
                 <Text style={[styles.preDescButtonText, styles.editButtonText]}>Edit</Text>
               </TouchableOpacity>
             ) : (
-              // Use Green button style for Save Edit
-              <TouchableOpacity style={[styles.preDescButton, styles.saveButton]} onPress={handleSaveEdit}> 
+              <TouchableOpacity
+                style={[styles.preDescButton, styles.saveButton]}
+                onPress={handleSaveEdit}
+              >
                 <Check size={18} color={COLORS.white} />
                 <Text style={[styles.preDescButtonText, styles.saveButtonText]}>Save Edit</Text>
               </TouchableOpacity>
             )}
-            {/* Generate Statement Button (No icon) */}
-            <TouchableOpacity style={[styles.preDescButton, styles.generateButton]} onPress={handleGenerate} disabled={isEditing}>
-               <Text style={[styles.preDescButtonText, styles.generateButtonText, isEditing && styles.buttonDisabledText]}>Generate Statement</Text>
+
+            <TouchableOpacity
+              style={[
+                styles.preDescButton,
+                styles.generateButton,
+                isEditing && styles.buttonDisabled, // Disable button when editing
+              ]}
+              onPress={handleGenerate}
+              disabled={isEditing}
+            >
+              <Text
+                style={[
+                  styles.preDescButtonText,
+                  styles.generateButtonText,
+                  isEditing && styles.buttonDisabledText,
+                ]}
+              >
+                Generate Statement
+              </Text>
             </TouchableOpacity>
           </View>
-          {/* Restore simple Close button */}
+
+          {/* Close Button at the very bottom */}
           <TouchableOpacity style={styles.plainCloseButton} onPress={onClose}>
             <Text style={styles.plainCloseButtonText}>Close</Text>
           </TouchableOpacity>
@@ -977,56 +1034,76 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         backgroundColor: 'rgba(0,0,0,0.6)',
+        paddingVertical: 20, // Add padding to avoid screen edges
     },
     popupContainer: {
-        width: Platform.OS === 'web' ? '80%' : '98%',
-        maxHeight: '90%',
+        width: Platform.OS === 'web' ? '80%' : '90%', // Use more width
+        maxWidth: 550, // Set a max-width for web
+        height: '75%', // Increased height
+        maxHeight: 600, // Set a max-height
         backgroundColor: '#fff',
         borderRadius: 12,
         padding: 20,
         shadowColor: '#000',
-        shadowOffset: {
-            width: 0,
-            height: 2,
-        },
+        shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.25,
         shadowRadius: 4,
         elevation: 5,
+        justifyContent: 'space-between', // Push title to top, buttons to bottom
     },
     popupTitle: {
-        fontSize: 20,
+        fontSize: 22, // Slightly larger title
         fontWeight: 'bold',
         color: COLORS.primary,
         textAlign: 'center',
         marginBottom: 15,
+        flexShrink: 0, // Ensure title doesn't shrink
     },
     popupText: { marginTop: 15, fontSize: 16, color: '#333', },
     preDescScrollView: {
-       maxHeight: 300, // Increased max height for the scroll view
+       flex: 1, // Allow scroll view to take up available space
        marginBottom: 15,
        borderWidth: 1,
-       borderColor: '#ddd',
+       borderColor: '#e0e0e0',
        borderRadius: 8,
     },
-    preDescInput: {
-        padding: 15,
-        fontSize: 16,
+    preDescScrollViewContent: {
+        padding: 15, // Apply padding inside the scroll content
+    },
+    preDescText: { // New style for non-editable text
+        fontSize: 17,
+        lineHeight: 25, // Improved line height
         color: '#333',
-        backgroundColor: '#f9f9f9',
-        minHeight: 150, // Increased min height for the text input
-        textAlignVertical: 'top', // Align text to the top
+        marginBottom: 20, // Space between description and instructions
+    },
+    preDescInput: {
+        fontSize: 17, // Match the text style
+        lineHeight: 25,
+        color: '#333',
+        textAlignVertical: 'top',
     },
     preDescInputEditing: {
         backgroundColor: '#fff',
-        borderWidth: 1,
-        borderColor: COLORS.primary,
-        borderRadius: 8,
+        // No need for border here if the ScrollView has it
+    },
+    instructionsContainer: { // New container for instruction block
+        marginTop: 'auto', // Push instructions to the bottom of their container
+        paddingTop: 20,
+        borderTopWidth: 1,
+        borderTopColor: '#eee',
+    },
+    instructionText: { // New style for each instruction line
+        fontSize: 14,
+        color: '#555',
+        lineHeight: 22,
+        marginBottom: 8,
     },
     preDescButtonRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         width: '100%',
-        marginBottom: 15,
+        marginBottom: 5, // Reduced margin
+        flexShrink: 0, // Ensure buttons don't shrink
     },
     preDescButton: {
         flexDirection: 'row',
@@ -1064,8 +1141,10 @@ const styles = StyleSheet.create({
         color: COLORS.white,
     },
     plainCloseButton: {
-         marginTop: 15,
+         marginTop: 0, // No extra margin needed
          padding: 10,
+         alignSelf: 'center',
+         flexShrink: 0, // Ensure close button doesn't shrink
     },
     plainCloseButtonText: {
         color: COLORS.darkText,
