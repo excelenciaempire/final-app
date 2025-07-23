@@ -917,9 +917,9 @@ export default function NewInspectionScreen() {
                 onRequestClose={() => {}}
             >
                 <View style={styles.popupOverlay}>
-                    <View style={styles.popupContainer}>
+                    <View style={styles.loadingPopupContainer}>
                         <ActivityIndicator size="large" color={COLORS.primary} />
-                        <Text style={styles.popupText}>{loadingText}</Text>
+                        <Text style={styles.loadingPopupText}>{loadingText}</Text>
                     </View>
                 </View>
             </Modal>
@@ -1060,6 +1060,26 @@ const styles = StyleSheet.create({
         flexShrink: 0, // Ensure title doesn't shrink
     },
     popupText: { marginTop: 15, fontSize: 16, color: '#333', },
+    loadingPopupContainer: {
+        width: 200,
+        height: 150,
+        backgroundColor: '#fff',
+        borderRadius: 12,
+        padding: 20,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.25,
+        shadowRadius: 4,
+        elevation: 5,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    loadingPopupText: {
+        marginTop: 20,
+        fontSize: 16,
+        color: '#333',
+        textAlign: 'center',
+    },
     preDescScrollView: {
        flex: 1, // Allow scroll view to take up available space
        marginBottom: 15,
