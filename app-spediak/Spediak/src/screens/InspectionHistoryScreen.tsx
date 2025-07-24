@@ -143,18 +143,21 @@ export default function InspectionHistoryScreen() {
             console.log("[fetchInspections] API call successful, status:", response.status);
             console.log("[fetchInspections] Received data:", JSON.stringify(response.data, null, 2));
             
-            const { items, totalPages: newTotalPages, currentPage: newCurrentPage } = response.data; // Assuming this structure from backend
+            // Defensive coding: Check the structure of the response data
+            const responseData = response.data;
+            const items = responseData && Array.isArray(responseData.items) ? responseData.items : [];
+            const newTotalPages = (responseData && typeof responseData.totalPages === 'number') ? responseData.totalPages : 1;
+            const newCurrentPage = (responseData && typeof responseData.currentPage === 'number') ? responseData.currentPage : 1;
 
-            const inspectionsData = Array.isArray(items) ? items : [];
-            console.log("[fetchInspections] Setting inspections state with count:", inspectionsData.length);
+            console.log("[fetchInspections] Setting inspections state with count:", items.length);
             
             if (pageToFetch === 1 || isRefreshingData) {
-                setInspections(inspectionsData);
+                setInspections(items);
             } else {
-                setInspections(prevInspections => [...prevInspections, ...inspectionsData]);
+                setInspections(prevInspections => [...prevInspections, ...items]);
             }
-            setTotalPages(newTotalPages || 1);
-            setCurrentPage(newCurrentPage || 1); // Ensure currentPage is updated from response
+            setTotalPages(newTotalPages);
+            setCurrentPage(newCurrentPage);
 
         } catch (err: any) {
             console.error("[fetchInspections] Error caught:", err);
