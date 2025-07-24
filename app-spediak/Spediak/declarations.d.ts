@@ -181,4 +181,7 @@ declare module '@react-navigation/material-top-tabs' {
     Screen: React.ComponentType<any>;
   };
   export { createMaterialTopTabNavigator };
-} 
+}
+
+declare module '@react-navigation/native';
+declare module 'react-native-markdown-display'; 

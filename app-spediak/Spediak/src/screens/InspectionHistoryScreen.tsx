@@ -137,7 +137,7 @@ export default function InspectionHistoryScreen() {
             if (!token) throw new Error("User not authenticated");
 
             console.log(`[fetchInspections] Calling GET ${BASE_URL}/api/inspections?page=${pageToFetch}&limit=${ITEMS_PER_PAGE}`);
-            const response = await axios.get(`${BASE_URL}/api/inspections?page=${pageToFetch}&limit=${ITEMS_PER_PAGE}`, {
+            const response = await axios.get<{ items: Inspection[], totalPages: number, currentPage: number }>(`${BASE_URL}/api/inspections?page=${pageToFetch}&limit=${ITEMS_PER_PAGE}`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             console.log("[fetchInspections] API call successful, status:", response.status);

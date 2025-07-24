@@ -90,11 +90,11 @@ const PreDescriptionModal: React.FC<PreDescriptionModalProps> = ({
             contentContainerStyle={styles.preDescScrollViewContent}
           >
             {isEditing ? (
-              <TextInput
+            <TextInput
                 style={[styles.preDescInput, styles.preDescInputEditing]}
-                value={editableDescription}
-                onChangeText={setEditableDescription}
-                multiline
+              value={editableDescription}
+              onChangeText={setEditableDescription}
+              multiline
                 editable={true}
                 autoFocus={true} // Focus the input when editing
               />

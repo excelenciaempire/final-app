@@ -6,7 +6,7 @@ import { useAuth } from '@clerk/clerk-expo';
 import { BASE_URL } from '../config/api';
 import { COLORS } from '../styles/colors';
 import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
-import { Search, Eye, UserCircle, Download, Trash2, X as XIcon, Save } from 'lucide-react-native';
+import { Search, Eye, UserCircle, Download, Trash2, X as XIcon, Save, History } from 'lucide-react-native';
 import DdidModal from '../components/DdidModal';
 import { useDebounce } from '../hooks/useDebounce';
 import * as FileSystem from 'expo-file-system';
@@ -80,7 +80,7 @@ const AllInspections: React.FC = () => {
             if (refreshing) setIsRefreshing(false);
         }
     }, [getToken, debouncedSearchQuery, sortBy, sortOrder]);
-    
+
     useEffect(() => {
         if (Platform.OS !== 'web') {
             requestMediaLibraryPermission();
@@ -141,32 +141,32 @@ const AllInspections: React.FC = () => {
     
     // JSX Rendering for All Inspections...
     const renderInspectionItem = ({ item }: { item: AdminInspectionData }) => (
-        <View style={styles.cardContainer}>
-            <View style={styles.cardHeaderInfo}>
-                <View style={styles.userInfoRow}>
+            <View style={styles.cardContainer}>
+                <View style={styles.cardHeaderInfo}>
+                    <View style={styles.userInfoRow}>
                     {item.userProfilePhoto ? <Image source={{ uri: item.userProfilePhoto }} style={styles.userImageSmall} /> : <View style={styles.userImagePlaceholderSmall}><UserCircle size={20} color={COLORS.secondary} /></View>}
-                    <View style={styles.userInfoTextContainer}>
+                        <View style={styles.userInfoTextContainer}>
                         <Text style={styles.cardUserText}>{item.userName || 'Unknown'}</Text>
                         <Text style={styles.cardDetailText}>{item.userEmail} {item.userState ? `(${item.userState})` : ''}</Text>
+                        </View>
                     </View>
+                    <Text style={styles.cardDateText}>{new Date(item.created_at).toLocaleString()}</Text>
                 </View>
-                <Text style={styles.cardDateText}>{new Date(item.created_at).toLocaleString()}</Text>
-            </View>
-            <View style={styles.inspectionDetailsContainer}>
+                <View style={styles.inspectionDetailsContainer}>
                 <TouchableOpacity onPress={() => { setFullScreenImageUrl(item.image_url); setSelectedInspection(item); setIsFullImageModalVisible(true); }}>
                     <Image source={{ uri: getOptimizedImageUrl(item.image_url, 80, 80) }} style={styles.cardImage} />
-                </TouchableOpacity>
-                <View style={styles.inspectionTextContainer}>
-                    <Text style={styles.cardDescriptionLabel}>Description:</Text>
-                    <Text style={styles.cardDescriptionText} numberOfLines={1}>{item.description}</Text>
+                            </TouchableOpacity>
+                    <View style={styles.inspectionTextContainer}>
+                        <Text style={styles.cardDescriptionLabel}>Description:</Text>
+                        <Text style={styles.cardDescriptionText} numberOfLines={1}>{item.description}</Text>
                     <TouchableOpacity style={styles.viewReportButton} onPress={() => { setSelectedInspection(item); setIsModalVisible(true); }}>
-                        <Eye size={16} color={COLORS.primary} />
+                                <Eye size={16} color={COLORS.primary} />
                         <Text style={styles.viewReportButtonText}>View</Text>
-                    </TouchableOpacity>
+                            </TouchableOpacity>
+                    </View>
                 </View>
             </View>
-        </View>
-    );
+        );
 
     if (isLoading && currentPage === 1) return <ActivityIndicator size="large" style={styles.loader} />;
     if (error) return <Text style={styles.errorText}>{error}</Text>;
@@ -176,7 +176,7 @@ const AllInspections: React.FC = () => {
             <View style={styles.controlsContainer}>
                 <Text style={styles.totalCountText}>Total: {totalInspectionsCount}</Text>
                 <View style={styles.searchWrapper}>
-                    <Search size={18} color="#888" style={styles.searchIcon} />
+                     <Search size={18} color="#888" style={styles.searchIcon} />
                     <TextInput style={styles.searchInput} placeholder="Search..." value={searchQuery} onChangeText={setSearchQuery} />
                 </View>
                 <TouchableOpacity onPress={() => handleSortChange('created_at')} style={styles.sortButton}>
@@ -249,8 +249,8 @@ const AllUsers: React.FC = () => {
         Alert.alert("Confirm Deletion", "Are you sure you want to delete this user?", [
             { text: "Cancel", style: "cancel" },
             { text: "Delete", style: "destructive", onPress: async () => {
-                try {
-                    const token = await getToken();
+        try {
+            const token = await getToken();
                     await axios.delete(`${BASE_URL}/api/admin/delete-user/${userId}`, { headers: { Authorization: `Bearer ${token}` } });
                     Alert.alert("Success", "User deleted.");
                     fetchUsers(1);
@@ -398,19 +398,36 @@ const PromptEditor = () => {
         <ScrollView style={styles.promptEditorContainer}>
             <View style={styles.lockContainer}>
                 <Text style={styles.lockLabel}>Lock for Editing</Text>
-                <Switch value={isLockedForEditing} onValueChange={handleLockToggle} disabled={!!lockedByOther} />
+                <Switch value={isLockedByMe} onValueChange={handleLockToggle} disabled={!!lockedByOther && !isLockedByMe} />
             </View>
-            {lockedByOther && <Text style={styles.lockedByText}>Locked by: {lockedByOther}</Text>}
+            {lockedByOther && !isLockedByMe && <Text style={styles.lockedByText}>Locked by: {lockedByOther}</Text>}
+            
             {prompts.map(prompt => (
                 <View key={prompt.id} style={styles.promptCard}>
-                    <Text style={styles.promptTitle}>{prompt.prompt_name.replace(/_/g, ' ')}</Text>
-                    <TextInput style={[styles.textInput, !isLockedByMe && styles.disabledInput]} value={prompt.prompt_content} onChangeText={text => handleContentChange(text, prompt.id)} multiline editable={isLockedByMe} />
-                    <TouchableOpacity style={styles.historyButton} onPress={() => viewHistory(prompt)}><Text style={styles.historyButtonText}>View History</Text></TouchableOpacity>
+                    <View style={styles.promptHeader}>
+                        <Text style={styles.promptTitle}>{prompt.prompt_name.replace(/_/g, ' ').toUpperCase()}</Text>
+                        <TouchableOpacity style={styles.historyIconButton} onPress={() => viewHistory(prompt)}>
+                            <History size={20} color={COLORS.primary} />
+                        </TouchableOpacity>
+                    </View>
+                    <TextInput 
+                        style={[styles.textInput, !isLockedByMe && styles.disabledInput]} 
+                        value={prompt.prompt_content} 
+                        onChangeText={text => handleContentChange(text, prompt.id)} 
+                        multiline 
+                        editable={isLockedByMe} 
+                    />
                 </View>
             ))}
-            <TouchableOpacity style={[styles.saveButton, !isLockedByMe && styles.disabledButton]} onPress={onSave} disabled={!isLockedByMe || isSaving}>
-                {isSaving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveButtonText}>Save Changes</Text>}
+
+            <TouchableOpacity 
+                style={[styles.saveButton, (!isLockedByMe || isSaving) && styles.disabledButton]} 
+                onPress={onSave} 
+                disabled={!isLockedByMe || isSaving}>
+                <Save size={18} color="#fff" style={{ marginRight: 8 }} />
+                <Text style={styles.saveButtonText}>{isSaving ? 'Saving...' : 'Save Changes'}</Text>
             </TouchableOpacity>
+
             {historyModalVisible && <HistoryModal visible={historyModalVisible} onClose={() => setHistoryModalVisible(false)} history={selectedPromptHistory} onRestore={restoreVersion} promptName={selectedPromptForHistory?.prompt_name || ''} />}
         </ScrollView>
     );
@@ -428,14 +445,14 @@ const HistoryModal = ({ visible, onClose, history, onRestore, promptName }: { vi
                             <Text>Version {item.version} by {item.updated_by_username} on {format(new Date(item.created_at), 'Pp')}</Text>
                             <Text>{item.prompt_content}</Text>
                             <TouchableOpacity onPress={() => onRestore(item.id)}><Text>Restore</Text></TouchableOpacity>
-                        </View>
+                </View>
                     ))}
                 </ScrollView>
                 <TouchableOpacity onPress={onClose}><Text>Close</Text></TouchableOpacity>
             </View>
         </View>
     </RNModal>
-);
+    );
 
 // --- Main Admin Dashboard Screen ---
 const Tab = createMaterialTopTabNavigator();
@@ -472,7 +489,7 @@ const AdminDashboardScreen = () => {
             <Tab.Screen name="All Inspections" component={AllInspections} />
             <Tab.Screen name="All Users" component={AllUsers} />
             <Tab.Screen name="Prompt Editor" component={PromptEditor} listeners={{ tabPress: (e: any) => { if (isPromptEditorLocked) { e.preventDefault(); Alert.alert('Locked', `Locked by ${promptLocker}.`); } } }} options={{ tabBarLabel: isPromptEditorLocked ? `Prompt Editor (Locked)` : 'Prompt Editor' }} />
-        </Tab.Navigator>
+             </Tab.Navigator>
     );
 };
 
@@ -525,13 +542,45 @@ const styles = StyleSheet.create({
     lockLabel: { fontSize: 18, fontWeight: 'bold' },
     lockedByText: { textAlign: 'center', color: 'red', marginBottom: 16 },
     promptCard: { backgroundColor: '#fff', borderRadius: 8, padding: 16, marginBottom: 16 },
-    promptTitle: { fontSize: 16, fontWeight: 'bold', marginBottom: 8 },
-    textInput: { height: 150, borderWidth: 1, borderColor: '#ccc', borderRadius: 4, padding: 8, marginBottom: 8 },
-    disabledInput: { backgroundColor: '#eee' },
+    promptHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 12,
+    },
+    promptTitle: {
+        fontSize: 14,
+        fontWeight: 'bold',
+        color: COLORS.darkText,
+        letterSpacing: 0.5,
+    },
+    textInput: {
+        height: 200, // Increased height for more content visibility
+        textAlignVertical: 'top', // Start text from the top
+        borderWidth: 1,
+        borderColor: '#ccc',
+        borderRadius: 4,
+        padding: 12, // Increased padding
+        marginBottom: 8,
+        fontSize: 14,
+        lineHeight: 20,
+    },
+    disabledInput: { backgroundColor: '#f0f0f0' },
+    historyIconButton: {
+        padding: 8,
+    },
     historyButton: { alignItems: 'center', padding: 8, backgroundColor: '#007bff', borderRadius: 4 },
     historyButtonText: { color: '#fff' },
-    saveButton: { alignItems: 'center', padding: 16, backgroundColor: '#28a745', borderRadius: 8 },
-    saveButtonText: { color: '#fff', fontWeight: 'bold' },
+    saveButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 16,
+        backgroundColor: COLORS.success, // Use a success color
+        borderRadius: 8,
+        marginTop: 10,
+    },
+    saveButtonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
     disabledButton: { backgroundColor: 'gray' },
     // History Modal Styles...
     centeredView: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' },
