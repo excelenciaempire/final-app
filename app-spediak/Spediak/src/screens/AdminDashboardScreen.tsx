@@ -1,51 +1,301 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, ActivityIndicator, Alert, Modal as RNModal } from 'react-native';
-import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
-import { useAuth } from '@clerk/clerk-expo';
-import { format } from 'date-fns';
-import { TextInput } from 'react-native-gesture-handler';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { View, Text, FlatList, StyleSheet, ActivityIndicator, RefreshControl, Alert, Image, SafeAreaView, TouchableOpacity, Platform, TextInput, Modal as RNModal, Dimensions, ScrollView } from 'react-native';
+import { Picker } from '@react-native-picker/picker';
 import axios from 'axios';
+import { useAuth } from '@clerk/clerk-expo';
 import { BASE_URL } from '../config/api';
+import { COLORS } from '../styles/colors';
+import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
+import { Search, Eye, UserCircle, Download, Trash2, X as XIcon, Save } from 'lucide-react-native';
+import DdidModal from '../components/DdidModal';
+import { useDebounce } from '../hooks/useDebounce';
+import * as FileSystem from 'expo-file-system';
+import * as MediaLibrary from 'expo-media-library';
+import { format } from 'date-fns';
 
 const api = axios.create({
     baseURL: BASE_URL + '/api'
 });
 
-const Tab = createMaterialTopTabNavigator();
+// --- Interfaces ---
+interface AdminInspectionData { id: string; user_id: string; image_url: string | null; description: string; ddid: string; state: string | null; created_at: string; userName: string; userEmail: string; userState: string | null; userProfilePhoto: string | null; }
+interface UserData { id: string; name: string; email: string; username: string | null; createdAt: string | Date; state: string | null; profilePhoto: string | null; inspectionCount: number; }
+interface PaginatedResponse<T> { totalCount: number; page: number; limit: number; totalPages: number; inspections?: T[]; users?: T[]; }
+interface Prompt { id: number; prompt_name: string; prompt_content: string; is_locked: boolean; locked_by: string | null; username: string | null; locked_at: string | null; }
+interface PromptVersion { id: number; version: number; prompt_content: string; updated_by_username: string; created_at: string; }
 
-// --- Placeholder Components to fix build ---
-const AllInspections = () => (
-    <View style={styles.placeholderContainer}>
-        <Text>All Inspections</Text>
-    </View>
-);
-const AllUsers = () => (
-    <View style={styles.placeholderContainer}>
-        <Text>All Users</Text>
-    </View>
-);
+// Helper function to get optimized Cloudinary image URL
+const getOptimizedImageUrl = (url: string | null | undefined, width: number, height: number): string | undefined => {
+    if (!url || !url.includes('cloudinary.com')) return url || undefined;
+    try {
+        const parts = url.split('/upload/');
+        if (parts.length === 2) return `${parts[0]}/upload/w_${width},h_${height},c_pad,q_auto/${parts[1]}`;
+    } catch (e) { console.warn("Error constructing optimized image URL:", e); }
+    return url;
+};
+
+// --- All Inspections Component ---
+const AllInspections: React.FC = () => {
+    // States and hooks from original component...
+    const [inspections, setInspections] = useState<AdminInspectionData[]>([]);
+    const [isLoading, setIsLoading] = useState<boolean>(false);
+    const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+    const [error, setError] = useState<string | null>(null);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [sortBy, setSortBy] = useState('created_at');
+    const [sortOrder, setSortOrder] = useState('desc');
+    const [currentPage, setCurrentPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
+    const [totalInspectionsCount, setTotalInspectionsCount] = useState<number>(0);
+    const [isLoadingMore, setIsLoadingMore] = useState(false);
+    const [selectedInspection, setSelectedInspection] = useState<AdminInspectionData | null>(null);
+    const [isModalVisible, setIsModalVisible] = useState(false);
+    const { getToken } = useAuth();
+    const debouncedSearchQuery = useDebounce(searchQuery, 500);
+    const [mediaLibraryPermission, requestMediaLibraryPermission] = MediaLibrary.usePermissions();
+    const [fullScreenImageUrl, setFullScreenImageUrl] = useState<string | null>(null);
+    const [isFullImageModalVisible, setIsFullImageModalVisible] = useState(false);
+
+    // Fetch data function from original component...
+    const fetchData = useCallback(async (page = 1, search = debouncedSearchQuery, sortCol = sortBy, sortDir = sortOrder, refreshing = false) => {
+        if (!refreshing && page === 1) setIsLoading(true);
+        if (page > 1) setIsLoadingMore(true);
+        setError(null);
+        try {
+            const token = await getToken();
+            const response = await axios.get<PaginatedResponse<AdminInspectionData>>(`${BASE_URL}/api/admin/all-inspections`, {
+                headers: { Authorization: `Bearer ${token}` },
+                params: { page, limit: 15, search, sortBy: sortCol, sortOrder: sortDir }
+            });
+            const { inspections: fetchedInspections = [], totalPages: fetchedTotalPages, page: fetchedPage, totalCount } = response.data;
+            setInspections(prev => (page === 1 ? fetchedInspections : [...prev, ...fetchedInspections]));
+            setTotalPages(fetchedTotalPages);
+            setCurrentPage(fetchedPage);
+            if (totalCount !== undefined) setTotalInspectionsCount(totalCount);
+        } catch (err: any) {
+            setError(err.response?.data?.message || "Failed to fetch inspection data.");
+        } finally {
+            setIsLoading(false);
+            setIsLoadingMore(false);
+            if (refreshing) setIsRefreshing(false);
+        }
+    }, [getToken, debouncedSearchQuery, sortBy, sortOrder]);
+    
+    useEffect(() => {
+        if (Platform.OS !== 'web') {
+            requestMediaLibraryPermission();
+        }
+        fetchData(1);
+    }, []);
+
+    useEffect(() => {
+        if (debouncedSearchQuery !== undefined || sortBy !== 'created_at' || sortOrder !== 'desc') {
+            fetchData(1);
+        }
+    }, [debouncedSearchQuery, sortBy, sortOrder]);
 
 
-// --- Interfaces for our data ---
-interface Prompt {
-    id: number;
-    prompt_name: string;
-    prompt_content: string;
-    is_locked: boolean;
-    locked_by: string | null;
-    username: string | null;
-    locked_at: string | null;
-}
+    const handleRefresh = useCallback(() => {
+        setIsRefreshing(true);
+        fetchData(1, searchQuery, sortBy, sortOrder, true);
+    }, [fetchData, searchQuery, sortBy, sortOrder]);
 
-interface PromptVersion {
-    id: number;
-    version: number;
-    prompt_content: string;
-    updated_by_username: string;
-    created_at: string;
-}
+    const handleLoadMore = () => {
+        if (!isLoadingMore && currentPage < totalPages) {
+            fetchData(currentPage + 1);
+        }
+    };
 
+    // Other handlers (handleSortChange, handleDownloadImage, etc.) from original component...
+    const handleSortChange = (newSortCol: string) => {
+        const newSortOrder = sortBy === newSortCol ? (sortOrder === 'asc' ? 'desc' : 'asc') : 'desc';
+        setSortBy(newSortCol);
+        setSortOrder(newSortOrder);
+    };
+
+    const handleDownloadImage = async (imageUrl: string | null) => {
+        if (!imageUrl) return Alert.alert("Error", "No image URL.");
+        const id = selectedInspection?.id || 'unknown';
+        if (Platform.OS === 'web') {
+            try {
+                const response = await fetch(imageUrl);
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `spediak_inspection_${id}.jpg`;
+                link.click();
+                window.URL.revokeObjectURL(url);
+            } catch (error) { Alert.alert("Error", "Failed to download image."); }
+        } else {
+            try {
+                const { status } = await requestMediaLibraryPermission();
+                if (status !== 'granted') return Alert.alert("Permission Denied", "Storage permission is required.");
+                const fileUri = FileSystem.documentDirectory + `spediak_inspection_${id}.jpg`;
+                const { uri } = await FileSystem.downloadAsync(imageUrl, fileUri);
+                await MediaLibrary.saveToLibraryAsync(uri);
+                Alert.alert("Success", "Image saved to gallery!");
+            } catch (error) { Alert.alert("Error", "Failed to save image."); }
+        }
+    };
+    
+    // JSX Rendering for All Inspections...
+    const renderInspectionItem = ({ item }: { item: AdminInspectionData }) => (
+        <View style={styles.cardContainer}>
+            <View style={styles.cardHeaderInfo}>
+                <View style={styles.userInfoRow}>
+                    {item.userProfilePhoto ? <Image source={{ uri: item.userProfilePhoto }} style={styles.userImageSmall} /> : <View style={styles.userImagePlaceholderSmall}><UserCircle size={20} color={COLORS.secondary} /></View>}
+                    <View style={styles.userInfoTextContainer}>
+                        <Text style={styles.cardUserText}>{item.userName || 'Unknown'}</Text>
+                        <Text style={styles.cardDetailText}>{item.userEmail} {item.userState ? `(${item.userState})` : ''}</Text>
+                    </View>
+                </View>
+                <Text style={styles.cardDateText}>{new Date(item.created_at).toLocaleString()}</Text>
+            </View>
+            <View style={styles.inspectionDetailsContainer}>
+                <TouchableOpacity onPress={() => { setFullScreenImageUrl(item.image_url); setSelectedInspection(item); setIsFullImageModalVisible(true); }}>
+                    <Image source={{ uri: getOptimizedImageUrl(item.image_url, 80, 80) }} style={styles.cardImage} />
+                </TouchableOpacity>
+                <View style={styles.inspectionTextContainer}>
+                    <Text style={styles.cardDescriptionLabel}>Description:</Text>
+                    <Text style={styles.cardDescriptionText} numberOfLines={1}>{item.description}</Text>
+                    <TouchableOpacity style={styles.viewReportButton} onPress={() => { setSelectedInspection(item); setIsModalVisible(true); }}>
+                        <Eye size={16} color={COLORS.primary} />
+                        <Text style={styles.viewReportButtonText}>View</Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+        </View>
+    );
+
+    if (isLoading && currentPage === 1) return <ActivityIndicator size="large" style={styles.loader} />;
+    if (error) return <Text style={styles.errorText}>{error}</Text>;
+
+    return (
+        <View style={{ flex: 1 }}>
+            <View style={styles.controlsContainer}>
+                <Text style={styles.totalCountText}>Total: {totalInspectionsCount}</Text>
+                <View style={styles.searchWrapper}>
+                    <Search size={18} color="#888" style={styles.searchIcon} />
+                    <TextInput style={styles.searchInput} placeholder="Search..." value={searchQuery} onChangeText={setSearchQuery} />
+                </View>
+                <TouchableOpacity onPress={() => handleSortChange('created_at')} style={styles.sortButton}>
+                    <Text style={styles.sortButtonText}>Date {sortBy === 'created_at' ? (sortOrder === 'asc' ? '▲' : '▼') : ''}</Text>
+                </TouchableOpacity>
+            </View>
+            <FlatList data={inspections} renderItem={renderInspectionItem} keyExtractor={item => item.id} onEndReached={handleLoadMore} onEndReachedThreshold={0.5} ListFooterComponent={isLoadingMore ? <ActivityIndicator /> : null} refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />} />
+            {selectedInspection && <DdidModal visible={isModalVisible} onClose={() => setIsModalVisible(false)} ddidText={selectedInspection.ddid} imageUri={selectedInspection.image_url} />}
+            {isFullImageModalVisible && <RNModal visible={isFullImageModalVisible} transparent={true} onRequestClose={() => setIsFullImageModalVisible(false)}><View style={styles.fullImageModalContainer}><TouchableOpacity style={styles.fullImageCloseButton} onPress={() => setIsFullImageModalVisible(false)}><XIcon size={30} color="#fff" /></TouchableOpacity><Image source={{ uri: fullScreenImageUrl || undefined }} style={styles.fullImage} resizeMode="contain" /><TouchableOpacity style={styles.downloadButtonFloating} onPress={() => handleDownloadImage(fullScreenImageUrl)}><Download size={24} color="#fff" /></TouchableOpacity></View></RNModal>}
+        </View>
+    );
+};
+
+// --- All Users Component ---
+const AllUsers: React.FC = () => {
+    // States and hooks from original component...
+    const [users, setUsers] = useState<UserData[]>([]);
+    const [isLoading, setIsLoading] = useState<boolean>(false);
+    const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+    const [error, setError] = useState<string | null>(null);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [currentPage, setCurrentPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
+    const [totalUsersCount, setTotalUsersCount] = useState<number>(0);
+    const [isLoadingMore, setIsLoadingMore] = useState(false);
+    const { getToken } = useAuth();
+    const debouncedSearchQuery = useDebounce(searchQuery, 500);
+
+    // Fetch users function from original component...
+    const fetchUsers = useCallback(async (page = 1, search = debouncedSearchQuery, refreshing = false) => {
+        if (!refreshing && page === 1) setIsLoading(true);
+        if (page > 1) setIsLoadingMore(true);
+        setError(null);
+        try {
+            const token = await getToken();
+            const response = await axios.get<PaginatedResponse<UserData>>(`${BASE_URL}/api/admin/all-users`, {
+                headers: { Authorization: `Bearer ${token}` },
+                params: { page, limit: 15, search }
+            });
+            const { users: fetchedUsers = [], totalPages: fetchedTotalPages, page: fetchedPage, totalCount } = response.data;
+            setUsers(prev => (page === 1 ? fetchedUsers : [...prev, ...fetchedUsers]));
+            setTotalPages(fetchedTotalPages);
+            setCurrentPage(fetchedPage);
+            if (totalCount !== undefined) setTotalUsersCount(totalCount);
+        } catch (err: any) {
+            setError(err.response?.data?.message || "Failed to fetch user data.");
+        } finally {
+            setIsLoading(false);
+            setIsLoadingMore(false);
+            if (refreshing) setIsRefreshing(false);
+        }
+    }, [getToken, debouncedSearchQuery]);
+
+    useEffect(() => {
+        fetchUsers(1);
+    }, [debouncedSearchQuery]);
+
+    const handleRefresh = useCallback(() => {
+        setIsRefreshing(true);
+        fetchUsers(1, searchQuery, true);
+    }, [fetchUsers, searchQuery]);
+
+    const handleLoadMore = () => {
+        if (!isLoadingMore && currentPage < totalPages) {
+            fetchUsers(currentPage + 1);
+        }
+    };
+    
+    const handleDeleteUser = async (userId: string) => {
+        Alert.alert("Confirm Deletion", "Are you sure you want to delete this user?", [
+            { text: "Cancel", style: "cancel" },
+            { text: "Delete", style: "destructive", onPress: async () => {
+                try {
+                    const token = await getToken();
+                    await axios.delete(`${BASE_URL}/api/admin/delete-user/${userId}`, { headers: { Authorization: `Bearer ${token}` } });
+                    Alert.alert("Success", "User deleted.");
+                    fetchUsers(1);
+                } catch (err: any) {
+                    Alert.alert("Error", err.response?.data?.message || "Failed to delete user.");
+                }
+            }}
+        ]);
+    };
+    
+    // JSX Rendering for All Users...
+    const renderUserItem = ({ item }: { item: UserData }) => (
+        <View style={styles.userCard}>
+            <View style={styles.userCardContent}>
+                {item.profilePhoto ? <Image source={{ uri: item.profilePhoto }} style={styles.userImage} /> : <View style={styles.userImagePlaceholder}><UserCircle size={40} color={COLORS.secondary} /></View>}
+                <View style={styles.userInfo}>
+                    <Text style={styles.userNameText}>{item.name || 'N/A'}</Text>
+                    <Text style={styles.userEmailText}>{item.email}</Text>
+                    <Text style={styles.userMetaText}>Inspections: {item.inspectionCount || 0}</Text>
+                </View>
+                <TouchableOpacity onPress={() => handleDeleteUser(item.id)} style={styles.deleteButton}><Trash2 size={24} color={COLORS.danger} /></TouchableOpacity>
+            </View>
+        </View>
+    );
+
+    if (isLoading && currentPage === 1) return <ActivityIndicator size="large" style={styles.loader} />;
+    if (error) return <Text style={styles.errorText}>{error}</Text>;
+    
+    return (
+        <View style={{ flex: 1 }}>
+            <View style={styles.userControlsContainer}>
+                <Text style={styles.totalCountText}>Total: {totalUsersCount}</Text>
+                <View style={styles.searchWrapperUsers}>
+                    <Search size={18} color="#888" style={styles.searchIcon} />
+                    <TextInput style={styles.searchInput} placeholder="Search..." value={searchQuery} onChangeText={setSearchQuery} />
+                </View>
+            </View>
+            <FlatList data={users} renderItem={renderUserItem} keyExtractor={item => item.id} onEndReached={handleLoadMore} onEndReachedThreshold={0.5} ListFooterComponent={isLoadingMore ? <ActivityIndicator /> : null} refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />} />
+        </View>
+    );
+};
+
+// --- Prompt Editor Component (NEW) ---
 const PromptEditor = () => {
+    // States and hooks from new implementation...
     const { getToken, userId } = useAuth();
     const [prompts, setPrompts] = useState<Prompt[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -53,77 +303,44 @@ const PromptEditor = () => {
     const [isSaving, setIsSaving] = useState(false);
     const [isLockedForEditing, setIsLockedForEditing] = useState(false);
     const [lockedByOther, setLockedByOther] = useState<string | null>(null);
-
     const [historyModalVisible, setHistoryModalVisible] = useState(false);
     const [selectedPromptHistory, setSelectedPromptHistory] = useState<PromptVersion[]>([]);
     const [selectedPromptForHistory, setSelectedPromptForHistory] = useState<Prompt | null>(null);
-
-    const checkLockStatus = useCallback(async () => {
-        try {
-            const token = await getToken();
-            const response = await api.get('/admin/prompts', { headers: { Authorization: `Bearer ${token}` } });
-            const serverPrompts = response.data as Prompt[];
-            
-            const aPromptIsLocked = serverPrompts.some(p => p.is_locked);
-            const lockedByMe = serverPrompts.some(p => p.is_locked && p.locked_by === userId);
-            const lockedPrompt = serverPrompts.find(p => p.is_locked && p.locked_by !== userId);
-            
-            setIsLockedForEditing(aPromptIsLocked);
-
-            if (!lockedByMe && lockedPrompt) {
-                setLockedByOther(lockedPrompt.username);
-            } else {
-                setLockedByOther(null);
-            }
-            // Only update prompts if they are not being actively edited by the user to avoid losing changes
-            if (!lockedByMe) {
-                setPrompts(serverPrompts);
-            }
-
-        } catch (err) {
-            setError('Failed to check lock status.');
-        }
-    }, [getToken, userId]);
-
-
-    useEffect(() => {
-        fetchPrompts();
-        const lockInterval = setInterval(checkLockStatus, 5000); // Poll every 5 seconds
-        return () => clearInterval(lockInterval);
-    }, [checkLockStatus]);
-
-    const fetchPrompts = async () => {
-        setIsLoading(true);
+    
+    // Functions (fetchPrompts, handleLockToggle, etc.) from new implementation...
+    const fetchPrompts = useCallback(async () => {
+        if (!isLoading) setIsLoading(true);
         try {
             const token = await getToken();
             const response = await api.get('/admin/prompts', { headers: { Authorization: `Bearer ${token}` } });
             setPrompts(response.data as Prompt[]);
+            const lockedPrompt = (response.data as Prompt[]).find(p => p.is_locked);
+            setIsLockedForEditing(!!lockedPrompt);
+            setLockedByOther(lockedPrompt && lockedPrompt.locked_by !== userId ? lockedPrompt.username : null);
             setError(null);
         } catch (err) {
-            setError('Failed to fetch prompts. Please try again later.');
+            setError('Failed to fetch prompts.');
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [getToken, userId, isLoading]);
+
+    useEffect(() => {
+        fetchPrompts();
+        const interval = setInterval(fetchPrompts, 5000); // Poll for lock status
+        return () => clearInterval(interval);
+    }, []);
 
     const handleLockToggle = async (value: boolean) => {
         const action = value ? 'lock' : 'unlock';
-        const promptToToggle = prompts[0] || prompts[1]; // Use any available prompt
-        if (!promptToToggle) return;
-
         try {
             const token = await getToken();
-            // We lock/unlock ALL prompts in one go. We use the first prompt's ID as the representative.
-            // The backend logic should be designed to handle this, e.g., locking all prompts.
-            // For this implementation, we will lock/unlock each one.
-            const lockPromises = prompts.map(p => 
-                api.post(`/admin/prompts/${p.id}/${action}`, {}, { headers: { Authorization: `Bearer ${token}` } })
-            );
-            await Promise.all(lockPromises);
-            await fetchPrompts();
+            const promises = prompts.map(p => api.post(`/admin/prompts/${p.id}/${action}`, {}, { headers: { Authorization: `Bearer ${token}` } }));
+            await Promise.all(promises);
+            fetchPrompts();
         } catch (err: any) {
             Alert.alert('Error', err.response?.data?.message || `Failed to ${action} prompts.`);
-            await fetchPrompts();
+            fetchPrompts();
         }
     };
     
@@ -131,25 +348,19 @@ const PromptEditor = () => {
         setIsSaving(true);
         try {
             const token = await getToken();
-            const updatePromises = prompts.map(p => 
-                api.post('/admin/prompts/update', { id: p.id, prompt_content: p.prompt_content }, { headers: { Authorization: `Bearer ${token}` } })
-            );
-            await Promise.all(updatePromises);
-            Alert.alert('Success', 'All prompts have been saved.');
-            // After saving, unlock the prompts
-            await handleLockToggle(false);
+            const promises = prompts.map(p => api.post('/admin/prompts/update', { id: p.id, prompt_content: p.prompt_content }, { headers: { Authorization: `Bearer ${token}` } }));
+            await Promise.all(promises);
+            Alert.alert('Success', 'Prompts saved.');
+            handleLockToggle(false); // Unlock after saving
         } catch (err) {
-            setError('Failed to save prompts.');
-            Alert.alert('Error', 'An error occurred while saving.');
+            Alert.alert('Error', 'Failed to save prompts.');
         } finally {
             setIsSaving(false);
         }
     };
-    
+
     const handleContentChange = (text: string, id: number) => {
-        setPrompts(currentPrompts =>
-            currentPrompts.map(p => (p.id === id ? { ...p, prompt_content: text } : p))
-        );
+        setPrompts(current => current.map(p => (p.id === id ? { ...p, prompt_content: text } : p)));
     };
 
     const viewHistory = async (prompt: Prompt) => {
@@ -160,7 +371,7 @@ const PromptEditor = () => {
             setSelectedPromptForHistory(prompt);
             setHistoryModalVisible(true);
         } catch (err) {
-            Alert.alert('Error', 'Failed to fetch prompt history.');
+            Alert.alert('Error', 'Failed to fetch history.');
         }
     };
 
@@ -168,105 +379,68 @@ const PromptEditor = () => {
         if (!selectedPromptForHistory) return;
         try {
             const token = await getToken();
-            await api.post('/admin/prompts/restore', {
-                prompt_id: selectedPromptForHistory.id,
-                version_id: versionId
-            }, { headers: { Authorization: `Bearer ${token}` } });
-            
-            Alert.alert('Success', 'Prompt has been restored.');
+            await api.post('/admin/prompts/restore', { prompt_id: selectedPromptForHistory.id, version_id: versionId }, { headers: { Authorization: `Bearer ${token}` } });
+            Alert.alert('Success', 'Version restored.');
             setHistoryModalVisible(false);
             fetchPrompts();
         } catch (err) {
-            Alert.alert('Error', 'Failed to restore prompt version.');
+            Alert.alert('Error', 'Failed to restore version.');
         }
     };
-
-    if (isLoading) return <ActivityIndicator size="large" style={{ marginTop: 20 }} />;
+    
+    // JSX Rendering for Prompt Editor...
+    if (isLoading) return <ActivityIndicator size="large" style={styles.loader} />;
     if (error) return <Text style={styles.errorText}>{error}</Text>;
 
     const isLockedByMe = prompts.some(p => p.is_locked && p.locked_by === userId);
-    const canEdit = isLockedByMe;
-
+    
     return (
-        <ScrollView style={styles.container}>
+        <ScrollView style={styles.promptEditorContainer}>
             <View style={styles.lockContainer}>
                 <Text style={styles.lockLabel}>Lock for Editing</Text>
-                <Switch
-                    value={isLockedForEditing}
-                    onValueChange={handleLockToggle}
-                    disabled={!!lockedByOther}
-                />
+                <Switch value={isLockedForEditing} onValueChange={handleLockToggle} disabled={!!lockedByOther} />
             </View>
             {lockedByOther && <Text style={styles.lockedByText}>Locked by: {lockedByOther}</Text>}
-
             {prompts.map(prompt => (
                 <View key={prompt.id} style={styles.promptCard}>
-                    <Text style={styles.promptTitle}>{prompt.prompt_name.replace(/_/g, ' ').replace('prompt', 'Prompt')}</Text>
-                    <TextInput
-                        style={[styles.textInput, !canEdit && styles.disabledInput]}
-                        value={prompt.prompt_content}
-                        onChangeText={(text) => handleContentChange(text, prompt.id)}
-                        multiline
-                        editable={canEdit}
-                    />
-                    <TouchableOpacity style={styles.historyButton} onPress={() => viewHistory(prompt)}>
-                        <Text style={styles.historyButtonText}>View History</Text>
-                    </TouchableOpacity>
+                    <Text style={styles.promptTitle}>{prompt.prompt_name.replace(/_/g, ' ')}</Text>
+                    <TextInput style={[styles.textInput, !isLockedByMe && styles.disabledInput]} value={prompt.prompt_content} onChangeText={text => handleContentChange(text, prompt.id)} multiline editable={isLockedByMe} />
+                    <TouchableOpacity style={styles.historyButton} onPress={() => viewHistory(prompt)}><Text style={styles.historyButtonText}>View History</Text></TouchableOpacity>
                 </View>
             ))}
-
-            <TouchableOpacity
-                style={[styles.saveButton, (!canEdit || isSaving) && styles.disabledButton]}
-                onPress={onSave}
-                disabled={!canEdit || isSaving}
-            >
+            <TouchableOpacity style={[styles.saveButton, !isLockedByMe && styles.disabledButton]} onPress={onSave} disabled={!isLockedByMe || isSaving}>
                 {isSaving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveButtonText}>Save Changes</Text>}
             </TouchableOpacity>
-
-            <HistoryModal 
-                visible={historyModalVisible}
-                onClose={() => setHistoryModalVisible(false)}
-                history={selectedPromptHistory}
-                onRestore={restoreVersion}
-                promptName={selectedPromptForHistory?.prompt_name || ''}
-            />
+            {historyModalVisible && <HistoryModal visible={historyModalVisible} onClose={() => setHistoryModalVisible(false)} history={selectedPromptHistory} onRestore={restoreVersion} promptName={selectedPromptForHistory?.prompt_name || ''} />}
         </ScrollView>
     );
 };
 
-const HistoryModal = ({ visible, onClose, history, onRestore, promptName }: { visible: boolean, onClose: () => void, history: PromptVersion[], onRestore: (versionId: number) => void, promptName: string }) => {
-    return (
-        <RNModal
-            animationType="slide"
-            transparent={true}
-            visible={visible}
-            onRequestClose={onClose}
-        >
-            <View style={styles.centeredView}>
-                <View style={styles.modalView}>
-                    <Text style={styles.modalTitle}>History for {promptName.replace(/_/g, ' ')}</Text>
-                    <ScrollView>
-                        {history.map(item => (
-                            <View key={item.id} style={styles.historyItem}>
-                                <Text style={styles.historyVersion}>Version {item.version}</Text>
-                                <Text style={styles.historyUser}>By: {item.updated_by_username} on {format(new Date(item.created_at), 'MMM d, yyyy - h:mm a')}</Text>
-                                <Text style={styles.historyContent}>{item.prompt_content}</Text>
-                                <TouchableOpacity style={styles.restoreButton} onPress={() => onRestore(item.id)}>
-                                    <Text style={styles.restoreButtonText}>Restore this Version</Text>
-                                </TouchableOpacity>
-                            </View>
-                        ))}
-                    </ScrollView>
-                    <TouchableOpacity style={styles.closeButton} onPress={onClose}>
-                        <Text style={styles.closeButtonText}>Close</Text>
-                    </TouchableOpacity>
-                </View>
+// --- History Modal Component ---
+const HistoryModal = ({ visible, onClose, history, onRestore, promptName }: { visible: boolean, onClose: () => void, history: PromptVersion[], onRestore: (versionId: number) => void, promptName: string }) => (
+    <RNModal visible={visible} transparent={true} onRequestClose={onClose}>
+        <View style={styles.centeredView}>
+            <View style={styles.modalView}>
+                <Text style={styles.modalTitle}>History for {promptName.replace(/_/g, ' ')}</Text>
+                <ScrollView>
+                    {history.map(item => (
+                        <View key={item.id} style={styles.historyItem}>
+                            <Text>Version {item.version} by {item.updated_by_username} on {format(new Date(item.created_at), 'Pp')}</Text>
+                            <Text>{item.prompt_content}</Text>
+                            <TouchableOpacity onPress={() => onRestore(item.id)}><Text>Restore</Text></TouchableOpacity>
+                        </View>
+                    ))}
+                </ScrollView>
+                <TouchableOpacity onPress={onClose}><Text>Close</Text></TouchableOpacity>
             </View>
-        </RNModal>
-    );
-}
+        </View>
+    </RNModal>
+);
 
+// --- Main Admin Dashboard Screen ---
+const Tab = createMaterialTopTabNavigator();
 const AdminDashboardScreen = () => {
+    // Hooks for tab locking...
     const { getToken, userId } = useAuth();
     const [isPromptEditorLocked, setIsPromptEditorLocked] = useState(false);
     const [promptLocker, setPromptLocker] = useState<string | null>(null);
@@ -276,24 +450,15 @@ const AdminDashboardScreen = () => {
             const token = await getToken();
             const response = await api.get('/admin/prompts', { headers: { Authorization: `Bearer ${token}` } });
             const serverPrompts = response.data as Prompt[];
-            const aPromptIsLocked = serverPrompts.some(p => p.is_locked);
-            
-            if (aPromptIsLocked) {
-                const lockedPrompt = serverPrompts.find(p => p.is_locked);
-                if (lockedPrompt && lockedPrompt.locked_by !== userId) {
-                    setIsPromptEditorLocked(true);
-                    setPromptLocker(lockedPrompt.username);
-                } else {
-                    setIsPromptEditorLocked(false);
-                    setPromptLocker(null);
-                }
+            const lockedPrompt = serverPrompts.find(p => p.is_locked);
+            if (lockedPrompt && lockedPrompt.locked_by !== userId) {
+                setIsPromptEditorLocked(true);
+                setPromptLocker(lockedPrompt.username);
             } else {
                 setIsPromptEditorLocked(false);
                 setPromptLocker(null);
             }
-        } catch (error) {
-            console.error("Could not check prompt lock status for tabs:", error);
-        }
+        } catch (error) { console.error("Could not check prompt lock status for tabs:", error); }
     }, [getToken, userId]);
 
     useEffect(() => {
@@ -303,62 +468,76 @@ const AdminDashboardScreen = () => {
     }, [checkLockStatusForTabs]);
 
     return (
-        <Tab.Navigator
-            screenOptions={{
-                tabBarActiveTintColor: '#007AFF',
-                tabBarInactiveTintColor: 'gray',
-                tabBarIndicatorStyle: { backgroundColor: '#007AFF', height: 2 },
-                tabBarLabelStyle: { fontSize: 14, fontWeight: '600' },
-            }}
-        >
+        <Tab.Navigator screenOptions={{ tabBarActiveTintColor: COLORS.primary, tabBarInactiveTintColor: 'gray' }}>
             <Tab.Screen name="All Inspections" component={AllInspections} />
             <Tab.Screen name="All Users" component={AllUsers} />
-            <Tab.Screen 
-                name="Prompt Editor" 
-                component={PromptEditor}
-                options={{
-                    tabBarLabel: isPromptEditorLocked ? `Prompt Editor (Locked)` : 'Prompt Editor',
-                }}
-                listeners={{
-                    tabPress: (e: { preventDefault: () => void }) => {
-                        if (isPromptEditorLocked) {
-                            e.preventDefault();
-                            Alert.alert('Locked', `The prompt editor is currently being edited by ${promptLocker}.`);
-                        }
-                    }
-                }}
-            />
+            <Tab.Screen name="Prompt Editor" component={PromptEditor} listeners={{ tabPress: e => { if (isPromptEditorLocked) { e.preventDefault(); Alert.alert('Locked', `Locked by ${promptLocker}.`); } } }} options={{ tabBarLabel: isPromptEditorLocked ? `Prompt Editor (Locked)` : 'Prompt Editor' }} />
         </Tab.Navigator>
     );
 };
 
+// --- Styles ---
 const styles = StyleSheet.create({
-    container: { flex: 1, padding: 16, backgroundColor: '#f8f9fa' },
-    lockContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#fff', padding: 16, borderRadius: 8, marginBottom: 16, borderWidth: 1, borderColor: '#dee2e6' },
-    lockLabel: { fontSize: 18, fontWeight: '600' },
-    lockedByText: { textAlign: 'center', color: 'red', marginBottom: 16, fontWeight: 'bold' },
-    promptCard: { marginBottom: 20, backgroundColor: '#ffffff', borderRadius: 8, padding: 16, borderWidth: 1, borderColor: '#e9ecef' },
-    promptTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 12, color: '#343a40' },
-    textInput: { height: 200, borderWidth: 1, borderColor: '#ced4da', borderRadius: 4, padding: 10, textAlignVertical: 'top', backgroundColor: '#fff', fontSize: 14, marginBottom: 12 },
-    disabledInput: { backgroundColor: '#e9ecef' },
-    saveButton: { backgroundColor: '#28a745', paddingVertical: 15, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginTop: 10, marginBottom: 40 },
-    disabledButton: { backgroundColor: '#6c757d' },
-    saveButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
-    errorText: { color: 'red', textAlign: 'center', marginTop: 20 },
-    historyButton: { backgroundColor: '#007bff', padding: 10, borderRadius: 5, alignItems: 'center' },
-    historyButtonText: { color: '#fff', fontWeight: 'bold' },
-    centeredView: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: 'rgba(0,0,0,0.5)' },
-    modalView: { margin: 20, backgroundColor: "white", borderRadius: 20, padding: 35, alignItems: "center", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 4, elevation: 5, width: '90%', maxHeight: '80%' },
-    modalTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 15 },
-    historyItem: { borderBottomWidth: 1, borderBottomColor: '#ccc', paddingVertical: 10, width: '100%' },
-    historyVersion: { fontSize: 16, fontWeight: 'bold' },
-    historyUser: { fontStyle: 'italic', color: '#555', marginBottom: 5 },
-    historyContent: { color: '#333' },
-    restoreButton: { backgroundColor: '#ffc107', padding: 8, borderRadius: 5, marginTop: 10, alignItems: 'center' },
-    restoreButtonText: { color: '#000', fontWeight: 'bold' },
-    closeButton: { backgroundColor: '#dc3545', padding: 12, borderRadius: 10, marginTop: 20 },
-    closeButtonText: { color: 'white', fontWeight: 'bold' },
-    placeholderContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' }
+    loader: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    errorText: { color: 'red', textAlign: 'center', margin: 20 },
+    // All Inspections & All Users Styles...
+    cardContainer: { backgroundColor: '#fff', borderRadius: 8, marginVertical: 8, padding: 16 },
+    cardHeaderInfo: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+    userInfoRow: { flexDirection: 'row', alignItems: 'center' },
+    userImageSmall: { width: 30, height: 30, borderRadius: 15, marginRight: 8 },
+    userImagePlaceholderSmall: { width: 30, height: 30, borderRadius: 15, backgroundColor: '#eee', justifyContent: 'center', alignItems: 'center', marginRight: 8 },
+    userInfoTextContainer: { flex: 1 },
+    cardUserText: { fontWeight: 'bold' },
+    cardDetailText: { fontSize: 12, color: 'gray' },
+    cardDateText: { fontSize: 12, color: 'gray' },
+    inspectionDetailsContainer: { flexDirection: 'row', paddingTop: 8, borderTopWidth: 1, borderTopColor: '#eee' },
+    cardImage: { width: 80, height: 80, borderRadius: 4, marginRight: 12 },
+    inspectionTextContainer: { flex: 1 },
+    cardDescriptionLabel: { fontSize: 12, color: 'gray' },
+    cardDescriptionText: {},
+    viewReportButton: { marginTop: 8, flexDirection: 'row', alignItems: 'center' },
+    viewReportButtonText: { marginLeft: 4, color: COLORS.primary },
+    controlsContainer: { flexDirection: 'row', padding: 16, alignItems: 'center' },
+    totalCountText: { marginRight: 16 },
+    searchWrapper: { flex: 1, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#ccc', borderRadius: 8, paddingHorizontal: 8 },
+    searchIcon: { marginRight: 8 },
+    searchInput: { flex: 1, height: 40 },
+    sortButton: { marginLeft: 16 },
+    sortButtonText: { color: COLORS.primary },
+    fullImageModalContainer: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', alignItems: 'center' },
+    fullImageCloseButton: { position: 'absolute', top: 40, right: 20, zIndex: 1 },
+    fullImage: { width: '90%', height: '90%' },
+    downloadButtonFloating: { position: 'absolute', bottom: 40, right: 20, zIndex: 1 },
+    userCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 8, marginVertical: 8, padding: 16 },
+    userCardContent: { flex: 1, flexDirection: 'row', alignItems: 'center' },
+    userImage: { width: 50, height: 50, borderRadius: 25, marginRight: 12 },
+    userImagePlaceholder: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#eee', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+    userInfo: { flex: 1 },
+    userNameText: { fontWeight: 'bold' },
+    userEmailText: { color: 'gray' },
+    userMetaText: { color: 'gray' },
+    deleteButton: {},
+    userControlsContainer: { flexDirection: 'row', padding: 16, alignItems: 'center' },
+    searchWrapperUsers: { flex: 1, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#ccc', borderRadius: 8, paddingHorizontal: 8 },
+    // Prompt Editor Styles...
+    promptEditorContainer: { flex: 1, padding: 16 },
+    lockContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, backgroundColor: '#fff', borderRadius: 8, marginBottom: 16 },
+    lockLabel: { fontSize: 18, fontWeight: 'bold' },
+    lockedByText: { textAlign: 'center', color: 'red', marginBottom: 16 },
+    promptCard: { backgroundColor: '#fff', borderRadius: 8, padding: 16, marginBottom: 16 },
+    promptTitle: { fontSize: 16, fontWeight: 'bold', marginBottom: 8 },
+    textInput: { height: 150, borderWidth: 1, borderColor: '#ccc', borderRadius: 4, padding: 8, marginBottom: 8 },
+    disabledInput: { backgroundColor: '#eee' },
+    historyButton: { alignItems: 'center', padding: 8, backgroundColor: '#007bff', borderRadius: 4 },
+    historyButtonText: { color: '#fff' },
+    saveButton: { alignItems: 'center', padding: 16, backgroundColor: '#28a745', borderRadius: 8 },
+    saveButtonText: { color: '#fff', fontWeight: 'bold' },
+    disabledButton: { backgroundColor: 'gray' },
+    // History Modal Styles...
+    centeredView: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' },
+    modalView: { width: '90%', backgroundColor: 'white', borderRadius: 8, padding: 16 },
+    modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 16 },
+    historyItem: { marginBottom: 16, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: '#eee' },
 });
 
 export default AdminDashboardScreen;
