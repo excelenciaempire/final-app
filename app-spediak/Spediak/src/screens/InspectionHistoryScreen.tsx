@@ -191,7 +191,8 @@ export default function InspectionHistoryScreen() {
         });
 
         return unsubscribe;
-    }, [navigation, fetchInspections]); // Removed fetchInspections from dependency array to avoid re-triggering on its own change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [navigation]); // Removed fetchInspections from dependency array to avoid re-triggering on its own change
 
     // --- Pull to Refresh Logic ---
     const onRefresh = useCallback(async () => {
