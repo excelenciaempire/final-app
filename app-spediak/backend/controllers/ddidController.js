@@ -49,4 +49,4 @@ Generate the DDID statement now.
   }
 };
 
-module.exports = { generateDdidController };
+module.exports = { generateDdid: generateDdidController };

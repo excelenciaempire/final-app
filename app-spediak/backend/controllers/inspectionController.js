@@ -115,7 +115,7 @@ const deleteInspection = async (req, res) => {
 };
 
 module.exports = {
-  getInspections,
+  getInspectionHistory: getInspections,
   createInspection,
   deleteInspection,
 };
