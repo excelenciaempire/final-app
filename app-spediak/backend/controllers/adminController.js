@@ -246,7 +246,7 @@ const deleteUser = async (req, res) => {
 };
 
 module.exports = {
-  getAllInspectionsWithUserDetails,
+  getAllInspeactions: getAllInspectionsWithUserDetails,
   getAllUsers,
   exportUsersCsv, // Replaced downloadDatabaseBackup
   deleteUser, 
