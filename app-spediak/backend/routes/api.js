@@ -24,7 +24,7 @@ router.post('/generate-pre-description', generatePreDescription);
 router.post('/generate-ddid', generateDdid);
 
 // Route to get inspection history for the logged-in user
-router.get('/inspection-history', getInspectionHistory);
+router.get('/inspections', getInspectionHistory);
 
 // Route to get the primary email of the logged-in user
 router.get('/user-email', getPrimaryEmail);
