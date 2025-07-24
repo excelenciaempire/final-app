@@ -65,4 +65,4 @@ Generate the preliminary description now.
   }
 };
 
-module.exports = { generatePreDescriptionController }; 
+module.exports = { generatePreDescription: generatePreDescriptionController }; 
