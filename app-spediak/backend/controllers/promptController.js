@@ -3,7 +3,20 @@ const pool = require('../db');
 // Controller to get the current prompts, including their lock status
 const getPrompts = async (req, res) => {
     try {
-        const result = await pool.query('SELECT id, prompt_name, prompt_content, is_locked, locked_by, username, locked_at FROM prompts ORDER BY id');
+        const query = `
+            SELECT 
+                p.id, 
+                p.prompt_name, 
+                p.prompt_content, 
+                p.is_locked, 
+                p.locked_by, 
+                u.username, 
+                p.locked_at 
+            FROM prompts p
+            LEFT JOIN users u ON p.locked_by = u.id
+            ORDER BY p.id
+        `;
+        const result = await pool.query(query);
         res.status(200).json(result.rows);
     } catch (error) {
         console.error('Error fetching prompts from database:', error);
