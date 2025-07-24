@@ -2,7 +2,7 @@ const { Pool } = require('pg');
 require('dotenv').config(); // To load environment variables from a .env file
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL, // Your Neon connection string
+  connectionString: "postgresql://neondb_owner:npg_Hvm0Vl9YEqhn0ep-raspy-thunder-a4e1uopm-pooler.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require", // Your Neon connection string
   ssl: {
     rejectUnauthorized: false // Adjust SSL settings as per Neon's recommendations if needed
   }

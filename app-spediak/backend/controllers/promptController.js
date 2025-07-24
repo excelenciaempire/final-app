@@ -1,5 +1,29 @@
 const pool = require('../db');
 
+// --- Helper to ensure the prompt_versions table exists ---
+const ensurePromptVersionsTableExists = async () => {
+    const query = `
+        CREATE TABLE IF NOT EXISTS prompt_versions (
+            id SERIAL PRIMARY KEY,
+            prompt_id INTEGER REFERENCES prompts(id) ON DELETE CASCADE,
+            version INTEGER NOT NULL,
+            prompt_content TEXT NOT NULL,
+            updated_by_clerk_id VARCHAR(255),
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT unique_prompt_version UNIQUE (prompt_id, version)
+        );
+    `;
+    try {
+        await pool.query(query);
+        console.log('Ensured prompt_versions table exists.');
+    } catch (error) {
+        console.error('Error ensuring prompt_versions table exists:', error);
+        // Depending on the app's needs, you might want to exit if the table can't be created
+        process.exit(1);
+    }
+};
+
+
 // Controller to get the current prompts, including their lock status
 const getPrompts = async (req, res) => {
     try {
@@ -27,9 +51,9 @@ const getPrompts = async (req, res) => {
 // Controller to update a prompt and create a version history
 const updatePrompts = async (req, res) => {
     const { id, prompt_content } = req.body;
-    const { userId, username } = req.auth; // Assuming Clerk middleware provides this
+    const { userId } = req.auth; // Only need userId from auth
 
-    if (!id || !prompt_content) {
+    if (!id || prompt_content === undefined) {
         return res.status(400).json({ message: 'Prompt ID and content are required.' });
     }
 
@@ -38,27 +62,37 @@ const updatePrompts = async (req, res) => {
     try {
         await client.query('BEGIN');
 
-        // Check if the prompt is locked by another user
+        // Step 1: Check if the prompt is locked by another user
         const lockResult = await client.query('SELECT is_locked, locked_by FROM prompts WHERE id = $1', [id]);
+        if (lockResult.rows.length === 0) {
+            return res.status(404).json({ message: 'Prompt not found.' });
+        }
         if (lockResult.rows[0].is_locked && lockResult.rows[0].locked_by !== userId) {
+            await client.query('ROLLBACK');
             return res.status(409).json({ message: 'This prompt is currently locked by another admin.' });
         }
 
-        // Get the current version number to increment it
+        // Step 2: Get the old prompt content to save in history
+        const oldPromptResult = await client.query('SELECT prompt_content FROM prompts WHERE id = $1', [id]);
+        const oldPromptContent = oldPromptResult.rows[0].prompt_content;
+        
+        // Prevent creating a history entry if content hasn't changed
+        if (oldPromptContent === prompt_content) {
+            await client.query('ROLLBACK');
+            return res.status(200).json({ message: 'No changes detected.' });
+        }
+
+        // Step 3: Get the next version number
         const versionResult = await client.query('SELECT COUNT(*) as version FROM prompt_versions WHERE prompt_id = $1', [id]);
         const newVersion = parseInt(versionResult.rows[0].version, 10) + 1;
 
-        // Get the old prompt content to save in history
-        const oldPromptResult = await client.query('SELECT prompt_content FROM prompts WHERE id = $1', [id]);
-        const oldPromptContent = oldPromptResult.rows[0].prompt_content;
-
-        // Insert the old version into the history table
+        // Step 4: Insert the old version into the history table
         await client.query(
-            'INSERT INTO prompt_versions (prompt_id, version, prompt_content, updated_by_id, updated_by_username) VALUES ($1, $2, $3, $4, $5)',
-            [id, newVersion, oldPromptContent, userId, username]
+            'INSERT INTO prompt_versions (prompt_id, version, prompt_content, updated_by_clerk_id) VALUES ($1, $2, $3, $4)',
+            [id, newVersion, oldPromptContent, userId]
         );
 
-        // Update the prompt with the new content
+        // Step 5: Update the prompt with the new content
         await client.query(
             'UPDATE prompts SET prompt_content = $1, updated_at = NOW() WHERE id = $2',
             [prompt_content, id]
@@ -130,13 +164,26 @@ const getPromptHistory = async (req, res) => {
     const { id } = req.params;
 
     try {
-        const result = await pool.query(
-            'SELECT id, version, prompt_content, updated_by_username, created_at FROM prompt_versions WHERE prompt_id = $1 ORDER BY version DESC',
-            [id]
-        );
+        const query = `
+            SELECT 
+                pv.id, 
+                pv.version, 
+                pv.prompt_content, 
+                COALESCE(u.username, 'Unknown User') as updated_by_username, 
+                pv.created_at 
+            FROM prompt_versions pv
+            LEFT JOIN users u ON pv.updated_by_clerk_id = u.clerk_id
+            WHERE pv.prompt_id = $1 
+            ORDER BY pv.version DESC
+        `;
+        const result = await pool.query(query, [id]);
         res.status(200).json(result.rows);
     } catch (error) {
         console.error('Error fetching prompt history:', error);
+        // Check for a specific error type, e.g., table not found
+        if (error.code === '42P01') { // 'undefined_table' error code in PostgreSQL
+             return res.status(200).json([]); // Return empty history if table doesn't exist yet
+        }
         res.status(500).json({ message: 'Failed to fetch prompt history.' });
     }
 };
@@ -144,7 +191,7 @@ const getPromptHistory = async (req, res) => {
 // Controller to restore a specific version of a prompt
 const restorePromptVersion = async (req, res) => {
     const { prompt_id, version_id } = req.body;
-    const { userId, username } = req.auth;
+    const { userId } = req.auth;
 
     if (!prompt_id || !version_id) {
         return res.status(400).json({ message: 'Prompt ID and Version ID are required.' });
@@ -171,8 +218,8 @@ const restorePromptVersion = async (req, res) => {
 
         // Add the current state to history before restoring the old one
         await client.query(
-            'INSERT INTO prompt_versions (prompt_id, version, prompt_content, updated_by_id, updated_by_username) VALUES ($1, $2, $3, $4, $5)',
-            [prompt_id, newVersion, currentContent, userId, username]
+            'INSERT INTO prompt_versions (prompt_id, version, prompt_content, updated_by_clerk_id) VALUES ($1, $2, $3, $4)',
+            [prompt_id, newVersion, currentContent, userId]
         );
 
         // Update the main prompt with the restored content
@@ -192,6 +239,7 @@ const restorePromptVersion = async (req, res) => {
 
 
 module.exports = {
+    ensurePromptVersionsTableExists,
     getPrompts,
     updatePrompts,
     lockPrompt,

@@ -5,11 +5,15 @@ const apiRoutes = require('./routes/api');
 const adminRoutes = require('./routes/adminRoutes'); // Import admin routes
 const { handleClerkWebhook } = require('./controllers/webhookController');
 const promptRoutes = require('./routes/promptRoutes');
+const { ensurePromptVersionsTableExists } = require('./controllers/promptController');
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+
+// Call the function to ensure the table exists on startup
+ensurePromptVersionsTableExists();
 
 // Configuración de CORS
 const allowedOrigins = [

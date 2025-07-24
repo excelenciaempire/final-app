@@ -308,28 +308,47 @@ const PromptEditor = () => {
     const [selectedPromptForHistory, setSelectedPromptForHistory] = useState<Prompt | null>(null);
     
     // Functions (fetchPrompts, handleLockToggle, etc.) from new implementation...
-    const fetchPrompts = useCallback(async () => {
-        if (!isLoading) setIsLoading(true);
+    const fetchPromptsData = useCallback(async (isPolling = false) => {
+        if (!isPolling) setIsLoading(true);
         try {
             const token = await getToken();
             const response = await api.get('/admin/prompts', { headers: { Authorization: `Bearer ${token}` } });
-            setPrompts(response.data as Prompt[]);
-            const lockedPrompt = (response.data as Prompt[]).find(p => p.is_locked);
-            setIsLockedForEditing(!!lockedPrompt);
-            setLockedByOther(lockedPrompt && lockedPrompt.locked_by !== userId ? lockedPrompt.username : null);
+            const serverPrompts = response.data as Prompt[];
+
+            // If we are polling, we don't want to overwrite local changes if the user is editing.
+            const isCurrentlyLockedByMe = prompts.some(p => p.is_locked && p.locked_by === userId);
+            if (isPolling && isCurrentlyLockedByMe) {
+                const lockedPrompt = serverPrompts.find(p => p.is_locked);
+                // Only update lock status from polling, not content
+                setIsLockedForEditing(!!lockedPrompt);
+                setLockedByOther(lockedPrompt && lockedPrompt.locked_by !== userId ? lockedPrompt.username : null);
+            } else {
+                // Full update on initial load or if not editing
+                setPrompts(serverPrompts);
+                const lockedPrompt = serverPrompts.find(p => p.is_locked);
+                setIsLockedForEditing(!!lockedPrompt);
+                setLockedByOther(lockedPrompt && lockedPrompt.locked_by !== userId ? lockedPrompt.username : null);
+            }
             setError(null);
         } catch (err) {
             setError('Failed to fetch prompts.');
         } finally {
-            setIsLoading(false);
+            if (!isPolling) setIsLoading(false);
         }
-    }, [getToken, userId, isLoading]);
+    }, [getToken, userId, prompts]);
 
+
+    // Initial fetch
     useEffect(() => {
-        fetchPrompts();
-        const interval = setInterval(fetchPrompts, 5000); // Poll for lock status
-        return () => clearInterval(interval);
+        fetchPromptsData(false);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    // Polling for lock status
+    useEffect(() => {
+        const interval = setInterval(() => fetchPromptsData(true), 5000);
+        return () => clearInterval(interval);
+    }, [fetchPromptsData]);
 
 
     const handleLockToggle = async (value: boolean) => {
@@ -338,10 +357,10 @@ const PromptEditor = () => {
             const token = await getToken();
             const promises = prompts.map(p => api.post(`/admin/prompts/${p.id}/${action}`, {}, { headers: { Authorization: `Bearer ${token}` } }));
             await Promise.all(promises);
-            fetchPrompts(); // Re-fetch to update lock status
+            fetchPromptsData(false); // Re-fetch to update lock status
         } catch (err: any) {
             Alert.alert('Error', err.response?.data?.message || `Failed to ${action} prompts.`);
-            fetchPrompts();
+            fetchPromptsData(false);
         }
     };
     
@@ -383,7 +402,7 @@ const PromptEditor = () => {
             await api.post('/admin/prompts/restore', { prompt_id: selectedPromptForHistory.id, version_id: versionId }, { headers: { Authorization: `Bearer ${token}` } });
             Alert.alert('Success', 'Version restored.');
             setHistoryModalVisible(false);
-            fetchPrompts();
+            fetchPromptsData(false);
         } catch (err) {
             Alert.alert('Error', 'Failed to restore version.');
         }
