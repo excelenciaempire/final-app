@@ -1,3 +1,5 @@
+/// <reference types="react" />
+
 // For lucide-react-native, @react-native-picker/picker, @react-navigation/material-top-tabs, expo-clipboard
 declare module 'lucide-react-native';
 declare module '@react-native-picker/picker';

@@ -1,10 +1,6 @@
 {
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
-    "strict": true,
-    "target": "ES2016",
-    "lib": ["DOM", "ES2016"],
-    "jsx": "react-jsx",
-    "moduleResolution": "bundler"
+    "strict": true
   }
 }

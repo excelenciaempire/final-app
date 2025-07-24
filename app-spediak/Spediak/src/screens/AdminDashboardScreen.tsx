@@ -347,7 +347,7 @@ const InspectionList: React.FC = () => {
     const renderInspectionItem = ({ item }: { item: AdminInspectionData }): JSX.Element => {
         const optimizedCardImageUrl = getOptimizedImageUrl(item.image_url, 80, 80);
 
-        return (
+     return (
             <View style={styles.cardContainer}>
                 <View style={styles.cardHeaderInfo}>
                     <View style={styles.userInfoRow}>
@@ -459,7 +459,7 @@ const InspectionList: React.FC = () => {
 
              {/* Full-screen Image Preview Modal */}
             {isFullImageModalVisible && fullScreenImageUrl && (
-            <RNModal
+         <RNModal
                 visible={isFullImageModalVisible}
                 transparent={true}
                 onRequestClose={() => setIsFullImageModalVisible(false)}
@@ -784,19 +784,19 @@ const AdminDashboardScreen = () => {
              <View style={styles.headerContainer}> 
              <Text style={styles.headerTitle}>Admin Dashboard</Text>
              </View>
-             <Tab.Navigator
-                 screenOptions={{
+         <Tab.Navigator
+             screenOptions={{
                     tabBarActiveTintColor: COLORS.primary,
-                    tabBarInactiveTintColor: 'gray',
+                 tabBarInactiveTintColor: 'gray',
                     tabBarIndicatorStyle: { backgroundColor: COLORS.primary },
-                    tabBarLabelStyle: { fontSize: 14, fontWeight: '600' },
+                 tabBarLabelStyle: { fontSize: 14, fontWeight: '600' },
                     tabBarStyle: { backgroundColor: 'white' },
-                 }}
-             >
+             }}
+         >
                  <Tab.Screen name="All Inspections" component={InspectionList} />
                  <Tab.Screen name="All Users" component={UserList} />
                  <Tab.Screen name="Prompt Editor" component={PromptEditor} />
-             </Tab.Navigator>
+         </Tab.Navigator>
         </SafeAreaView>
     );
 };

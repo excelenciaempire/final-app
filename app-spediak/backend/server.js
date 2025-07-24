@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const apiRoutes = require('./routes/api');
+const adminRoutes = require('./routes/adminRoutes'); // Import admin routes
 const { handleClerkWebhook } = require('./controllers/webhookController');
 const promptRoutes = require('./routes/promptRoutes');
 
@@ -43,6 +44,7 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Routes
 app.use('/api', apiRoutes);
+app.use('/api/admin', adminRoutes); // Mount admin routes
 app.use('/api', promptRoutes);
 
 // Root route
