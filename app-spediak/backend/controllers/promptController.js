@@ -13,7 +13,7 @@ const getPrompts = async (req, res) => {
                 u.username, 
                 p.locked_at 
             FROM prompts p
-            LEFT JOIN users u ON p.locked_by = u.id
+            LEFT JOIN users u ON p.locked_by = u.clerk_id
             ORDER BY p.id
         `;
         const result = await pool.query(query);
