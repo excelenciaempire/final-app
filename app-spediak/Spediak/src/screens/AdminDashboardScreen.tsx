@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, Text, FlatList, StyleSheet, ActivityIndicator, RefreshControl, Alert, Image, SafeAreaView, TouchableOpacity, Platform, TextInput, Modal as RNModal, Dimensions, ScrollView } from 'react-native';
+import { View, Text, FlatList, StyleSheet, ActivityIndicator, RefreshControl, Alert, Image, SafeAreaView, TouchableOpacity, Platform, TextInput, Modal as RNModal, Dimensions, ScrollView, Switch } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import axios from 'axios';
 import { useAuth } from '@clerk/clerk-expo';
@@ -185,7 +185,7 @@ const AllInspections: React.FC = () => {
             </View>
             <FlatList data={inspections} renderItem={renderInspectionItem} keyExtractor={item => item.id} onEndReached={handleLoadMore} onEndReachedThreshold={0.5} ListFooterComponent={isLoadingMore ? <ActivityIndicator /> : null} refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />} />
             {selectedInspection && <DdidModal visible={isModalVisible} onClose={() => setIsModalVisible(false)} ddidText={selectedInspection.ddid} imageUri={selectedInspection.image_url} />}
-            {isFullImageModalVisible && <RNModal visible={isFullImageModalVisible} transparent={true} onRequestClose={() => setIsFullImageModalVisible(false)}><View style={styles.fullImageModalContainer}><TouchableOpacity style={styles.fullImageCloseButton} onPress={() => setIsFullImageModalVisible(false)}><XIcon size={30} color="#fff" /></TouchableOpacity><Image source={{ uri: fullScreenImageUrl || undefined }} style={styles.fullImage} resizeMode="contain" /><TouchableOpacity style={styles.downloadButtonFloating} onPress={() => handleDownloadImage(fullScreenImageUrl)}><Download size={24} color="#fff" /></TouchableOpacity></View></RNModal>}
+            {isFullImageModalVisible && <RNModal visible={isFullImageModalVisible} transparent={true} onRequestClose={() => setIsFullImageModalVisible(false)}><View style={styles.fullImageModalContainer}><TouchableOpacity style={styles.fullImageCloseButton} onPress={() => setIsFullImageModalVisible(false)}><XIcon size={30} color="#fff" /></TouchableOpacity><Image source={{ uri: fullScreenImageUrl ?? undefined }} style={styles.fullImage} resizeMode="contain" /><TouchableOpacity style={styles.downloadButtonFloating} onPress={() => handleDownloadImage(fullScreenImageUrl)}><Download size={24} color="#fff" /></TouchableOpacity></View></RNModal>}
         </View>
     );
 };
@@ -471,7 +471,7 @@ const AdminDashboardScreen = () => {
         <Tab.Navigator screenOptions={{ tabBarActiveTintColor: COLORS.primary, tabBarInactiveTintColor: 'gray' }}>
             <Tab.Screen name="All Inspections" component={AllInspections} />
             <Tab.Screen name="All Users" component={AllUsers} />
-            <Tab.Screen name="Prompt Editor" component={PromptEditor} listeners={{ tabPress: e => { if (isPromptEditorLocked) { e.preventDefault(); Alert.alert('Locked', `Locked by ${promptLocker}.`); } } }} options={{ tabBarLabel: isPromptEditorLocked ? `Prompt Editor (Locked)` : 'Prompt Editor' }} />
+            <Tab.Screen name="Prompt Editor" component={PromptEditor} listeners={{ tabPress: (e: any) => { if (isPromptEditorLocked) { e.preventDefault(); Alert.alert('Locked', `Locked by ${promptLocker}.`); } } }} options={{ tabBarLabel: isPromptEditorLocked ? `Prompt Editor (Locked)` : 'Prompt Editor' }} />
         </Tab.Navigator>
     );
 };
