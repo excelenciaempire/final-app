@@ -150,4 +150,35 @@ declare namespace JSX {
     interface IntrinsicElements {
         div: any;
     }
+}
+
+declare module 'react-native-gesture-handler' {
+    import * as React from 'react';
+    import { TextInputProps } from 'react-native';
+    export class TextInput extends React.Component<TextInputProps> {}
+}
+
+declare module '../../config/api' {
+    import { AxiosInstance } from 'axios';
+    const api: AxiosInstance;
+    export default api;
+}
+
+declare module './AllInspections' {
+    const AllInspections: React.ComponentType;
+    export default AllInspections;
+}
+
+declare module './AllUsers' {
+    const AllUsers: React.ComponentType;
+    export default AllUsers;
+}
+
+declare module '@react-navigation/material-top-tabs' {
+  import * as React from 'react';
+  const createMaterialTopTabNavigator: () => {
+    Navigator: React.ComponentType<any>;
+    Screen: React.ComponentType<any>;
+  };
+  export { createMaterialTopTabNavigator };
 } 
