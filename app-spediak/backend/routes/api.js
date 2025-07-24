@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { upload, uploadAudio } = require('../controllers/uploadController');
+const { uploadImageController, uploadAudio } = require('../controllers/uploadController');
 const { requireAuth } = require('../middleware/clerkAuth');
 const { generatePreDescription } = require('../controllers/preDescriptionController');
 const { generateDdid } = require('../controllers/ddidController');
@@ -11,15 +11,11 @@ const { getInspectionHistory, getPrimaryEmail, updatePrimaryEmail, getPresignedU
 router.use(requireAuth);
 
 // Route to handle image uploads
-router.post('/upload-image', upload.single('image'), (req, res) => {
-    if (!req.file) {
-        return res.status(400).send('No image file uploaded.');
-    }
-    res.json({ imageUrl: req.file.path });
-});
+router.post('/upload-image', uploadImageController);
 
 // Route to handle audio uploads and transcription
-router.post('/transcribe-audio', uploadAudio.single('audio'), transcribeAudio);
+router.post('/transcribe', transcribeAudio);
+
 
 // Route to generate preliminary description
 router.post('/generate-pre-description', generatePreDescription);
