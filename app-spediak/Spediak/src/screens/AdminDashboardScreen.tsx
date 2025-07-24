@@ -308,69 +308,28 @@ const PromptEditor = () => {
     const [selectedPromptForHistory, setSelectedPromptForHistory] = useState<Prompt | null>(null);
     
     // Functions (fetchPrompts, handleLockToggle, etc.) from new implementation...
-    const fetchPromptsData = useCallback(async () => {
+    const fetchPrompts = useCallback(async () => {
+        if (!isLoading) setIsLoading(true);
         try {
             const token = await getToken();
-            if (!token) return null;
             const response = await api.get('/admin/prompts', { headers: { Authorization: `Bearer ${token}` } });
-            return response.data as Prompt[];
+            setPrompts(response.data as Prompt[]);
+            const lockedPrompt = (response.data as Prompt[]).find(p => p.is_locked);
+            setIsLockedForEditing(!!lockedPrompt);
+            setLockedByOther(lockedPrompt && lockedPrompt.locked_by !== userId ? lockedPrompt.username : null);
+            setError(null);
         } catch (err) {
-            console.error("Failed to fetch prompt data:", err);
             setError('Failed to fetch prompts.');
-            return null;
-        }
-    }, [getToken]);
-
-    // Effect for initial data load
-    useEffect(() => {
-        const loadInitialData = async () => {
-            setIsLoading(true);
-            const serverPrompts = await fetchPromptsData();
-            if (serverPrompts) {
-                setPrompts(serverPrompts);
-            }
+        } finally {
             setIsLoading(false);
-        };
-        loadInitialData();
-    }, [fetchPromptsData]);
+        }
+    }, [getToken, userId, isLoading]);
 
-    // Effect for polling lock status
     useEffect(() => {
-        const interval = setInterval(async () => {
-            const serverPrompts = await fetchPromptsData();
-            if (serverPrompts) {
-                setPrompts(currentLocalPrompts => {
-                    const amIEditing = currentLocalPrompts.some(p => p.is_locked && p.locked_by === userId);
-
-                    if (amIEditing) {
-                        // If I'm editing, preserve my local content changes and only update lock status from server.
-                        return currentLocalPrompts.map(localPrompt => {
-                            const serverPrompt = serverPrompts.find(sp => sp.id === localPrompt.id);
-                            if (serverPrompt) {
-                                return {
-                                    ...localPrompt, // This keeps local prompt_content
-                                    is_locked: serverPrompt.is_locked,
-                                    locked_by: serverPrompt.locked_by,
-                                    username: serverPrompt.username,
-                                    locked_at: serverPrompt.locked_at,
-                                };
-                            }
-                            return localPrompt;
-                        });
-                    } else {
-                        // If I'm not editing, it's safe to sync everything from the server.
-                        return serverPrompts;
-                    }
-                });
-
-                // This logic is for the main tab lock, we can update it based on fresh server data
-                const lockedPrompt = serverPrompts.find(p => p.is_locked);
-                setLockedByOther(lockedPrompt && lockedPrompt.locked_by !== userId ? lockedPrompt.username : null);
-            }
-        }, 5000); // Poll every 5 seconds
-
+        fetchPrompts();
+        const interval = setInterval(fetchPrompts, 5000); // Poll for lock status
         return () => clearInterval(interval);
-    }, [userId, fetchPromptsData]);
+    }, []);
 
 
     const handleLockToggle = async (value: boolean) => {
@@ -379,10 +338,10 @@ const PromptEditor = () => {
             const token = await getToken();
             const promises = prompts.map(p => api.post(`/admin/prompts/${p.id}/${action}`, {}, { headers: { Authorization: `Bearer ${token}` } }));
             await Promise.all(promises);
-            fetchPromptsData(); // Re-fetch to update lock status
+            fetchPrompts(); // Re-fetch to update lock status
         } catch (err: any) {
             Alert.alert('Error', err.response?.data?.message || `Failed to ${action} prompts.`);
-            fetchPromptsData();
+            fetchPrompts();
         }
     };
     
@@ -424,7 +383,7 @@ const PromptEditor = () => {
             await api.post('/admin/prompts/restore', { prompt_id: selectedPromptForHistory.id, version_id: versionId }, { headers: { Authorization: `Bearer ${token}` } });
             Alert.alert('Success', 'Version restored.');
             setHistoryModalVisible(false);
-            fetchPromptsData();
+            fetchPrompts();
         } catch (err) {
             Alert.alert('Error', 'Failed to restore version.');
         }
@@ -521,11 +480,8 @@ const AdminDashboardScreen = () => {
     }, [getToken, userId]);
 
     useEffect(() => {
-        const initialCheck = () => {
-            checkLockStatusForTabs();
-        }
-        initialCheck();
-        const interval = setInterval(initialCheck, 7000);
+        checkLockStatusForTabs();
+        const interval = setInterval(checkLockStatusForTabs, 7000);
         return () => clearInterval(interval);
     }, [checkLockStatusForTabs]);
 

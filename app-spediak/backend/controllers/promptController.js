@@ -10,7 +10,7 @@ const getPrompts = async (req, res) => {
                 p.prompt_content, 
                 p.is_locked, 
                 p.locked_by, 
-                u.username, 
+                COALESCE(u.username, 'Unknown') as username, 
                 p.locked_at 
             FROM prompts p
             LEFT JOIN users u ON p.locked_by = u.clerk_id
