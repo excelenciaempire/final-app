@@ -45,7 +45,6 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 // Routes
 app.use('/api', apiRoutes);
 app.use('/api/admin', adminRoutes); // Mount admin routes
-app.use('/api', promptRoutes);
 
 // Root route
 app.get('/', (req, res) => {
