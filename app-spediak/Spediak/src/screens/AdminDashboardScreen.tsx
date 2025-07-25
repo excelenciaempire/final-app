@@ -6,7 +6,7 @@ import { useAuth } from '@clerk/clerk-expo';
 import { BASE_URL } from '../config/api';
 import { COLORS } from '../styles/colors';
 import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
-import { Search, Eye, UserCircle, Download, Trash2, X as XIcon, Save, History } from 'lucide-react-native';
+import { Search, Eye, UserCircle, Download, Trash2, X as XIcon, Save, History, Upload, FileText, BrainCircuit } from 'lucide-react-native';
 import DdidModal from '../components/DdidModal';
 import { useDebounce } from '../hooks/useDebounce';
 import * as FileSystem from 'expo-file-system';
@@ -23,6 +23,7 @@ interface UserData { id: string; name: string; email: string; username: string |
 interface PaginatedResponse<T> { totalCount: number; page: number; limit: number; totalPages: number; inspections?: T[]; users?: T[]; }
 interface Prompt { id: number; prompt_name: string; prompt_content: string; is_locked: boolean; locked_by: string | null; username: string | null; locked_at: string | null; }
 interface PromptVersion { id: number; version: number; prompt_content: string; updated_by_username: string; created_at: string; }
+interface KnowledgeDocument { id: number; file_name: string; file_type: string; uploaded_at: string; status: 'pending' | 'indexing' | 'complete' | 'error'; }
 
 // Helper function to get optimized Cloudinary image URL
 const getOptimizedImageUrl = (url: string | null | undefined, width: number, height: number): string | undefined => {
@@ -184,7 +185,7 @@ const AllInspections: React.FC = () => {
                 </TouchableOpacity>
             </View>
             <FlatList data={inspections} renderItem={renderInspectionItem} keyExtractor={item => item.id} onEndReached={handleLoadMore} onEndReachedThreshold={0.5} ListFooterComponent={isLoadingMore ? <ActivityIndicator /> : null} refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />} />
-            {selectedInspection && <DdidModal visible={isModalVisible} onClose={() => setIsModalVisible(false)} ddidText={selectedInspection.ddid} imageUri={selectedInspection.image_url} />}
+            {selectedInspection && <DdidModal visible={isModalVisible} onClose={() => setIsModalVisible(false)} ddidText={selectedInspection.ddid} imageUri={selectedInspection.image_url || undefined} />}
             {isFullImageModalVisible && <RNModal visible={isFullImageModalVisible} transparent={true} onRequestClose={() => setIsFullImageModalVisible(false)}><View style={styles.fullImageModalContainer}><TouchableOpacity style={styles.fullImageCloseButton} onPress={() => setIsFullImageModalVisible(false)}><XIcon size={30} color="#fff" /></TouchableOpacity><Image source={{ uri: fullScreenImageUrl ?? undefined }} style={styles.fullImage} resizeMode="contain" /><TouchableOpacity style={styles.downloadButtonFloating} onPress={() => handleDownloadImage(fullScreenImageUrl)}><Download size={24} color="#fff" /></TouchableOpacity></View></RNModal>}
         </View>
     );
@@ -497,6 +498,121 @@ const HistoryModal = ({ visible, onClose, history, onRestore, promptName }: { vi
     </RNModal>
 );
 
+// --- NEW: Knowledge Base Component ---
+const KnowledgeManager = () => {
+    const { getToken } = useAuth();
+    const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [selectedFile, setSelectedFile] = useState<File | null>(null);
+    const [isUploading, setIsUploading] = useState(false);
+
+    const fetchDocuments = useCallback(async () => {
+        try {
+            const token = await getToken();
+            const response = await api.get('/admin/knowledge', { headers: { Authorization: `Bearer ${token}` } });
+            setDocuments(response.data as KnowledgeDocument[]);
+        } catch (err) {
+            setError('Failed to fetch documents.');
+        } finally {
+            setIsLoading(false);
+        }
+    }, [getToken]);
+
+    useEffect(() => {
+        fetchDocuments();
+        const interval = setInterval(fetchDocuments, 5000); // Poll for status updates
+        return () => clearInterval(interval);
+    }, [fetchDocuments]);
+
+    const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+        if (event.target.files && event.target.files[0]) {
+            setSelectedFile(event.target.files[0]);
+        }
+    };
+
+    const handleUpload = async () => {
+        if (!selectedFile) return;
+        setIsUploading(true);
+        setError(null);
+
+        const formData = new FormData();
+        formData.append('document', selectedFile);
+
+        try {
+            const token = await getToken();
+            await api.post('/admin/knowledge/upload', formData, {
+                headers: {
+                    'Content-Type': 'multipart/form-data',
+                    Authorization: `Bearer ${token}`,
+                }
+            });
+            setSelectedFile(null); // Reset file input
+            fetchDocuments(); // Refresh list
+        } catch (err: any) {
+            setError(err.response?.data?.message || 'Upload failed.');
+        } finally {
+            setIsUploading(false);
+        }
+    };
+
+    const handleDelete = async (documentId: number) => {
+        Alert.alert("Confirm Deletion", "Are you sure you want to delete this document?", [
+            { text: "Cancel", style: "cancel" },
+            {
+                text: "Delete", style: "destructive", onPress: async () => {
+                    try {
+                        const token = await getToken();
+                        await api.delete(`/admin/knowledge/${documentId}`, { headers: { Authorization: `Bearer ${token}` } });
+                        fetchDocuments();
+                    } catch (err) {
+                        Alert.alert('Error', 'Failed to delete document.');
+                    }
+                }
+            }
+        ]);
+    };
+
+    if (isLoading) return <ActivityIndicator size="large" style={styles.loader} />;
+    if (error) return <Text style={styles.errorText}>{error}</Text>;
+
+    return (
+        <ScrollView style={styles.knowledgeContainer}>
+            <View style={styles.uploadCard}>
+                <Text style={styles.cardTitle}>Upload New Document</Text>
+                <Text style={styles.supportedTypes}>Supported types: PDF, TXT, MD. Max size: 20MB.</Text>
+                
+                {Platform.OS === 'web' && (
+                    <input type="file" accept=".pdf,.txt,.md" onChange={handleFileSelect} />
+                )}
+
+                <TouchableOpacity style={[styles.button, styles.uploadButton, (!selectedFile || isUploading) && styles.disabledButton]} onPress={handleUpload} disabled={!selectedFile || isUploading}>
+                    <Upload size={18} color="#fff" style={{ marginRight: 8 }} />
+                    <Text style={styles.buttonText}>{isUploading ? 'Uploading...' : 'Upload Document'}</Text>
+                </TouchableOpacity>
+            </View>
+
+            <View style={styles.documentsCard}>
+                <Text style={styles.cardTitle}>Uploaded Documents</Text>
+                {documents.map(doc => (
+                    <View key={doc.id} style={styles.documentItem}>
+                        <FileText size={24} color={COLORS.primary} />
+                        <View style={styles.documentInfo}>
+                            <Text style={styles.documentName}>{doc.file_name}</Text>
+                            <Text style={styles.documentMeta}>Uploaded: {format(new Date(doc.uploaded_at), 'Pp')}</Text>
+                            <Text style={styles.documentMeta}>Status: {doc.status}</Text>
+                        </View>
+                        <TouchableOpacity onPress={() => handleDelete(doc.id)} style={styles.deleteButton}>
+                            <Trash2 size={24} color={COLORS.danger} />
+                        </TouchableOpacity>
+                    </View>
+                ))}
+            </View>
+        </ScrollView>
+    );
+};
+
+
 // --- Main Admin Dashboard Screen ---
 const Tab = createMaterialTopTabNavigator();
 const AdminDashboardScreen = () => {
@@ -532,7 +648,8 @@ const AdminDashboardScreen = () => {
             <Tab.Screen name="All Inspections" component={AllInspections} />
             <Tab.Screen name="All Users" component={AllUsers} />
             <Tab.Screen name="Prompt Editor" component={PromptEditor} listeners={{ tabPress: (e: any) => { if (isPromptEditorLocked) { e.preventDefault(); Alert.alert('Locked', `Locked by ${promptLocker}.`); } } }} options={{ tabBarLabel: isPromptEditorLocked ? `Prompt Editor (Locked)` : 'Prompt Editor' }} />
-             </Tab.Navigator>
+            <Tab.Screen name="Knowledge" component={KnowledgeManager} options={{ tabBarLabel: 'Knowledge Base' }} />
+        </Tab.Navigator>
     );
 };
 
@@ -672,6 +789,65 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         color: 'gray',
         marginTop: 20,
+    },
+    // Knowledge Base Styles
+    knowledgeContainer: {
+        flex: 1,
+        padding: 16,
+    },
+    uploadCard: {
+        backgroundColor: '#fff',
+        borderRadius: 8,
+        padding: 16,
+        marginBottom: 16,
+    },
+    cardTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        marginBottom: 8,
+    },
+    supportedTypes: {
+        fontSize: 12,
+        color: 'gray',
+        marginBottom: 16,
+    },
+    button: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 12,
+        borderRadius: 8,
+    },
+    buttonText: {
+        color: '#fff',
+        fontWeight: 'bold',
+        fontSize: 16,
+    },
+    uploadButton: {
+        backgroundColor: COLORS.primary,
+    },
+    documentsCard: {
+        backgroundColor: '#fff',
+        borderRadius: 8,
+        padding: 16,
+    },
+    documentItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 12,
+        borderBottomWidth: 1,
+        borderBottomColor: '#eee',
+    },
+    documentInfo: {
+        flex: 1,
+        marginLeft: 12,
+    },
+    documentName: {
+        fontWeight: 'bold',
+    },
+    documentMeta: {
+        fontSize: 12,
+        color: 'gray',
     },
 });
 

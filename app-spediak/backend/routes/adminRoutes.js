@@ -4,9 +4,13 @@ const { requireAuth } = require('../middleware/clerkAuth');
 const { requireAdmin } = require('../middleware/adminAuth');
 const { getPrompts, updatePrompts, lockPrompt, unlockPrompt, getPromptHistory, restorePromptVersion } = require('../controllers/promptController');
 const { getAllInspections, getAllUsers, exportUsersCsv, deleteUser } = require('../controllers/adminController');
+const knowledgeRoutes = require('./knowledgeRoutes'); // Import knowledge base routes
 
 // Protect all routes in this file with both authentication and admin authorization
 router.use(requireAuth, requireAdmin);
+
+// Mount knowledge base routes
+router.use('/knowledge', knowledgeRoutes);
 
 // Prompt routes
 router.get('/prompts', getPrompts);

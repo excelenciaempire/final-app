@@ -1,5 +1,6 @@
 const { OpenAI } = require('openai');
 const pool = require('../db'); // Import the database pool
+const { searchKnowledgeBase } = require('../utils/knowledgeUtils');
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -20,7 +21,13 @@ const generatePreDescriptionController = async (req, res) => {
     }
     const preliminary_description_prompt = promptResult.rows[0].prompt_content;
 
+    // Search for relevant knowledge
+    const knowledge = await searchKnowledgeBase(description);
+
     const prompt = `
+Relevant Knowledge Base Info:
+${knowledge || 'None'}
+---
 ${preliminary_description_prompt}
 Inspector Data:
 - Analyze the image and the inspector's notes (${description || 'None provided'}).

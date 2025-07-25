@@ -1,5 +1,6 @@
 const { OpenAI } = require('openai');
 const pool = require('../db'); // Import the database pool
+const { searchKnowledgeBase } = require('../utils/knowledgeUtils');
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -20,7 +21,14 @@ const generateDdidController = async (req, res) => {
     }
     const ddid_prompt_template = promptResult.rows[0].prompt_content;
     
-    const prompt = `${ddid_prompt_template}
+    // Search for relevant knowledge using the final description
+    const knowledge = await searchKnowledgeBase(description);
+    
+    const prompt = `
+Relevant Knowledge Base Info:
+${knowledge || 'None'}
+---
+${ddid_prompt_template}
 Inspector Data:
 - Location (State): ${userState}
 - Final Description: ${description}
