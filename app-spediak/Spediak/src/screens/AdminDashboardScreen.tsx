@@ -371,9 +371,11 @@ const PromptEditor = () => {
             const promises = prompts.map(p => api.post('/admin/prompts/update', { id: p.id, prompt_content: p.prompt_content }, { headers: { Authorization: `Bearer ${token}` } }));
             await Promise.all(promises);
             Alert.alert('Success', 'Prompts saved.');
-            handleLockToggle(false); // Unlock after saving
+            await handleLockToggle(false); // Unlock after saving
+            fetchPromptsData(false); // Re-fetch data to reflect saved state
         } catch (err) {
             Alert.alert('Error', 'Failed to save prompts.');
+            fetchPromptsData(false); // Also re-fetch on error to sync with server
         } finally {
             setIsSaving(false);
         }

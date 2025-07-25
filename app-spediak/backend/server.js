@@ -4,8 +4,6 @@ const dotenv = require('dotenv');
 const apiRoutes = require('./routes/api');
 const adminRoutes = require('./routes/adminRoutes'); // Import admin routes
 const { handleClerkWebhook } = require('./controllers/webhookController');
-const promptRoutes = require('./routes/promptRoutes');
-const { ensurePromptVersionsTableExists } = require('./controllers/promptController');
 
 dotenv.config();
 
