@@ -7,10 +7,10 @@ const openai = new OpenAI({
 });
 
 const generateDdidController = async (req, res) => {
-  const { description, userState } = req.body;
+  const { imageBase64, description, userState } = req.body; // Now expecting imageBase64 as well
 
-  if (!description || !userState) {
-    return res.status(400).json({ message: 'Missing required fields (description, userState).' });
+  if (!description || !userState || !imageBase64) {
+    return res.status(400).json({ message: 'Missing required fields (image, description, userState).' });
   }
 
   try {
@@ -31,7 +31,15 @@ Generate the DDID statement now.
       messages: [
         {
           role: 'user',
-          content: prompt,
+          content: [
+            { type: 'text', text: prompt },
+            {
+              type: 'image_url',
+              image_url: {
+                url: `data:image/jpeg;base64,${imageBase64}`,
+              },
+            },
+          ],
         },
       ],
       max_tokens: 600,

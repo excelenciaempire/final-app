@@ -436,12 +436,21 @@ export default function NewInspectionScreen() {
         setGeneratedDdid(null);
         setFinalDescriptionForDdid(finalDescription);
 
+        // Ensure we have the image data needed for the final, more detailed prompt
+        if (!imageBase64) {
+            Alert.alert("Missing Image Data", "The image data is missing. Please start over.");
+            setIsGeneratingFinalDdid(false);
+            return;
+        }
+
         try {
             const token = await getToken();
             if (!token) throw new Error("Authentication token not found.");
 
             console.log(`[handleGenerateFinalDdid] Calling POST ${BASE_URL}/api/generate-ddid`);
             const ddidResponse = await axios.post(`${BASE_URL}/api/generate-ddid`, {
+                // Pass all necessary context for the final DDID generation
+                imageBase64,
                 description: finalDescription,
                 userState,
             }, {
