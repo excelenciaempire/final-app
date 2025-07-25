@@ -1,23 +1,25 @@
 const { OpenAI } = require('openai');
-const fs = require('fs');
-const path = require('path');
+const pool = require('../db'); // Import the database pool
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
 const generateDdidController = async (req, res) => {
-  const { imageBase64, description, userState } = req.body; // Now expecting imageBase64 as well
+  const { imageBase64, description, userState } = req.body;
 
   if (!description || !userState || !imageBase64) {
     return res.status(400).json({ message: 'Missing required fields (image, description, userState).' });
   }
 
   try {
-    const promptsPath = path.join(__dirname, '..', 'prompts.json');
-    const prompts = JSON.parse(fs.readFileSync(promptsPath, 'utf8'));
-    const ddid_prompt_template = prompts.ddid_prompt;
-
+    // Fetch the live prompt from the database
+    const promptResult = await pool.query("SELECT prompt_content FROM prompts WHERE prompt_name = 'ddid_prompt'");
+    if (promptResult.rows.length === 0) {
+        return res.status(500).json({ message: 'DDID prompt not found in the database.' });
+    }
+    const ddid_prompt_template = promptResult.rows[0].prompt_content;
+    
     const prompt = `${ddid_prompt_template}
 Inspector Data:
 - Location (State): ${userState}
