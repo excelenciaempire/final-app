@@ -10,7 +10,7 @@ const getPrompts = async (req, res) => {
                 p.prompt_content, 
                 p.is_locked, 
                 p.locked_by, 
-                COALESCE(u.username, 'Unknown') as username, 
+                COALESCE(u.first_name || ' ' || u.last_name, 'Unknown') as username, 
                 p.locked_at 
             FROM prompts p
             LEFT JOIN users u ON p.locked_by = u.clerk_id
@@ -102,9 +102,16 @@ const updatePrompts = async (req, res) => {
 // Controller to lock a prompt for editing
 const lockPrompt = async (req, res) => {
     const { id } = req.params;
-    const { userId, username } = req.auth;
+    const { userId } = req.auth; // Only userId is available from auth
 
     try {
+        // Fetch user's first and last name from the users table
+        const userResult = await pool.query('SELECT first_name, last_name FROM users WHERE clerk_id = $1', [userId]);
+        if (userResult.rows.length === 0) {
+            return res.status(404).json({ message: 'User not found.' });
+        }
+        const username = `${userResult.rows[0].first_name} ${userResult.rows[0].last_name}`;
+
         const result = await pool.query(
             'UPDATE prompts SET is_locked = TRUE, locked_by = $1, username = $2, locked_at = NOW() WHERE id = $3 AND (is_locked = FALSE OR locked_at < NOW() - INTERVAL \'10 minutes\') RETURNING *',
             [userId, username, id]
