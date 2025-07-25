@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, Text, FlatList, StyleSheet, ActivityIndicator, RefreshControl, Alert, Image, SafeAreaView, TouchableOpacity, Platform, TextInput, Modal as RNModal, Dimensions, ScrollView, Switch } from 'react-native';
+import { View, Text, FlatList, StyleSheet, ActivityIndicator, RefreshControl, Alert, Image, SafeAreaView, TouchableOpacity, Platform, TextInput, Modal as RNModal, Dimensions, ScrollView, Switch, Linking } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import axios from 'axios';
 import { useAuth } from '@clerk/clerk-expo';
@@ -23,7 +23,7 @@ interface UserData { id: string; name: string; email: string; username: string |
 interface PaginatedResponse<T> { totalCount: number; page: number; limit: number; totalPages: number; inspections?: T[]; users?: T[]; }
 interface Prompt { id: number; prompt_name: string; prompt_content: string; is_locked: boolean; locked_by: string | null; username: string | null; locked_at: string | null; }
 interface PromptVersion { id: number; version: number; prompt_content: string; updated_by_username: string; created_at: string; }
-interface KnowledgeDocument { id: number; file_name: string; file_type: string; uploaded_at: string; status: 'pending' | 'indexing' | 'complete' | 'error'; }
+interface KnowledgeDocument { id: number; file_name: string; file_type: string; file_url: string; uploaded_at: string; status: 'pending' | 'indexing' | 'complete' | 'error'; }
 
 // Helper function to get optimized Cloudinary image URL
 const getOptimizedImageUrl = (url: string | null | undefined, width: number, height: number): string | undefined => {
@@ -583,7 +583,8 @@ const KnowledgeManager = () => {
                 <Text style={styles.supportedTypes}>Supported types: PDF, TXT, MD. Max size: 20MB.</Text>
                 
                 {Platform.OS === 'web' && (
-                    <input type="file" accept=".pdf,.txt,.md" onChange={handleFileSelect} />
+                    // Add some margin to the input
+                    <input type="file" accept=".pdf,.txt,.md" onChange={handleFileSelect} style={{ marginTop: 8, marginBottom: 16 }} />
                 )}
 
                 <TouchableOpacity style={[styles.button, styles.uploadButton, (!selectedFile || isUploading) && styles.disabledButton]} onPress={handleUpload} disabled={!selectedFile || isUploading}>
@@ -598,7 +599,9 @@ const KnowledgeManager = () => {
                     <View key={doc.id} style={styles.documentItem}>
                         <FileText size={24} color={COLORS.primary} />
                         <View style={styles.documentInfo}>
-                            <Text style={styles.documentName}>{doc.file_name}</Text>
+                            <TouchableOpacity onPress={() => Linking.openURL(doc.file_url)}>
+                                <Text style={styles.documentName}>{doc.file_name}</Text>
+                            </TouchableOpacity>
                             <Text style={styles.documentMeta}>Uploaded: {format(new Date(doc.uploaded_at), 'Pp')}</Text>
                             <Text style={styles.documentMeta}>Status: {doc.status}</Text>
                         </View>
@@ -844,6 +847,8 @@ const styles = StyleSheet.create({
     },
     documentName: {
         fontWeight: 'bold',
+        textDecorationLine: 'underline',
+        color: COLORS.primary,
     },
     documentMeta: {
         fontSize: 12,

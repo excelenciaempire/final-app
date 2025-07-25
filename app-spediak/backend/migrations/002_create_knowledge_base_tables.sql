@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS knowledge_documents (
     id SERIAL PRIMARY KEY,
     file_name VARCHAR(255) NOT NULL,
     file_type VARCHAR(50) NOT NULL,
+    file_url TEXT, -- To store the Cloudinary URL for downloads
     uploaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     status VARCHAR(50) NOT NULL DEFAULT 'pending', -- e.g., pending, indexing, complete, error
     error_message TEXT
