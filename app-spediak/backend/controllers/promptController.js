@@ -2,7 +2,6 @@ const pool = require('../db');
 
 // Controller to get the current prompts, including their lock status
 const getPrompts = async (req, res) => {
-    console.log('[getPrompts] Function triggered.');
     try {
         const query = `
             SELECT 
@@ -16,17 +15,10 @@ const getPrompts = async (req, res) => {
             FROM prompts p
             ORDER BY p.id
         `;
-        console.log('[getPrompts] Executing query:', query);
         const result = await pool.query(query);
-        console.log(`[getPrompts] Query successful. Found ${result.rowCount} prompts.`);
         res.status(200).json(result.rows);
     } catch (error) {
-        console.error('--- DETAILED ERROR IN getPrompts ---');
-        console.error('Timestamp:', new Date().toISOString());
-        console.error('Error Code:', error.code);
-        console.error('Error Message:', error.message);
-        console.error('Full Error Object:', error);
-        console.error('--- END DETAILED ERROR ---');
+        console.error('Error fetching prompts from database:', error);
         res.status(500).json({ message: 'Failed to fetch prompts.' });
     }
 };

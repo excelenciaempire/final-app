@@ -1,10 +1,16 @@
 const { Pool } = require('pg');
-require('dotenv').config(); // To load environment variables from a .env file
+require('dotenv').config(); // Ensure environment variables are loaded first
+
+const connectionString = process.env.DATABASE_URL;
+
+if (!connectionString) {
+  throw new Error('DATABASE_URL environment variable not set. Please check your .env file or Render environment settings.');
+}
 
 const pool = new Pool({
-  connectionString: "postgresql://neondb_owner:npg_Hvm0Vl9YEqhn0ep-raspy-thunder-a4e1uopm-pooler.us-east-1.aws.neon.tech/neondb?sslmode=require", // Your Neon connection string
+  connectionString: connectionString,
   ssl: {
-    rejectUnauthorized: false // Adjust SSL settings as per Neon's recommendations if needed
+    rejectUnauthorized: false
   }
 });
 
