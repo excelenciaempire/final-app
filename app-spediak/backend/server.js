@@ -12,9 +12,6 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Call the function to ensure the table exists on startup
-ensurePromptVersionsTableExists();
-
 // Configuración de CORS
 const allowedOrigins = [
   'https://app-spediak.vercel.app', // Add this domain

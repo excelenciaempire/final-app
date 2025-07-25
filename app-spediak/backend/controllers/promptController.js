@@ -1,29 +1,5 @@
 const pool = require('../db');
 
-// --- Helper to ensure the prompt_versions table exists ---
-const ensurePromptVersionsTableExists = async () => {
-    const query = `
-        CREATE TABLE IF NOT EXISTS prompt_versions (
-            id SERIAL PRIMARY KEY,
-            prompt_id INTEGER REFERENCES prompts(id) ON DELETE CASCADE,
-            version INTEGER NOT NULL,
-            prompt_content TEXT NOT NULL,
-            updated_by_clerk_id VARCHAR(255),
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-            CONSTRAINT unique_prompt_version UNIQUE (prompt_id, version)
-        );
-    `;
-    try {
-        await pool.query(query);
-        console.log('Ensured prompt_versions table exists.');
-    } catch (error) {
-        console.error('Error ensuring prompt_versions table exists:', error);
-        // Depending on the app's needs, you might want to exit if the table can't be created
-        process.exit(1);
-    }
-};
-
-
 // Controller to get the current prompts, including their lock status
 const getPrompts = async (req, res) => {
     try {
@@ -60,6 +36,19 @@ const updatePrompts = async (req, res) => {
     const client = await pool.connect();
 
     try {
+        // Ensure the versions table exists before proceeding
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS prompt_versions (
+                id SERIAL PRIMARY KEY,
+                prompt_id INTEGER REFERENCES prompts(id) ON DELETE CASCADE,
+                version INTEGER NOT NULL,
+                prompt_content TEXT NOT NULL,
+                updated_by_clerk_id VARCHAR(255),
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT unique_prompt_version UNIQUE (prompt_id, version)
+            );
+        `);
+        
         await client.query('BEGIN');
 
         // Step 1: Check if the prompt is locked by another user
@@ -239,7 +228,6 @@ const restorePromptVersion = async (req, res) => {
 
 
 module.exports = {
-    ensurePromptVersionsTableExists,
     getPrompts,
     updatePrompts,
     lockPrompt,
