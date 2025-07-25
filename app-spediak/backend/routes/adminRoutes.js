@@ -1,11 +1,12 @@
 const express = require('express');
 const router = express.Router();
+const { requireAuth } = require('../middleware/clerkAuth');
 const { requireAdmin } = require('../middleware/adminAuth');
 const { getPrompts, updatePrompts, lockPrompt, unlockPrompt, getPromptHistory, restorePromptVersion } = require('../controllers/promptController');
 const { getAllInspections, getAllUsers, exportUsersCsv, deleteUser } = require('../controllers/adminController');
 
-// All routes in this file will be protected by the requireAdmin middleware
-router.use(requireAdmin);
+// Protect all routes in this file with both authentication and admin authorization
+router.use(requireAuth, requireAdmin);
 
 // Prompt routes
 router.get('/prompts', getPrompts);
