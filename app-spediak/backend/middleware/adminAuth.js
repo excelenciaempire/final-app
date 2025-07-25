@@ -1,34 +1,43 @@
 const { clerkClient } = require('@clerk/clerk-sdk-node');
+const { requireAuth } = require('./clerkAuth'); // Use the base auth middleware
 
 const requireAdmin = async (req, res, next) => {
-  // First, ensure the user is authenticated (this should run after requireAuth)
-  if (!req.auth || !req.auth.userId) {
-    // This case shouldn't be reached if requireAuth runs first, but good practice
-    return res.status(401).json({ message: 'Authentication required.' });
-  }
+    // First, ensure the user is authenticated
+    requireAuth(req, res, async (err) => {
+        if (err) {
+            return next(err);
+        }
 
-  const userId = req.auth.userId;
+        // If authenticated, req.auth should be populated
+        if (!req.auth || !req.auth.userId) {
+            return res.status(401).json({ message: 'Authentication required.' });
+        }
 
-  try {
-    console.log(`[AdminAuth] Checking role for user: ${userId}`);
-    const user = await clerkClient.users.getUser(userId);
+        const { userId } = req.auth;
 
-    // Check for the role in private metadata
-    if (user.privateMetadata?.role === 'admin') {
-      console.log(`[AdminAuth] User ${userId} is an admin. Proceeding...`);
-      next(); // User is admin, allow request to proceed
-    } else {
-      console.warn(`[AdminAuth] User ${userId} is not an admin. Access denied.`);
-      return res.status(403).json({ message: 'Forbidden: Admin access required.' });
-    }
-  } catch (error) {
-    console.error(`[AdminAuth] Error checking admin role for user ${userId}:`, error);
-    // Handle potential errors from Clerk API (e.g., user not found, though unlikely here)
-    if (error.status === 404) {
-         return res.status(401).json({ message: 'User not found during authorization check.'});
-    }
-    return res.status(500).json({ message: 'Error verifying admin privileges.' });
-  }
+        try {
+            // Fetch user details from Clerk to get metadata
+            const user = await clerkClient.users.getUser(userId);
+
+            // Add username and role to req.auth for downstream use
+            req.auth.username = user.username || `${user.firstName} ${user.lastName}`;
+            req.auth.role = user.publicMetadata.role;
+
+            // Check if the user has the 'admin' role
+            if (user.publicMetadata.role !== 'admin') {
+                return res.status(403).json({ message: 'Admin access required.' });
+            }
+
+            // If the user is an admin, proceed to the next middleware/controller
+            next();
+        } catch (error) {
+            console.error('Error in requireAdmin middleware:', error);
+            if (error.status === 404) {
+                return res.status(404).json({ message: 'User not found.' });
+            }
+            return res.status(500).json({ message: 'Failed to verify admin status.' });
+        }
+    });
 };
 
 module.exports = { requireAdmin }; 
