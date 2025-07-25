@@ -26,7 +26,7 @@ const getPrompts = async (req, res) => {
 // Controller to update a prompt and create a version history
 const updatePrompts = async (req, res) => {
     const { id, prompt_content } = req.body;
-    const { userId } = req.auth; // Only need userId from auth
+    const { userId, username } = req.auth; // Get both userId and username from auth
 
     if (!id || prompt_content === undefined) {
         return res.status(400).json({ message: 'Prompt ID and content are required.' });
@@ -42,7 +42,8 @@ const updatePrompts = async (req, res) => {
                 prompt_id INTEGER REFERENCES prompts(id) ON DELETE CASCADE,
                 version INTEGER NOT NULL,
                 prompt_content TEXT NOT NULL,
-                updated_by_clerk_id VARCHAR(255),
+                updated_by_id VARCHAR(255),
+                updated_by_username VARCHAR(255),
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                 CONSTRAINT unique_prompt_version UNIQUE (prompt_id, version)
             );
@@ -74,10 +75,10 @@ const updatePrompts = async (req, res) => {
         const versionResult = await client.query('SELECT COUNT(*) as version FROM prompt_versions WHERE prompt_id = $1', [id]);
         const newVersion = parseInt(versionResult.rows[0].version, 10) + 1;
 
-        // Step 4: Insert the old version into the history table
+        // Step 4: Insert the old version into the history table with the correct column names
         await client.query(
-            'INSERT INTO prompt_versions (prompt_id, version, prompt_content, updated_by_clerk_id) VALUES ($1, $2, $3, $4)',
-            [id, newVersion, oldPromptContent, userId]
+            'INSERT INTO prompt_versions (prompt_id, version, prompt_content, updated_by_id, updated_by_username) VALUES ($1, $2, $3, $4, $5)',
+            [id, newVersion, oldPromptContent, userId, username]
         );
 
         // Step 5: Update the prompt with the new content
@@ -152,17 +153,17 @@ const getPromptHistory = async (req, res) => {
     const { id } = req.params;
 
     try {
+        // Correctly query the prompt_versions table without the faulty join
         const query = `
             SELECT 
-                pv.id, 
-                pv.version, 
-                pv.prompt_content, 
-                COALESCE(u.username, 'Unknown User') as updated_by_username, 
-                pv.created_at 
-            FROM prompt_versions pv
-            LEFT JOIN users u ON pv.updated_by_clerk_id = u.clerk_id
-            WHERE pv.prompt_id = $1 
-            ORDER BY pv.version DESC
+                id, 
+                version, 
+                prompt_content, 
+                updated_by_username, 
+                created_at 
+            FROM prompt_versions
+            WHERE prompt_id = $1 
+            ORDER BY version DESC
         `;
         const result = await pool.query(query, [id]);
         res.status(200).json(result.rows);
@@ -206,8 +207,8 @@ const restorePromptVersion = async (req, res) => {
 
         // Add the current state to history before restoring the old one
         await client.query(
-            'INSERT INTO prompt_versions (prompt_id, version, prompt_content, updated_by_clerk_id) VALUES ($1, $2, $3, $4)',
-            [prompt_id, newVersion, currentContent, userId]
+            'INSERT INTO prompt_versions (prompt_id, version, prompt_content, updated_by_id, updated_by_username) VALUES ($1, $2, $3, $4, $5)',
+            [prompt_id, newVersion, currentContent, userId, userId] // Assuming userId is the updated_by_id for restoration
         );
 
         // Update the main prompt with the restored content
