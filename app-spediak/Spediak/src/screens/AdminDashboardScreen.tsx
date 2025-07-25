@@ -368,14 +368,26 @@ const PromptEditor = () => {
         setIsSaving(true);
         try {
             const token = await getToken();
-            const promises = prompts.map(p => api.post('/admin/prompts/update', { id: p.id, prompt_content: p.prompt_content }, { headers: { Authorization: `Bearer ${token}` } }));
+            // Use Promise.all to send all updates concurrently
+            const promises = prompts.map(p => 
+                api.post('/admin/prompts/update', { id: p.id, prompt_content: p.prompt_content }, { 
+                    headers: { Authorization: `Bearer ${token}` } 
+                })
+            );
             await Promise.all(promises);
-            Alert.alert('Success', 'Prompts saved.');
-            await handleLockToggle(false); // Unlock after saving
-            fetchPromptsData(false); // Re-fetch data to reflect saved state
-        } catch (err) {
-            Alert.alert('Error', 'Failed to save prompts.');
-            fetchPromptsData(false); // Also re-fetch on error to sync with server
+            
+            Alert.alert('Success', 'Prompts saved successfully.');
+
+            // After a successful save, we can unlock the prompts
+            await handleLockToggle(false); 
+            
+            // The fetchPromptsData will be called by handleLockToggle, no need to call it again here.
+            
+        } catch (err: any) {
+            // Provide more specific error feedback
+            Alert.alert('Error', err.response?.data?.message || 'Failed to save prompts. Please try again.');
+            // Re-fetch data on error to ensure UI is in sync with the server
+            fetchPromptsData(false);
         } finally {
             setIsSaving(false);
         }
@@ -457,24 +469,33 @@ const PromptEditor = () => {
 
 // --- History Modal Component ---
 const HistoryModal = ({ visible, onClose, history, onRestore, promptName }: { visible: boolean, onClose: () => void, history: PromptVersion[], onRestore: (versionId: number) => void, promptName: string }) => (
-    <RNModal visible={visible} transparent={true} onRequestClose={onClose}>
+    <RNModal visible={visible} transparent={true} animationType="fade" onRequestClose={onClose}>
         <View style={styles.centeredView}>
             <View style={styles.modalView}>
-                <Text style={styles.modalTitle}>History for {promptName.replace(/_/g, ' ')}</Text>
-                <ScrollView>
-                    {history.map(item => (
-                        <View key={item.id} style={styles.historyItem}>
-                            <Text>Version {item.version} by {item.updated_by_username} on {format(new Date(item.created_at), 'Pp')}</Text>
-                            <Text>{item.prompt_content}</Text>
-                            <TouchableOpacity onPress={() => onRestore(item.id)}><Text>Restore</Text></TouchableOpacity>
+                <View style={styles.modalHeader}>
+                    <Text style={styles.modalTitle}>History for {promptName.replace(/_/g, ' ')}</Text>
+                    <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+                        <XIcon size={24} color={COLORS.darkText} />
+                    </TouchableOpacity>
                 </View>
-                    ))}
+                <ScrollView style={styles.historyScrollView}>
+                    {history.length > 0 ? history.map(item => (
+                        <View key={item.id} style={styles.historyItem}>
+                            <View style={styles.historyItemHeader}>
+                                <Text style={styles.historyVersionText}>Version {item.version}</Text>
+                                <Text style={styles.historyMetaText}>by {item.updated_by_username} on {format(new Date(item.created_at), 'Pp')}</Text>
+                            </View>
+                            <Text style={styles.historyContentText} selectable>{item.prompt_content}</Text>
+                            <TouchableOpacity style={styles.restoreButton} onPress={() => onRestore(item.id)}>
+                                <Text style={styles.restoreButtonText}>Restore This Version</Text>
+                            </TouchableOpacity>
+                        </View>
+                    )) : <Text style={styles.noHistoryText}>No history found.</Text>}
                 </ScrollView>
-                <TouchableOpacity onPress={onClose}><Text>Close</Text></TouchableOpacity>
             </View>
         </View>
     </RNModal>
-    );
+);
 
 // --- Main Admin Dashboard Screen ---
 const Tab = createMaterialTopTabNavigator();
@@ -609,6 +630,49 @@ const styles = StyleSheet.create({
     modalView: { width: '90%', backgroundColor: 'white', borderRadius: 8, padding: 16 },
     modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 16 },
     historyItem: { marginBottom: 16, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: '#eee' },
+    modalHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 16,
+    },
+    closeButton: {
+        padding: 8,
+    },
+    historyScrollView: {
+        maxHeight: Dimensions.get('window').height * 0.6,
+    },
+    historyItemHeader: {
+        marginBottom: 8,
+    },
+    historyVersionText: {
+        fontWeight: 'bold',
+        fontSize: 16,
+    },
+    historyMetaText: {
+        fontSize: 12,
+        color: 'gray',
+    },
+    historyContentText: {
+        fontSize: 14,
+        marginBottom: 8,
+    },
+    restoreButton: {
+        alignSelf: 'flex-start',
+        paddingVertical: 6,
+        paddingHorizontal: 12,
+        backgroundColor: COLORS.primary,
+        borderRadius: 4,
+    },
+    restoreButtonText: {
+        color: '#fff',
+        fontWeight: 'bold',
+    },
+    noHistoryText: {
+        textAlign: 'center',
+        color: 'gray',
+        marginTop: 20,
+    },
 });
 
 export default AdminDashboardScreen;
