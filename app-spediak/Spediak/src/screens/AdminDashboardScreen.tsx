@@ -583,8 +583,9 @@ const KnowledgeManager = () => {
                 <Text style={styles.supportedTypes}>Supported types: PDF, TXT, MD. Max size: 20MB.</Text>
                 
                 {Platform.OS === 'web' && (
-                    // Add some margin to the input
-                    <input type="file" accept=".pdf,.txt,.md" onChange={handleFileSelect} style={{ marginTop: 8, marginBottom: 16 }} />
+                    <div style={{ marginTop: 8, marginBottom: 16 }}>
+                        <input type="file" accept=".pdf,.txt,.md" onChange={handleFileSelect} />
+                    </div>
                 )}
 
                 <TouchableOpacity style={[styles.button, styles.uploadButton, (!selectedFile || isUploading) && styles.disabledButton]} onPress={handleUpload} disabled={!selectedFile || isUploading}>
@@ -599,7 +600,7 @@ const KnowledgeManager = () => {
                     <View key={doc.id} style={styles.documentItem}>
                         <FileText size={24} color={COLORS.primary} />
                         <View style={styles.documentInfo}>
-                            <TouchableOpacity onPress={() => Linking.openURL(doc.file_url)}>
+                            <TouchableOpacity onPress={() => Linking.openURL(`${BASE_URL}/api/admin/knowledge/${doc.id}/download`)}>
                                 <Text style={styles.documentName}>{doc.file_name}</Text>
                             </TouchableOpacity>
                             <Text style={styles.documentMeta}>Uploaded: {format(new Date(doc.uploaded_at), 'Pp')}</Text>
