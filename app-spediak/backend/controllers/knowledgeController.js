@@ -163,13 +163,17 @@ const downloadDocument = async (req, res) => {
 
         const public_id = `knowledge_base/${file_name}`;
 
-        const signed_url = cloudinary.utils.private_download_url(public_id, {
+        // This is the correct method for generating a secure, temporary URL for a private/authenticated raw file.
+        const signed_url = cloudinary.url(public_id, {
             resource_type: 'raw',
+            sign_url: true,
+            expires_at: Math.floor(Date.now() / 1000) + 60, // URL is valid for 60 seconds
         });
 
         res.setHeader('Content-Disposition', `attachment; filename="${file_name}"`);
         res.setHeader('Content-Type', file_type);
 
+        // Fetch the content from the signed URL and stream it to the client.
         const response = await axios({
             method: 'GET',
             url: signed_url,
@@ -179,7 +183,8 @@ const downloadDocument = async (req, res) => {
         response.data.pipe(res);
 
     } catch (error) {
-        console.error('[Download] Error streaming document:', error);
+        // Provide more detailed logging for any future issues.
+        console.error('[Download] Error streaming document:', error.isAxiosError ? error.toJSON() : error);
         res.status(500).json({ message: 'Failed to download document.' });
     }
 };
