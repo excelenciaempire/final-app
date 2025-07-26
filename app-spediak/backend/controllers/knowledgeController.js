@@ -51,30 +51,42 @@ const processAndEmbedDocument = async (documentId, fileBuffer, fileType) => {
 // --- Controller Functions ---
 const uploadDocument = (req, res) => {
     upload(req, res, async (err) => {
-        if (err) return res.status(400).json({ message: err.message });
-        if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
-
+        if (err) {
+            console.error('[Upload] Multer error:', err);
+            return res.status(400).json({ message: 'File upload error: ' + err.message });
+        }
+        if (!req.file) {
+            return res.status(400).json({ message: 'No file uploaded.' });
+        }
         const { originalname, mimetype, buffer } = req.file;
 
         const uploadStream = cloudinary.uploader.upload_stream(
-            { resource_type: 'raw', folder: 'knowledge_base', public_id: originalname },
+            {
+                resource_type: 'raw',
+                public_id: originalname,
+                folder: 'knowledge_base',
+                access_mode: 'authenticated', // IMPORTANT: Make file private
+                overwrite: true,
+            },
             async (error, result) => {
                 if (error) {
-                    console.error('[Cloudinary] Upload Error:', error);
-                    return res.status(500).json({ message: 'Failed to upload file to storage.' });
+                    console.error('[Cloudinary] Upload failed:', error);
+                    return res.status(500).json({ message: 'Failed to upload file to cloud storage.' });
                 }
-
                 try {
                     const dbResult = await pool.query(
-                        'INSERT INTO knowledge_documents (file_name, file_type, file_url, status) VALUES ($1, $2, $3, $4) RETURNING id',
+                        'INSERT INTO knowledge_documents (file_name, file_type, file_url, status) VALUES ($1, $2, $3, $4) ON CONFLICT (file_name) DO UPDATE SET file_url = $3, status = $4, uploaded_at = NOW() RETURNING id',
                         [originalname, mimetype, result.secure_url, 'pending']
                     );
                     const documentId = dbResult.rows[0].id;
-                    processAndEmbedDocument(documentId, buffer, mimetype); // Process in background
-                    res.status(201).json({ message: 'File uploaded and is being processed.', documentId });
+
+                    // This can run in the background, no need to await
+                    processAndEmbedDocument(documentId, buffer, mimetype);
+
+                    res.status(201).json({ message: 'File uploaded successfully and is being processed.', documentId });
                 } catch (dbError) {
-                    console.error('[KnowledgeBase] DB Error:', dbError);
-                    res.status(500).json({ message: 'Failed to save document record.' });
+                    console.error('[Database] Error saving document metadata:', dbError);
+                    res.status(500).json({ message: 'Failed to save document metadata.' });
                 }
             }
         );
@@ -140,20 +152,27 @@ const deleteDocument = async (req, res) => {
 const downloadDocument = async (req, res) => {
     const { id } = req.params;
     try {
-        const result = await pool.query('SELECT file_name, file_url, file_type FROM knowledge_documents WHERE id = $1', [id]);
+        const result = await pool.query('SELECT file_name, file_type FROM knowledge_documents WHERE id = $1', [id]);
         if (result.rows.length === 0) {
             return res.status(404).json({ message: 'Document not found.' });
         }
-        const { file_name, file_url, file_type } = result.rows[0];
+        const { file_name, file_type } = result.rows[0];
+
+        const public_id = `knowledge_base/${file_name}`;
+
+        const signed_url = cloudinary.utils.private_download_url(public_id, {
+            resource_type: 'raw',
+        });
 
         res.setHeader('Content-Disposition', `attachment; filename="${file_name}"`);
         res.setHeader('Content-Type', file_type);
 
         const response = await axios({
             method: 'GET',
-            url: file_url,
+            url: signed_url,
             responseType: 'stream',
         });
+
         response.data.pipe(res);
 
     } catch (error) {

@@ -510,29 +510,21 @@ const KnowledgeManager = () => {
     const handleDownload = async (doc: KnowledgeDocument) => {
         try {
             const token = await getToken();
-            const response = await fetch(`${BASE_URL}/api/admin/knowledge/${doc.id}/download`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-
-            if (!response.ok) throw new Error('Download failed.');
-
-            const blob = await response.blob();
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = doc.file_name;
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(url);
-            a.remove();
-
+            if (!token) {
+                setError('Authentication error. Please log in again.');
+                return;
+            }
+            // The backend now handles the secure download, so we can directly navigate.
+            // We need to pass the token for the API gateway, even though the final URL is pre-signed.
+            window.location.href = `${BASE_URL}/api/admin/knowledge/${doc.id}/download?token=${token}`;
         } catch (err) {
-            setError('Failed to download document. Please try again.');
+            setError('Failed to initiate download. Please try again.');
             console.error(err);
         }
     };
 
     const fetchDocuments = useCallback(async () => {
+        setIsLoading(true);
         try {
             const token = await getToken();
             const response = await api.get('/admin/knowledge', { headers: { Authorization: `Bearer ${token}` } });
@@ -591,7 +583,7 @@ const KnowledgeManager = () => {
 
             if (response.status === 200) {
                 setDocuments(prev => prev.filter(doc => doc.id !== documentId));
-                alert('Document deleted successfully.');
+                // No need for an alert, the UI update is sufficient feedback
             } else {
                 throw new Error((response.data as { message: string })?.message || 'Failed to delete document');
             }
