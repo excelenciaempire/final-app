@@ -23,7 +23,15 @@ interface UserData { id: string; name: string; email: string; username: string |
 interface PaginatedResponse<T> { totalCount: number; page: number; limit: number; totalPages: number; inspections?: T[]; users?: T[]; }
 interface Prompt { id: number; prompt_name: string; prompt_content: string; is_locked: boolean; locked_by: string | null; username: string | null; locked_at: string | null; }
 interface PromptVersion { id: number; version: number; prompt_content: string; updated_by_username: string; created_at: string; }
-interface KnowledgeDocument { id: number; file_name: string; file_type: string; file_url: string; uploaded_at: string; status: 'pending' | 'indexing' | 'complete' | 'error'; }
+interface KnowledgeDocument {
+    id: number;
+    file_name: string;
+    file_type: string;
+    uploaded_at: string;
+    status: 'pending' | 'processing' | 'complete' | 'error';
+    error_message?: string;
+    file_url?: string;
+}
 
 // Helper function to get optimized Cloudinary image URL
 const getOptimizedImageUrl = (url: string | null | undefined, width: number, height: number): string | undefined => {
@@ -500,7 +508,6 @@ const HistoryModal = ({ visible, onClose, history, onRestore, promptName }: { vi
 
 // --- NEW: Knowledge Base Component ---
 const KnowledgeManager = () => {
-    // Hooks must be declared at the top level, before any conditional returns.
     const { getToken } = useAuth();
     const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -509,7 +516,6 @@ const KnowledgeManager = () => {
     const [isUploading, setIsUploading] = useState(false);
 
     const fetchDocuments = useCallback(async () => {
-        // Don't set loading to true on polls, only on initial load
         if (isLoading) {
             setError(null);
         }
@@ -523,7 +529,15 @@ const KnowledgeManager = () => {
             const response = await axios.get(`${BASE_URL}/api/admin/knowledge`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
-            setDocuments(response.data as KnowledgeDocument[]);
+
+            if (response.status === 200) {
+                 const sortedDocs = (response.data as KnowledgeDocument[]).sort((a, b) =>
+                    new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime()
+                 );
+                 setDocuments(sortedDocs);
+            } else {
+                setError(`Failed to fetch documents. Status: ${response.status}`);
+            }
         } catch (err: any) {
             const errorMessage = err.response?.data?.message || err.message || 'An unexpected error occurred while fetching documents.';
             setError(errorMessage);
@@ -541,6 +555,7 @@ const KnowledgeManager = () => {
         setError(null);
         const formData = new FormData();
         formData.append('document', selectedFile);
+
         try {
             const token = await getToken();
             await axios.post(`${BASE_URL}/api/admin/knowledge/upload`, formData, {
@@ -549,62 +564,73 @@ const KnowledgeManager = () => {
                     Authorization: `Bearer ${token}`,
                 },
             });
-            setSelectedFile(null); // Reset file input
-            fetchDocuments(); // Refresh list
-        } catch (err: any) {
-            setError(err.response?.data?.message || 'Upload failed.');
+            setSelectedFile(null); // Clear file input
+        } catch (err: any)
+        {
+            const errorMessage = err.response?.data?.message || err.message || 'An error occurred during upload.';
+            setError(errorMessage);
+            console.error(err);
         } finally {
             setIsUploading(false);
         }
     };
 
-    const handleDelete = async (documentId: number) => {
-        if (!confirm('Are you sure you want to delete this document? This action cannot be undone.')) return;
+    const handleDelete = async (docId: number) => {
+        if (!confirm('Are you sure you want to delete this document? This action cannot be undone.')) {
+            return;
+        }
         try {
             const token = await getToken();
-            await axios.delete(`${BASE_URL}/api/admin/knowledge/${documentId}`, {
+            if (!token) {
+                setError('Authentication error.');
+                return;
+            }
+            await axios.delete(`${BASE_URL}/api/admin/knowledge/${docId}`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
-            setDocuments(prev => prev.filter(doc => doc.id !== documentId));
+            setDocuments(prevDocs => prevDocs.filter(doc => doc.id !== docId));
         } catch (err: any) {
-            const errorMessage = err.response?.data?.message || 'An unexpected error occurred.';
-            setError(`Error: ${errorMessage}`);
-            alert(`Error: ${errorMessage}`);
+            setError('Failed to delete document.');
+            console.error(err);
         }
     };
 
-    const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    useEffect(() => {
+        if (isLoading) {
+            fetchDocuments();
+        }
+        const interval = setInterval(() => {
+            fetchDocuments();
+        }, 5000);
+        return () => clearInterval(interval);
+    }, [fetchDocuments, isLoading]);
+
+
+    const onFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         if (event.target.files && event.target.files[0]) {
             setSelectedFile(event.target.files[0]);
         }
     };
-    
-    useEffect(() => {
-        fetchDocuments();
-        const interval = setInterval(() => {
-            // Set isLoading to false for polling calls
-            setIsLoading(false);
-            fetchDocuments();
-        }, 5000);
-        return () => clearInterval(interval);
-    }, [fetchDocuments]);
 
     if (isLoading) {
         return <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 20 }} />;
     }
-    
+
     return (
-        <ScrollView style={styles.knowledgeContainer}>
+        <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
             {error && <Text style={styles.errorText}>{error}</Text>}
             <View style={styles.uploadCard}>
                 <Text style={styles.cardTitle}>Upload New Document</Text>
-                {Platform.OS === 'web' && (
-                    <div style={{ marginTop: 8, marginBottom: 16 }}>
-                        <input type="file" accept=".pdf,.txt,.md" onChange={handleFileSelect} />
-                    </div>
-                )}
-                <TouchableOpacity style={[styles.button, styles.uploadButton, (!selectedFile || isUploading) && styles.disabledButton]} onPress={handleUpload} disabled={!selectedFile || isUploading}>
-                    <Upload size={18} color="#fff" style={{ marginRight: 8 }} />
+                <Text style={styles.cardSubtitle}>Accepted formats: PDF, TXT, MD</Text>
+                <View style={styles.fileInputContainer}>
+                     <input type="file" onChange={onFileChange} accept=".pdf,.txt,.md" />
+                     {selectedFile && <Text style={{ marginLeft: 10 }}>{selectedFile.name}</Text>}
+                </View>
+                <TouchableOpacity
+                    style={[styles.button, styles.uploadButton, (isUploading || !selectedFile) && styles.disabledButton]}
+                    onPress={handleUpload}
+                    disabled={isUploading || !selectedFile}
+                >
                     <Text style={styles.buttonText}>{isUploading ? 'Uploading...' : 'Upload Document'}</Text>
                 </TouchableOpacity>
             </View>
@@ -808,9 +834,21 @@ const styles = StyleSheet.create({
         marginTop: 20,
     },
     // Knowledge Base Styles
-    knowledgeContainer: {
+    container: {
         flex: 1,
         padding: 16,
+    },
+     errorContainer: {
+        backgroundColor: '#ffdddd',
+        padding: 10,
+        borderRadius: 8,
+        marginBottom: 16,
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+    },
+    contentContainer: {
+        flexGrow: 1,
     },
     uploadCard: {
         backgroundColor: '#fff',
@@ -823,10 +861,20 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         marginBottom: 8,
     },
-    supportedTypes: {
+    cardSubtitle: {
         fontSize: 12,
         color: 'gray',
         marginBottom: 16,
+    },
+    fileInputContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 16,
+        paddingVertical: 8,
+        paddingHorizontal: 12,
+        borderWidth: 1,
+        borderColor: '#ccc',
+        borderRadius: 8,
     },
     button: {
         flexDirection: 'row',
@@ -861,12 +909,17 @@ const styles = StyleSheet.create({
     },
     documentName: {
         fontWeight: 'bold',
-        textDecorationLine: 'underline',
-        color: COLORS.primary,
+        color: COLORS.darkText,
     },
     documentMeta: {
         fontSize: 12,
         color: 'gray',
+    },
+     documentError: {
+        fontSize: 12,
+        color: COLORS.danger,
+        marginTop: 4,
+        fontStyle: 'italic',
     },
 });
 
