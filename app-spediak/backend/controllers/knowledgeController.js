@@ -98,8 +98,9 @@ const uploadDocument = (req, res) => {
 
 const getDocuments = async (req, res) => {
     try {
-        const result = await pool.query('SELECT id, file_name, file_type, file_url, uploaded_at, status FROM knowledge_documents ORDER BY uploaded_at DESC');
-        res.status(200).json(result.rows);
+        // Corrected query to only select columns that are guaranteed to exist.
+        const documents = await pool.query('SELECT id, file_name, file_type, uploaded_at, status FROM knowledge_documents ORDER BY uploaded_at DESC');
+        res.status(200).json(documents.rows);
     } catch (error) {
         console.error('[KnowledgeBase] Error fetching documents:', error);
         res.status(500).json({ message: 'Failed to fetch documents.' });

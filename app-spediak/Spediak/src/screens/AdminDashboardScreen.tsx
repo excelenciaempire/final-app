@@ -500,6 +500,7 @@ const HistoryModal = ({ visible, onClose, history, onRestore, promptName }: { vi
 
 // --- NEW: Knowledge Base Component ---
 const KnowledgeManager = () => {
+    // Hooks must be declared at the top level, before any conditional returns.
     const { getToken } = useAuth();
     const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -538,10 +539,12 @@ const KnowledgeManager = () => {
             console.error(err);
         }
     };
-
+    
     const fetchDocuments = useCallback(async () => {
-        setIsLoading(true);
-        setError(null); // Reset error state on each fetch
+        // Don't set loading to true on polls, only on initial load
+        if (isLoading) {
+            setError(null);
+        }
         try {
             const token = await getToken();
             if (!token) {
@@ -558,37 +561,25 @@ const KnowledgeManager = () => {
             setError(errorMessage);
             console.error('Fetch documents error:', err);
         } finally {
-            setIsLoading(false);
+            if (isLoading) {
+                setIsLoading(false);
+            }
         }
-    }, [getToken]);
-
-    useEffect(() => {
-        fetchDocuments(); // Initial fetch
-        const interval = setInterval(fetchDocuments, 5000); // Poll for status updates
-        return () => clearInterval(interval);
-    }, [fetchDocuments]);
-
-    const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-        if (event.target.files && event.target.files[0]) {
-            setSelectedFile(event.target.files[0]);
-        }
-    };
+    }, [getToken, isLoading]);
 
     const handleUpload = async () => {
         if (!selectedFile) return;
         setIsUploading(true);
         setError(null);
-
         const formData = new FormData();
         formData.append('document', selectedFile);
-
         try {
             const token = await getToken();
-            await api.post('/admin/knowledge/upload', formData, {
+            await axios.post(`${BASE_URL}/api/admin/knowledge/upload`, formData, {
                 headers: {
                     'Content-Type': 'multipart/form-data',
                     Authorization: `Bearer ${token}`,
-                }
+                },
             });
             setSelectedFile(null); // Reset file input
             fetchDocuments(); // Refresh list
@@ -603,38 +594,47 @@ const KnowledgeManager = () => {
         if (!confirm('Are you sure you want to delete this document? This action cannot be undone.')) return;
         try {
             const token = await getToken();
-            const response = await axios.delete(`${BASE_URL}/api/admin/knowledge/${documentId}`, {
+            await axios.delete(`${BASE_URL}/api/admin/knowledge/${documentId}`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
-
-            if (response.status === 200) {
-                setDocuments(prev => prev.filter(doc => doc.id !== documentId));
-            } else {
-                throw new Error((response.data as { message: string })?.message || 'Failed to delete document');
-            }
+            setDocuments(prev => prev.filter(doc => doc.id !== documentId));
         } catch (err: any) {
-            const errorMessage = err.response?.data?.message || err.message || 'An unexpected error occurred.';
+            const errorMessage = err.response?.data?.message || 'An unexpected error occurred.';
             setError(`Error: ${errorMessage}`);
             alert(`Error: ${errorMessage}`);
-            console.error('Delete error:', err);
         }
     };
 
-    if (isLoading) return <ActivityIndicator size="large" style={styles.loader} />;
-    if (error) return <Text style={styles.errorText}>{error}</Text>;
+    const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+        if (event.target.files && event.target.files[0]) {
+            setSelectedFile(event.target.files[0]);
+        }
+    };
+    
+    useEffect(() => {
+        fetchDocuments();
+        const interval = setInterval(() => {
+            // Set isLoading to false for polling calls
+            setIsLoading(false);
+            fetchDocuments();
+        }, 5000);
+        return () => clearInterval(interval);
+    }, [fetchDocuments]);
 
+    if (isLoading) {
+        return <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 20 }} />;
+    }
+    
     return (
         <ScrollView style={styles.knowledgeContainer}>
+            {error && <Text style={styles.errorText}>{error}</Text>}
             <View style={styles.uploadCard}>
                 <Text style={styles.cardTitle}>Upload New Document</Text>
-                <Text style={styles.supportedTypes}>Supported types: PDF, TXT, MD. Max size: 20MB.</Text>
-                
                 {Platform.OS === 'web' && (
                     <div style={{ marginTop: 8, marginBottom: 16 }}>
                         <input type="file" accept=".pdf,.txt,.md" onChange={handleFileSelect} />
                     </div>
                 )}
-
                 <TouchableOpacity style={[styles.button, styles.uploadButton, (!selectedFile || isUploading) && styles.disabledButton]} onPress={handleUpload} disabled={!selectedFile || isUploading}>
                     <Upload size={18} color="#fff" style={{ marginRight: 8 }} />
                     <Text style={styles.buttonText}>{isUploading ? 'Uploading...' : 'Upload Document'}</Text>
