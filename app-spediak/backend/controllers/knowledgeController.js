@@ -98,23 +98,42 @@ const deleteDocument = async (req, res) => {
         return res.status(400).json({ message: "Document ID is required." });
     }
 
+    let client;
     try {
-        const docResult = await pool.query('SELECT file_name FROM knowledge_documents WHERE id = $1', [id]);
+        client = await pool.connect();
+        await client.query('BEGIN');
+
+        const docResult = await client.query('SELECT file_name FROM knowledge_documents WHERE id = $1', [id]);
 
         if (docResult.rows.length > 0) {
             const fileName = docResult.rows[0].file_name;
-            const publicId = `knowledge_base/${fileName.substring(0, fileName.lastIndexOf('.'))}`;
-            cloudinary.uploader.destroy(publicId, { resource_type: 'raw' }, (error, result) => {
-                if (error) console.error('[Cloudinary] Failed to delete document:', error);
-                else console.log('[Cloudinary] Document deleted:', result);
+            const publicId = `knowledge_base/${fileName}`;
+
+            // Use a promise to handle the async cloudinary call properly
+            await new Promise((resolve, reject) => {
+                cloudinary.uploader.destroy(publicId, { resource_type: 'raw' }, (error, result) => {
+                    if (error) {
+                        console.error('[Cloudinary] Failed to delete document:', error);
+                        return reject(new Error('Failed to delete file from cloud storage.'));
+                    }
+                    console.log('[Cloudinary] Document deleted:', result);
+                    resolve(result);
+                });
             });
         }
 
-        await pool.query('DELETE FROM knowledge_documents WHERE id = $1', [id]);
+        // Now delete from the database
+        await client.query('DELETE FROM knowledge_documents WHERE id = $1', [id]);
+        
+        await client.query('COMMIT');
         res.status(200).json({ message: 'Document deleted successfully.' });
+
     } catch (error) {
+        if(client) await client.query('ROLLBACK');
         console.error(`[KnowledgeBase] Error deleting document ID ${id}:`, error);
-        res.status(500).json({ message: 'Failed to delete document.' });
+        res.status(500).json({ message: error.message || 'Failed to delete document.' });
+    } finally {
+        if(client) client.release();
     }
 };
 

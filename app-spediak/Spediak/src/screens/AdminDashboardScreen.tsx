@@ -507,6 +507,31 @@ const KnowledgeManager = () => {
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [isUploading, setIsUploading] = useState(false);
 
+    const handleDownload = async (doc: KnowledgeDocument) => {
+        try {
+            const token = await getToken();
+            const response = await fetch(`${BASE_URL}/api/admin/knowledge/${doc.id}/download`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (!response.ok) throw new Error('Download failed.');
+
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = doc.file_name;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            a.remove();
+
+        } catch (err) {
+            setError('Failed to download document. Please try again.');
+            console.error(err);
+        }
+    };
+
     const fetchDocuments = useCallback(async () => {
         try {
             const token = await getToken();
@@ -557,20 +582,25 @@ const KnowledgeManager = () => {
     };
 
     const handleDelete = async (documentId: number) => {
-        Alert.alert("Confirm Deletion", "Are you sure you want to delete this document?", [
-            { text: "Cancel", style: "cancel" },
-            {
-                text: "Delete", style: "destructive", onPress: async () => {
-                    try {
-                        const token = await getToken();
-                        await api.delete(`/admin/knowledge/${documentId}`, { headers: { Authorization: `Bearer ${token}` } });
-                        fetchDocuments();
-                    } catch (err) {
-                        Alert.alert('Error', 'Failed to delete document.');
-                    }
-                }
+        if (!confirm('Are you sure you want to delete this document? This action cannot be undone.')) return;
+        try {
+            const token = await getToken();
+            const response = await axios.delete(`${BASE_URL}/api/admin/knowledge/${documentId}`, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+
+            if (response.status === 200) {
+                setDocuments(prev => prev.filter(doc => doc.id !== documentId));
+                alert('Document deleted successfully.');
+            } else {
+                throw new Error((response.data as { message: string })?.message || 'Failed to delete document');
             }
-        ]);
+        } catch (err: any) {
+            const errorMessage = err.response?.data?.message || err.message || 'An unexpected error occurred.';
+            setError(`Error: ${errorMessage}`);
+            alert(`Error: ${errorMessage}`);
+            console.error('Delete error:', err);
+        }
     };
 
     if (isLoading) return <ActivityIndicator size="large" style={styles.loader} />;
@@ -600,7 +630,7 @@ const KnowledgeManager = () => {
                     <View key={doc.id} style={styles.documentItem}>
                         <FileText size={24} color={COLORS.primary} />
                         <View style={styles.documentInfo}>
-                            <TouchableOpacity onPress={() => Linking.openURL(`${BASE_URL}/api/admin/knowledge/${doc.id}/download`)}>
+                            <TouchableOpacity onPress={() => handleDownload(doc)}>
                                 <Text style={styles.documentName}>{doc.file_name}</Text>
                             </TouchableOpacity>
                             <Text style={styles.documentMeta}>Uploaded: {format(new Date(doc.uploaded_at), 'Pp')}</Text>
