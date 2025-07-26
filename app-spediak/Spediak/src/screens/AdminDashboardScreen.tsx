@@ -514,30 +514,56 @@ const KnowledgeManager = () => {
                 setError('Authentication error. Please log in again.');
                 return;
             }
-            // The backend now handles the secure download, so we can directly navigate.
-            // We need to pass the token for the API gateway, even though the final URL is pre-signed.
-            window.location.href = `${BASE_URL}/api/admin/knowledge/${doc.id}/download?token=${token}`;
-        } catch (err) {
-            setError('Failed to initiate download. Please try again.');
+
+            const response = await fetch(`${BASE_URL}/api/admin/knowledge/${doc.id}/download`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Download failed: ${response.status} ${errorText}`);
+            }
+
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = doc.file_name;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            a.remove();
+        } catch (err: any) {
+            setError(`Failed to download document. Please try again. ${err.message}`);
             console.error(err);
         }
     };
 
     const fetchDocuments = useCallback(async () => {
         setIsLoading(true);
+        setError(null); // Reset error state on each fetch
         try {
             const token = await getToken();
-            const response = await api.get('/admin/knowledge', { headers: { Authorization: `Bearer ${token}` } });
+            if (!token) {
+                setError("Authentication token not found. Please log in again.");
+                setIsLoading(false);
+                return;
+            }
+            const response = await axios.get(`${BASE_URL}/api/admin/knowledge`, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
             setDocuments(response.data as KnowledgeDocument[]);
-        } catch (err) {
-            setError('Failed to fetch documents.');
+        } catch (err: any) {
+            const errorMessage = err.response?.data?.message || err.message || 'An unexpected error occurred while fetching documents.';
+            setError(errorMessage);
+            console.error('Fetch documents error:', err);
         } finally {
             setIsLoading(false);
         }
     }, [getToken]);
 
     useEffect(() => {
-        fetchDocuments();
+        fetchDocuments(); // Initial fetch
         const interval = setInterval(fetchDocuments, 5000); // Poll for status updates
         return () => clearInterval(interval);
     }, [fetchDocuments]);
@@ -583,7 +609,6 @@ const KnowledgeManager = () => {
 
             if (response.status === 200) {
                 setDocuments(prev => prev.filter(doc => doc.id !== documentId));
-                // No need for an alert, the UI update is sufficient feedback
             } else {
                 throw new Error((response.data as { message: string })?.message || 'Failed to delete document');
             }

@@ -74,8 +74,10 @@ const uploadDocument = (req, res) => {
                     return res.status(500).json({ message: 'Failed to upload file to cloud storage.' });
                 }
                 try {
+                    // Reverted to a simple INSERT to avoid errors without a unique constraint.
+                    // This is safer than relying on a migration the user may not have run.
                     const dbResult = await pool.query(
-                        'INSERT INTO knowledge_documents (file_name, file_type, file_url, status) VALUES ($1, $2, $3, $4) ON CONFLICT (file_name) DO UPDATE SET file_url = $3, status = $4, uploaded_at = NOW() RETURNING id',
+                        'INSERT INTO knowledge_documents (file_name, file_type, file_url, status) VALUES ($1, $2, $3, $4) RETURNING id',
                         [originalname, mimetype, result.secure_url, 'pending']
                     );
                     const documentId = dbResult.rows[0].id;
