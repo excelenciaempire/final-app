@@ -509,34 +509,12 @@ const KnowledgeManager = () => {
     const [isUploading, setIsUploading] = useState(false);
 
     const handleDownload = async (doc: KnowledgeDocument) => {
-        try {
-            const token = await getToken();
-            if (!token) {
-                setError('Authentication error. Please log in again.');
-                return;
-            }
-
-            const response = await fetch(`${BASE_URL}/api/admin/knowledge/${doc.id}/download`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`Download failed: ${response.status} ${errorText}`);
-            }
-
-            const blob = await response.blob();
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = doc.file_name;
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(url);
-            a.remove();
-        } catch (err: any) {
-            setError(`Failed to download document. Please try again. ${err.message}`);
-            console.error(err);
+        // The backend now handles the secure redirect. We just need to navigate to the endpoint with the token.
+        const token = await getToken();
+        if (token) {
+            window.location.href = `${BASE_URL}/api/admin/knowledge/${doc.id}/download?token=${token}`;
+        } else {
+            setError('Authentication error. Please log in again.');
         }
     };
     
