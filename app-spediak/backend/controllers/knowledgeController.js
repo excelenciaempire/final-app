@@ -152,40 +152,4 @@ const deleteDocument = async (req, res) => {
     }
 };
 
-const downloadDocument = async (req, res) => {
-    const { id } = req.params;
-    try {
-        const result = await pool.query('SELECT file_name, file_type FROM knowledge_documents WHERE id = $1', [id]);
-        if (result.rows.length === 0) {
-            return res.status(404).json({ message: 'Document not found.' });
-        }
-        const { file_name, file_type } = result.rows[0];
-        const public_id = `knowledge_base/${file_name}`;
-
-        // This is the definitive and correct method for generating a secure, temporary download URL.
-        // It uses the core URL builder with signing enabled, which is the robust way to access private assets.
-        const signed_url = cloudinary.url(public_id, {
-            resource_type: 'raw',
-            sign_url: true,
-            expires_at: Math.floor(Date.now() / 1000) + 300, // URL is valid for 5 minutes
-            attachment: file_name, // This forces the browser to download the file with its original name
-        });
-
-        res.setHeader('Content-Disposition', `attachment; filename="${file_name}"`);
-        res.setHeader('Content-Type', file_type);
-
-        const response = await axios({
-            method: 'GET',
-            url: signed_url,
-            responseType: 'stream',
-        });
-
-        response.data.pipe(res);
-
-    } catch (error) {
-        console.error('[Download] Error streaming document:', error.isAxiosError ? error.toJSON() : error);
-        res.status(500).json({ message: 'Failed to stream document.' });
-    }
-};
-
-module.exports = { uploadDocument, getDocuments, deleteDocument, downloadDocument }; 
+module.exports = { uploadDocument, getDocuments, deleteDocument }; 
