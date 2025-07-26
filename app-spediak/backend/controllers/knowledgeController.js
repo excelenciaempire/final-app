@@ -162,11 +162,12 @@ const downloadDocument = async (req, res) => {
         const { file_name, file_type } = result.rows[0];
         const public_id = `knowledge_base/${file_name}`;
 
-        const signed_url = cloudinary.url(public_id, {
+        // This is the definitive method for generating a secure download URL for authenticated resources.
+        // It correctly specifies the resource and delivery types to create a valid signature.
+        const signed_url = cloudinary.utils.private_download_url(public_id, {
             resource_type: 'raw',
             type: 'authenticated',
-            sign_url: true,
-            expires_at: Math.floor(Date.now() / 1000) + 60,
+            expires_at: Math.floor(Date.now() / 1000) + 300, // URL is valid for 5 minutes
         });
 
         res.setHeader('Content-Disposition', `attachment; filename="${file_name}"`);
