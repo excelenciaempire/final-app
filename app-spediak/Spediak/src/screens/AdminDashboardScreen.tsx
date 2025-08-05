@@ -258,11 +258,13 @@ const AllUsers: React.FC = () => {
         Alert.alert("Confirm Deletion", "Are you sure you want to delete this user?", [
             { text: "Cancel", style: "cancel" },
             { text: "Delete", style: "destructive", onPress: async () => {
-        try {
-            const token = await getToken();
+                try {
+                    const token = await getToken();
                     await axios.delete(`${BASE_URL}/api/admin/delete-user/${userId}`, { headers: { Authorization: `Bearer ${token}` } });
                     Alert.alert("Success", "User deleted.");
-                    fetchUsers(1);
+                    // Remove the user from the local state to update the UI instantly
+                    setUsers(prevUsers => prevUsers.filter(user => user.id !== userId));
+                    setTotalUsersCount(prevCount => prevCount - 1); // Decrement the total count
                 } catch (err: any) {
                     Alert.alert("Error", err.response?.data?.message || "Failed to delete user.");
                 }
