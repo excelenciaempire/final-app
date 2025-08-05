@@ -5,7 +5,7 @@ const { requireAuth } = require('../middleware/clerkAuth');
 const { generatePreDescription } = require('../controllers/preDescriptionController');
 const { generateDdid } = require('../controllers/ddidController');
 const { transcribeAudio } = require('../controllers/transcriptionController');
-const { getInspectionHistory, getPrimaryEmail, updatePrimaryEmail, getPresignedUrl } = require('../controllers/inspectionController');
+const { getInspectionHistory, createInspection, getPrimaryEmail, updatePrimaryEmail, getPresignedUrl } = require('../controllers/inspectionController');
 
 // All routes in this file are protected
 router.use(requireAuth);
@@ -25,6 +25,9 @@ router.post('/generate-ddid', generateDdid);
 
 // Route to get inspection history for the logged-in user
 router.get('/inspections', getInspectionHistory);
+
+// Route to create a new inspection
+router.post('/inspections', createInspection);
 
 // Route to get the primary email of the logged-in user
 router.get('/user-email', getPrimaryEmail);

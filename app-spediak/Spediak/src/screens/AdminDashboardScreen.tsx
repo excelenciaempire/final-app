@@ -576,23 +576,29 @@ const KnowledgeManager = () => {
     };
 
     const handleDelete = async (docId: number) => {
-        if (!confirm('Are you sure you want to delete this document? This action cannot be undone.')) {
-            return;
-        }
-        try {
-            const token = await getToken();
-            if (!token) {
-                setError('Authentication error.');
-                return;
-            }
-            await axios.delete(`${BASE_URL}/api/admin/knowledge/${docId}`, {
-                headers: { Authorization: `Bearer ${token}` },
-            });
-            setDocuments(prevDocs => prevDocs.filter(doc => doc.id !== docId));
-        } catch (err: any) {
-            setError('Failed to delete document.');
-            console.error(err);
-        }
+        Alert.alert('Confirm Deletion', 'Are you sure you want to delete this document? This action cannot be undone.', [
+            { text: 'Cancel', style: 'cancel' },
+            {
+                text: 'Delete',
+                style: 'destructive',
+                onPress: async () => {
+                    try {
+                        const token = await getToken();
+                        if (!token) {
+                            setError('Authentication error.');
+                            return;
+                        }
+                        await axios.delete(`${BASE_URL}/api/admin/knowledge/${docId}`, {
+                            headers: { Authorization: `Bearer ${token}` },
+                        });
+                        setDocuments(prevDocs => prevDocs.filter(doc => doc.id !== docId));
+                    } catch (err: any) {
+                        setError('Failed to delete document.');
+                        console.error(err);
+                    }
+                },
+            },
+        ]);
     };
 
     useEffect(() => {

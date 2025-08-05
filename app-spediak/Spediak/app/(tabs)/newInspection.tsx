@@ -1135,6 +1135,7 @@ const styles = StyleSheet.create({
         lineHeight: 25,
         color: '#333',
         textAlignVertical: 'top',
+        minHeight: 250, // Set a minimum height to make it larger
     },
     preDescInputEditing: {
         backgroundColor: '#fff',
