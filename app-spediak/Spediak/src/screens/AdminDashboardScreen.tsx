@@ -255,27 +255,38 @@ const AllUsers: React.FC = () => {
     };
     
     const handleDeleteUser = async (userId: string) => {
-        console.log(`[handleDeleteUser] Attempting to delete user with ID: ${userId}`); // Diagnostic log
-        Alert.alert("Confirm Deletion", "Are you sure you want to delete this user?", [
-            { text: "Cancel", style: "cancel" },
-            {
-                text: "Delete",
-                style: "destructive",
-                onPress: async () => {
-                    try {
-                        console.log(`[handleDeleteUser] Confirmed deletion for user ID: ${userId}`); // Diagnostic log
-                        const token = await getToken();
-                        await axios.delete(`${BASE_URL}/api/admin/delete-user/${userId}`, { headers: { Authorization: `Bearer ${token}` } });
-                        Alert.alert("Success", "User deleted.");
-                        setUsers(prevUsers => prevUsers.filter(user => user.id !== userId));
-                        setTotalUsersCount(prevCount => prevCount - 1);
-                    } catch (err: any) {
-                        console.error(`[handleDeleteUser] Error deleting user ID: ${userId}`, err); // Diagnostic log
-                        Alert.alert("Error", err.response?.data?.message || "Failed to delete user.");
-                    }
-                }
+        console.log(`[handleDeleteUser] Attempting to delete user with ID: ${userId}`);
+
+        const performDelete = async () => {
+            try {
+                console.log(`[handleDeleteUser] Confirmed deletion for user ID: ${userId}`);
+                const token = await getToken();
+                await axios.delete(`${BASE_URL}/api/admin/delete-user/${userId}`, { headers: { Authorization: `Bearer ${token}` } });
+                Alert.alert("Success", "User deleted.");
+                setUsers(prevUsers => prevUsers.filter(user => user.id !== userId));
+                setTotalUsersCount(prevCount => prevCount - 1);
+            } catch (err: any) {
+                console.error(`[handleDeleteUser] Error deleting user ID: ${userId}`, err);
+                Alert.alert("Error", err.response?.data?.message || "Failed to delete user.");
             }
-        ]);
+        };
+
+        if (Platform.OS === 'web') {
+            if (window.confirm("Are you sure you want to delete this user?")) {
+                await performDelete();
+            } else {
+                console.log(`[handleDeleteUser] Deletion cancelled for user ID: ${userId}`);
+            }
+        } else {
+            Alert.alert(
+                "Confirm Deletion",
+                "Are you sure you want to delete this user?",
+                [
+                    { text: "Cancel", style: "cancel", onPress: () => console.log(`[handleDeleteUser] Deletion cancelled for user ID: ${userId}`) },
+                    { text: "Delete", style: "destructive", onPress: performDelete }
+                ]
+            );
+        }
     };
     
     // JSX Rendering for All Users...
