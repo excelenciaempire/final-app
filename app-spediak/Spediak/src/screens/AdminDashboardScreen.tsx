@@ -256,18 +256,26 @@ const AllUsers: React.FC = () => {
     
     const handleDeleteUser = async (userId: string) => {
         console.log(`[handleDeleteUser] Attempting to delete user with ID: ${userId}`); // Diagnostic log
-        try {
-            console.log(`[handleDeleteUser] Bypassing confirmation for diagnostics. Deleting user ID: ${userId}`); // Diagnostic log
-            const token = await getToken();
-            await axios.delete(`${BASE_URL}/api/admin/delete-user/${userId}`, { headers: { Authorization: `Bearer ${token}` } });
-            Alert.alert("Success", "User deleted.");
-            // Remove the user from the local state to update the UI instantly
-            setUsers(prevUsers => prevUsers.filter(user => user.id !== userId));
-            setTotalUsersCount(prevCount => prevCount - 1); // Decrement the total count
-        } catch (err: any) {
-            console.error(`[handleDeleteUser] Error deleting user ID: ${userId}`, err); // Diagnostic log
-            Alert.alert("Error", err.response?.data?.message || "Failed to delete user.");
-        }
+        Alert.alert("Confirm Deletion", "Are you sure you want to delete this user?", [
+            { text: "Cancel", style: "cancel" },
+            {
+                text: "Delete",
+                style: "destructive",
+                onPress: async () => {
+                    try {
+                        console.log(`[handleDeleteUser] Confirmed deletion for user ID: ${userId}`); // Diagnostic log
+                        const token = await getToken();
+                        await axios.delete(`${BASE_URL}/api/admin/delete-user/${userId}`, { headers: { Authorization: `Bearer ${token}` } });
+                        Alert.alert("Success", "User deleted.");
+                        setUsers(prevUsers => prevUsers.filter(user => user.id !== userId));
+                        setTotalUsersCount(prevCount => prevCount - 1);
+                    } catch (err: any) {
+                        console.error(`[handleDeleteUser] Error deleting user ID: ${userId}`, err); // Diagnostic log
+                        Alert.alert("Error", err.response?.data?.message || "Failed to delete user.");
+                    }
+                }
+            }
+        ]);
     };
     
     // JSX Rendering for All Users...
@@ -744,6 +752,7 @@ const styles = StyleSheet.create({
     userMetaText: { color: 'gray' },
     deleteButton: {
         padding: 8, // Add padding to increase touchable area
+        zIndex: 1, // Ensure the button is on top
     },
     userControlsContainer: { flexDirection: 'row', padding: 16, alignItems: 'center' },
     searchWrapperUsers: { flex: 1, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#ccc', borderRadius: 8, paddingHorizontal: 8 },
