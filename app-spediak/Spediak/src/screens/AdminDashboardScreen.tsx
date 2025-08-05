@@ -744,7 +744,9 @@ const styles = StyleSheet.create({
     userNameText: { fontWeight: 'bold' },
     userEmailText: { color: 'gray' },
     userMetaText: { color: 'gray' },
-    deleteButton: {},
+    deleteButton: {
+        padding: 8, // Add padding to increase touchable area
+    },
     userControlsContainer: { flexDirection: 'row', padding: 16, alignItems: 'center' },
     searchWrapperUsers: { flex: 1, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#ccc', borderRadius: 8, paddingHorizontal: 8 },
     // Prompt Editor Styles...

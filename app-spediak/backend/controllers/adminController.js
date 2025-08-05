@@ -202,6 +202,14 @@ const deleteUser = async (req, res) => {
 
   try {
     await client.query('BEGIN');
+
+    // First, delete inspections associated with the user
+    console.log(`[Admin] Deleting inspections for user ${userId}...`);
+    const deleteInspectionsQuery = 'DELETE FROM inspections WHERE user_id = $1';
+    await client.query(deleteInspectionsQuery, [userId]);
+    console.log(`[Admin] Inspections for user ${userId} deleted.`);
+
+    // Then, delete the user from Clerk
     console.log(`[Admin] Deleting user ${userId} from Clerk...`);
     await clerkClient.users.deleteUser(userId);
     console.log(`[Admin] User ${userId} deleted from Clerk successfully.`);
