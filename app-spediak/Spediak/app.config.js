@@ -7,6 +7,7 @@ module.exports = {
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": false,
+    "sdkVersion": "54.0.0",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
