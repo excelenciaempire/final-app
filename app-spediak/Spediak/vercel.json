@@ -1,39 +1,14 @@
 {
-  "buildCommand": "npm run build",
-  "outputDirectory": "dist",
-  "framework": "expo",
   "rewrites": [
-    {
-      "source": "/health",
-      "destination": "/health.html"
-    },
-    {
-      "source": "/(.*)",
-      "destination": "/$1"
-    }
+    { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [
     {
       "source": "/(.*)",
       "headers": [
-        {
-          "key": "X-Content-Type-Options",
-          "value": "nosniff"
-        },
-        {
-          "key": "X-Frame-Options",
-          "value": "DENY"
-        },
-        {
-          "key": "X-XSS-Protection",
-          "value": "1; mode=block"
-        }
+        { "key": "Cache-Control", "value": "s-maxage=1, stale-while-revalidate" }
       ]
     }
   ],
-  "github": {
-    "silent": false,
-    "autoAlias": true,
-    "autoJobCancelation": true
-  }
+  "trailingSlash": false
 }
