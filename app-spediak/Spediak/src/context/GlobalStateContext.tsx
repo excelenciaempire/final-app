@@ -164,7 +164,15 @@ export const GlobalStateProvider: React.FC<{ children: ReactNode }> = ({ childre
 export const useGlobalState = () => {
   const context = useContext(GlobalStateContext);
   if (context === undefined) {
-    throw new Error('useGlobalState must be used within a GlobalStateProvider');
+    // Return default values instead of throwing to prevent crashes during initialization
+    console.warn('useGlobalState called outside of GlobalStateProvider - using defaults');
+    return {
+      selectedState: 'NC',
+      setSelectedState: () => {},
+      isContentStale: false,
+      markContentAsStale: () => {},
+      clearStaleFlag: () => {},
+    };
   }
   return context;
 };

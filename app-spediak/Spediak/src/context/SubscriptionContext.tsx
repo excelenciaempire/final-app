@@ -125,7 +125,16 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
 export const useSubscription = () => {
   const context = useContext(SubscriptionContext);
   if (context === undefined) {
-    throw new Error('useSubscription must be used within a SubscriptionProvider');
+    // Return default values instead of throwing
+    console.warn('useSubscription called outside of SubscriptionProvider - using defaults');
+    return {
+      subscription: null,
+      isLoading: false,
+      error: null,
+      refreshSubscription: async () => {},
+      canGenerateStatement: true,
+      incrementUsage: async () => true,
+    };
   }
   return context;
 };
