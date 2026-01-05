@@ -39,8 +39,7 @@ const Drawer = createDrawerNavigator<RootDrawerParamList>();
 
 // --- Custom Header Title Component with State Selector ---
 const CustomHeaderTitle: React.FC = () => {
-  const globalState = useGlobalState();
-  const { selectedState, setSelectedState } = globalState || { selectedState: null, setSelectedState: () => {} };
+  const { selectedState, setSelectedState } = useGlobalState();
   const [showStatePicker, setShowStatePicker] = useState(false);
 
   return (
