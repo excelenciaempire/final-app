@@ -1,12 +1,12 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, ActivityIndicator, Linking, Platform } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Image, ActivityIndicator, Linking } from 'react-native';
 import { useSubscription } from '../context/SubscriptionContext';
 import { useAuth } from '@clerk/clerk-expo';
 import axios from 'axios';
 import { BASE_URL } from '../config/api';
 import { COLORS } from '../styles/colors';
 
-interface Ad {
+interface AdData {
   id: number;
   title: string;
   subtitle?: string;
@@ -14,101 +14,122 @@ interface Ad {
   image_url?: string;
 }
 
-const AD_ROTATION_INTERVAL = 10000; // 10 seconds
-
 export const AdBanner: React.FC = () => {
   const { subscription } = useSubscription();
   const { getToken } = useAuth();
-  const [ads, setAds] = useState<Ad[]>([]);
-  const [currentAdIndex, setCurrentAdIndex] = useState(0);
+  const [currentAd, setCurrentAd] = useState<AdData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [ads, setAds] = useState<AdData[]>([]);
+  const [currentAdIndex, setCurrentAdIndex] = useState(0);
 
+  // Only show ads for free tier users
   const planType = subscription?.plan_type || 'free';
-
-  // Only show ads for free users
-  if (planType !== 'free') {
-    return null;
-  }
-
-  const fetchAds = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      const token = await getToken();
-      
-      if (!token) {
-        setIsLoading(false);
-        return;
-      }
-
-      const response = await axios.get(`${BASE_URL}/api/ads/active`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-
-      if (response.data && Array.isArray(response.data) && response.data.length > 0) {
-        setAds(response.data);
-      } else {
-        setAds([]);
-      }
-    } catch (err: any) {
-      console.error('Error fetching ads:', err);
-      setError('Failed to load ads');
-      setAds([]); // Graceful fallback - just don't show ads
-    } finally {
-      setIsLoading(false);
-    }
-  }, [getToken]);
+  const shouldShowAds = planType === 'free';
 
   useEffect(() => {
+    if (!shouldShowAds) {
+      setIsLoading(false);
+      return;
+    }
+
+    const fetchAds = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+        const token = await getToken();
+        
+        if (!token) {
+          setIsLoading(false);
+          return;
+        }
+
+        const response = await axios.get(`${BASE_URL}/api/ads/active`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        if (response.data && response.data.length > 0) {
+          setAds(response.data);
+          setCurrentAd(response.data[0]);
+          setCurrentAdIndex(0);
+        } else {
+          setError('No ads available');
+        }
+      } catch (err: any) {
+        console.error('Error fetching ads:', err);
+        setError('Failed to load ads');
+        // Don't show error to user, just fail silently
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
     fetchAds();
-  }, [fetchAds]);
+  }, [shouldShowAds, getToken]);
 
   // Rotate ads every 10 seconds
   useEffect(() => {
-    if (ads.length <= 1) return;
+    if (!shouldShowAds || ads.length <= 1) return;
 
     const interval = setInterval(() => {
-      setCurrentAdIndex((prevIndex) => (prevIndex + 1) % ads.length);
-    }, AD_ROTATION_INTERVAL);
+      setCurrentAdIndex((prevIndex) => {
+        const newIndex = (prevIndex + 1) % ads.length;
+        setCurrentAd(ads[newIndex]);
+        return newIndex;
+      });
+    }, 10000); // 10 seconds
 
     return () => clearInterval(interval);
-  }, [ads.length]);
+  }, [ads, shouldShowAds]);
 
-  const handleAdClick = async (ad: Ad) => {
+  const handleAdClick = async () => {
+    if (!currentAd) return;
+
     try {
-      // Open destination URL (click tracking can be added later if needed)
-      const canOpen = await Linking.canOpenURL(ad.destination_url);
-      if (canOpen) {
-        await Linking.openURL(ad.destination_url);
+      const token = await getToken();
+      if (token) {
+        // Track click (non-blocking)
+        axios.post(
+          `${BASE_URL}/api/ads/${currentAd.id}/click`,
+          {},
+          { headers: { Authorization: `Bearer ${token}` } }
+        ).catch(err => console.error('Error tracking click:', err));
       }
-    } catch (err) {
-      console.error('Error opening ad URL:', err);
+
+      // Open destination URL
+      const supported = await Linking.canOpenURL(currentAd.destination_url);
+      if (supported) {
+        await Linking.openURL(currentAd.destination_url);
+      } else {
+        console.error('Cannot open URL:', currentAd.destination_url);
+      }
+    } catch (error) {
+      console.error('Error handling ad click:', error);
     }
   };
 
-  // Don't render anything if no ads available (graceful fallback)
-  if (isLoading) {
-    return null; // Silent loading - don't show loading spinner for ads
+  // Don't render anything if user is not on free plan
+  if (!shouldShowAds) {
+    return null;
   }
 
-  if (error || ads.length === 0) {
-    return null; // Graceful fallback - just don't render anything
+  // Don't render anything if loading and no ads yet (non-blocking)
+  if (isLoading && !currentAd) {
+    return null;
   }
 
-  const currentAd = ads[currentAdIndex];
-
-  if (!currentAd) {
+  // Don't render anything if error (graceful fallback)
+  if (error || !currentAd) {
     return null;
   }
 
   return (
-    <View style={styles.container}>
-      <TouchableOpacity
-        style={styles.adContainer}
-        onPress={() => handleAdClick(currentAd)}
-        activeOpacity={0.8}
-      >
+    <TouchableOpacity
+      style={styles.container}
+      onPress={handleAdClick}
+      activeOpacity={0.8}
+    >
+      <View style={styles.adCard}>
         {currentAd.image_url ? (
           <Image
             source={{ uri: currentAd.image_url }}
@@ -116,28 +137,23 @@ export const AdBanner: React.FC = () => {
             resizeMode="cover"
           />
         ) : (
-          <View style={styles.adTextContainer}>
-            <Text style={styles.adTitle}>{currentAd.title}</Text>
-            {currentAd.subtitle && (
-              <Text style={styles.adSubtitle}>{currentAd.subtitle}</Text>
-            )}
+          <View style={styles.adPlaceholder}>
+            <Text style={styles.adPlaceholderText}>Ad</Text>
           </View>
         )}
-        {ads.length > 1 && (
-          <View style={styles.adIndicatorContainer}>
-            {ads.map((_, index) => (
-              <View
-                key={index}
-                style={[
-                  styles.adIndicator,
-                  index === currentAdIndex && styles.adIndicatorActive,
-                ]}
-              />
-            ))}
+        <View style={styles.adContent}>
+          <Text style={styles.adTitle}>{currentAd.title}</Text>
+          {currentAd.subtitle && (
+            <Text style={styles.adSubtitle}>{currentAd.subtitle}</Text>
+          )}
+        </View>
+        {isLoading && (
+          <View style={styles.loadingOverlay}>
+            <ActivityIndicator size="small" color={COLORS.primary} />
           </View>
         )}
-      </TouchableOpacity>
-    </View>
+      </View>
+    </TouchableOpacity>
   );
 };
 
@@ -146,7 +162,7 @@ const styles = StyleSheet.create({
     marginVertical: 8,
     marginHorizontal: 16,
   },
-  adContainer: {
+  adCard: {
     backgroundColor: COLORS.white,
     borderRadius: 12,
     overflow: 'hidden',
@@ -156,48 +172,48 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
     minHeight: 100,
+    position: 'relative',
   },
   adImage: {
     width: '100%',
     height: 120,
+    backgroundColor: COLORS.secondary,
   },
-  adTextContainer: {
-    padding: 16,
-    alignItems: 'center',
+  adPlaceholder: {
+    width: '100%',
+    height: 120,
+    backgroundColor: COLORS.secondary,
     justifyContent: 'center',
-    minHeight: 100,
+    alignItems: 'center',
+  },
+  adPlaceholderText: {
+    fontSize: 16,
+    color: COLORS.darkText,
+    opacity: 0.5,
+  },
+  adContent: {
+    padding: 12,
   },
   adTitle: {
     fontSize: 16,
     fontWeight: 'bold',
     color: COLORS.darkText,
-    textAlign: 'center',
     marginBottom: 4,
   },
   adSubtitle: {
     fontSize: 14,
-    color: COLORS.textSeco,
-    textAlign: 'center',
+    color: COLORS.darkText,
+    opacity: 0.7,
   },
-  adIndicatorContainer: {
-    flexDirection: 'row',
+  loadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 8,
-    gap: 6,
-    backgroundColor: COLORS.secondary,
-  },
-  adIndicator: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: COLORS.textMuted,
-  },
-  adIndicatorActive: {
-    backgroundColor: COLORS.primary,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
   },
 });
 

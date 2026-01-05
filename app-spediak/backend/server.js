@@ -3,7 +3,6 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 const apiRoutes = require('./routes/api');
 const adminRoutes = require('./routes/adminRoutes'); // Import admin routes
-const healthRoutes = require('./routes/health'); // Import health routes
 const { handleClerkWebhook } = require('./controllers/webhookController');
 
 dotenv.config();
@@ -41,9 +40,6 @@ app.post('/api/webhooks/clerk', express.raw({ type: 'application/json' }), handl
 // Standard Body Parsers
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
-
-// Health check routes (public, no auth required)
-app.use('/', healthRoutes);
 
 // Routes
 app.use('/api', apiRoutes);

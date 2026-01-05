@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Linking } from 'react-native';
 import { useGlobalState } from '../context/GlobalStateContext';
 import { useAuth, useUser } from '@clerk/clerk-expo';
 import { useNavigation } from '@react-navigation/native';
@@ -10,10 +10,12 @@ import { FileText, ArrowRight } from 'lucide-react-native';
 
 interface ActiveSop {
   state_sop?: {
+    id: number;
     document_name: string;
     file_url: string;
   };
   org_sop?: {
+    id: number;
     document_name: string;
     file_url: string;
   };
@@ -28,8 +30,6 @@ export const SopAlignmentCard: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const userOrganization = user?.unsafeMetadata?.organization as string | undefined;
-
   useEffect(() => {
     const fetchActiveSops = async () => {
       if (!selectedState) {
@@ -41,35 +41,49 @@ export const SopAlignmentCard: React.FC = () => {
         setIsLoading(true);
         setError(null);
         const token = await getToken();
-
+        
         if (!token) {
           setIsLoading(false);
           return;
         }
 
+        const organization = user?.unsafeMetadata?.organization as string || null;
+
         const response = await axios.get(`${BASE_URL}/api/sop/active`, {
           headers: { Authorization: `Bearer ${token}` },
           params: {
             state: selectedState,
-            organization: userOrganization || null,
-          },
+            organization: organization || undefined,
+          }
         });
 
-        setActiveSops(response.data || null);
+        setActiveSops(response.data);
       } catch (err: any) {
         console.error('Error fetching active SOPs:', err);
         setError('Failed to load SOP information');
-        setActiveSops(null);
       } finally {
         setIsLoading(false);
       }
     };
 
     fetchActiveSops();
-  }, [selectedState, userOrganization, getToken]);
+  }, [selectedState, user, getToken]);
 
-  const handleNavigateToSop = () => {
+  const handleViewSops = () => {
     navigation.navigate('SOP');
+  };
+
+  const handleDownload = async (url: string, documentName: string) => {
+    try {
+      const supported = await Linking.canOpenURL(url);
+      if (supported) {
+        await Linking.openURL(url);
+      } else {
+        console.error('Cannot open URL:', url);
+      }
+    } catch (error) {
+      console.error('Error opening SOP:', error);
+    }
   };
 
   if (isLoading) {
@@ -80,24 +94,22 @@ export const SopAlignmentCard: React.FC = () => {
     );
   }
 
-  if (error || !activeSops) {
+  if (error || (!activeSops?.state_sop && !activeSops?.org_sop)) {
     return (
       <View style={styles.card}>
         <View style={styles.header}>
           <FileText size={20} color={COLORS.primary} />
           <Text style={styles.title}>SOP Alignment</Text>
         </View>
-        <Text style={styles.noSopText}>No active SOPs configured</Text>
-        <TouchableOpacity style={styles.configureButton} onPress={handleNavigateToSop}>
-          <Text style={styles.configureButtonText}>Configure SOPs</Text>
-          <ArrowRight size={16} color={COLORS.white} />
+        <Text style={styles.noSopText}>
+          No active SOPs configured for {selectedState || 'selected state'}
+        </Text>
+        <TouchableOpacity style={styles.configureButton} onPress={handleViewSops}>
+          <Text style={styles.configureButtonText}>Configure SOPs →</Text>
         </TouchableOpacity>
       </View>
     );
   }
-
-  const hasStateSop = !!activeSops.state_sop;
-  const hasOrgSop = !!activeSops.org_sop;
 
   return (
     <View style={styles.card}>
@@ -107,28 +119,40 @@ export const SopAlignmentCard: React.FC = () => {
       </View>
 
       <View style={styles.content}>
-        {hasStateSop && (
+        {activeSops.state_sop && (
           <View style={styles.sopItem}>
-            <Text style={styles.sopLabel}>State SOP:</Text>
-            <Text style={styles.sopName}>{activeSops.state_sop?.document_name}</Text>
+            <View style={styles.sopInfo}>
+              <Text style={styles.sopLabel}>State SOP:</Text>
+              <Text style={styles.sopName}>{activeSops.state_sop.document_name}</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.downloadButton}
+              onPress={() => handleDownload(activeSops.state_sop!.file_url, activeSops.state_sop!.document_name)}
+            >
+              <Text style={styles.downloadButtonText}>View</Text>
+            </TouchableOpacity>
           </View>
         )}
 
-        {hasOrgSop && (
+        {activeSops.org_sop && (
           <View style={styles.sopItem}>
-            <Text style={styles.sopLabel}>Organization SOP:</Text>
-            <Text style={styles.sopName}>{activeSops.org_sop?.document_name}</Text>
+            <View style={styles.sopInfo}>
+              <Text style={styles.sopLabel}>Organization SOP:</Text>
+              <Text style={styles.sopName}>{activeSops.org_sop.document_name}</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.downloadButton}
+              onPress={() => handleDownload(activeSops.org_sop!.file_url, activeSops.org_sop!.document_name)}
+            >
+              <Text style={styles.downloadButtonText}>View</Text>
+            </TouchableOpacity>
           </View>
-        )}
-
-        {!hasStateSop && !hasOrgSop && (
-          <Text style={styles.noSopText}>No active SOPs for this state/organization</Text>
         )}
       </View>
 
-      <TouchableOpacity style={styles.configureButton} onPress={handleNavigateToSop}>
-        <Text style={styles.configureButtonText}>View/Configure SOPs</Text>
-        <ArrowRight size={16} color={COLORS.white} />
+      <TouchableOpacity style={styles.configureButton} onPress={handleViewSops}>
+        <Text style={styles.configureButtonText}>Configure SOPs</Text>
+        <ArrowRight size={16} color={COLORS.primary} />
       </TouchableOpacity>
     </View>
   );
@@ -160,41 +184,62 @@ const styles = StyleSheet.create({
   },
   content: {
     marginBottom: 12,
-    gap: 8,
+    gap: 12,
   },
   sopItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.secondary,
+  },
+  sopInfo: {
+    flex: 1,
+    marginRight: 12,
   },
   sopLabel: {
-    fontSize: 14,
-    color: COLORS.textSeco,
+    fontSize: 12,
+    color: COLORS.darkText,
+    opacity: 0.7,
     marginBottom: 4,
   },
   sopName: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
     color: COLORS.darkText,
   },
+  downloadButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: COLORS.secondary,
+    borderRadius: 6,
+  },
+  downloadButtonText: {
+    fontSize: 14,
+    color: COLORS.primary,
+    fontWeight: '600',
+  },
   noSopText: {
     fontSize: 14,
-    color: COLORS.textMuted,
-    fontStyle: 'italic',
+    color: COLORS.darkText,
+    opacity: 0.7,
+    marginBottom: 12,
     textAlign: 'center',
-    paddingVertical: 8,
   },
   configureButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: COLORS.primary,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.secondary,
+    marginTop: 8,
     gap: 8,
   },
   configureButtonText: {
-    color: COLORS.white,
-    fontSize: 16,
+    fontSize: 14,
+    color: COLORS.primary,
     fontWeight: '600',
   },
 });
