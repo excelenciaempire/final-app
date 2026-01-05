@@ -44,13 +44,14 @@ export const AdBanner: React.FC = () => {
           return;
         }
 
-        const response = await axios.get(`${BASE_URL}/api/ads/active`, {
+        const response = await axios.get<AdData[]>(`${BASE_URL}/api/ads/active`, {
           headers: { Authorization: `Bearer ${token}` }
         });
 
-        if (response.data && response.data.length > 0) {
-          setAds(response.data);
-          setCurrentAd(response.data[0]);
+        const adsData = response.data as AdData[];
+        if (adsData && Array.isArray(adsData) && adsData.length > 0) {
+          setAds(adsData);
+          setCurrentAd(adsData[0]);
           setCurrentAdIndex(0);
         } else {
           setError('No ads available');

@@ -25,7 +25,7 @@ export const SopAlignmentCard: React.FC = () => {
   const { selectedState } = useGlobalState();
   const { getToken } = useAuth();
   const { user } = useUser();
-  const navigation = useNavigation<any>();
+  const navigation = useNavigation();
   const [activeSops, setActiveSops] = useState<ActiveSop | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

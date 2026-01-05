@@ -7,7 +7,7 @@ import { TrendingUp } from 'lucide-react-native';
 
 const StatementUsageCard: React.FC = () => {
   const { subscription, isLoading } = useSubscription();
-  const navigation = useNavigation<any>();
+  const navigation = useNavigation();
 
   if (isLoading) {
     return (
