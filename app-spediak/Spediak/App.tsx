@@ -6,6 +6,8 @@ import { NavigationContainer } from '@react-navigation/native';
 import { StyleSheet, Text, View, Platform } from 'react-native';
 import AuthNavigator from "./src/navigation/AuthNavigator"; // Revert path
 import RootNavigator from "./src/navigation/RootNavigator"; // Import RootNavigator
+import { GlobalStateProvider } from "./src/context/GlobalStateContext";
+import { SubscriptionProvider } from "./src/context/SubscriptionContext";
 
 const clerkPublishableKey = Constants.expoConfig?.extra?.clerkPublishableKey;
 
@@ -37,19 +39,19 @@ export default function App() {
         tokenCache={tokenCache}
         publishableKey={clerkPublishableKey}
       >
-        <NavigationContainer>
-          <SignedIn>
-            {/* Restore RootNavigator */}
-            {/* <View style={{flex: 1, justifyContent: 'center', alignItems: 'center'}}>
-              <Text>Signed In - Debug View</Text>
-            </View> */}
-            <RootNavigator />
-          </SignedIn>
-          <SignedOut>
-             <AuthNavigator />
-          </SignedOut>
-        </NavigationContainer>
-        <StatusBar style="auto" />
+        <GlobalStateProvider>
+          <SubscriptionProvider>
+            <NavigationContainer>
+              <SignedIn>
+                <RootNavigator />
+              </SignedIn>
+              <SignedOut>
+                <AuthNavigator />
+              </SignedOut>
+            </NavigationContainer>
+            <StatusBar style="auto" />
+          </SubscriptionProvider>
+        </GlobalStateProvider>
       </ClerkProvider>
     </View>
   );

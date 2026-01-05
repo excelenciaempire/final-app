@@ -10,6 +10,11 @@ import * as FileSystem from 'expo-file-system';
 import { BASE_URL } from '../../src/config/api'; // Import centralized BASE_URL
 import { COLORS } from '../../src/styles/colors'; // Corrected import path
 import * as Clipboard from 'expo-clipboard'; // Corrected import
+import { useGlobalState } from '../../src/context/GlobalStateContext';
+import { useSubscription } from '../../src/context/SubscriptionContext';
+import { AdBanner } from '../../src/components/AdBanner';
+import { SopAlignmentCard } from '../../src/components/SopAlignmentCard';
+import { StatementUsageCard } from '../../src/components/StatementUsageCard';
 
 // --- API Response Interfaces ---
 interface UploadImageResponse {
@@ -186,7 +191,6 @@ export default function NewInspectionScreen() {
     const [isTranscribing, setIsTranscribing] = useState<boolean>(false);
     const { getToken } = useAuth();
     const { user } = useUser();
-    const [userState, setUserState] = useState<string>('NC'); // Default to NC
     const [isUploading, setIsUploading] = useState<boolean>(false);
     const { width } = useWindowDimensions(); // Get width for responsive logic
     const isWebLarge = Platform.OS === 'web' && width > 768; // Define isWebLarge
@@ -199,13 +203,11 @@ export default function NewInspectionScreen() {
     const [isGeneratingFinalDdid, setIsGeneratingFinalDdid] = useState<boolean>(false);
     const [cloudinaryUrl, setCloudinaryUrl] = useState<string | null>(null);
 
-    // --- Fetch user state from Clerk metadata ---
-    useEffect(() => {
-        if (user?.unsafeMetadata?.inspectionState) {
-            setUserState(user.unsafeMetadata.inspectionState as string);
-        }
-    }, [user]);
-    // --- End user state fetching ---
+    // --- Use Global State Context for selected state ---
+    const { selectedState, isContentStale, clearStaleFlag } = useGlobalState();
+    const { subscription, canGenerateStatement } = useSubscription();
+    const userState = selectedState || user?.unsafeMetadata?.inspectionState as string || 'NC';
+    // --- End global state usage ---
 
     // --- Refactored Image Picking Logic ---
     const requestPermissions = async (): Promise<boolean> => {
@@ -821,6 +823,24 @@ export default function NewInspectionScreen() {
                 keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
                 enabled
             >
+                {/* Statement Usage Card */}
+                <StatementUsageCard />
+
+                {/* Ad Banner (only for free users) */}
+                <AdBanner />
+
+                {/* Stale Content Warning */}
+                {isContentStale && generatedDdid && (
+                  <View style={styles.staleWarning}>
+                    <Text style={styles.staleWarningText}>
+                      ⚠️ State changed - generated content may no longer be compliant
+                    </Text>
+                    <TouchableOpacity onPress={clearStaleFlag}>
+                      <Text style={styles.staleWarningDismiss}>Dismiss</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
                 <View style={styles.userInfoContainer}>
                     {/* State display removed from here, now handled in RootNavigator header */}
                 </View>
@@ -890,11 +910,13 @@ export default function NewInspectionScreen() {
 
                 <View style={styles.actionButtonsRow}>
                     <TouchableOpacity
-                        style={[styles.button, styles.analyzeButton, styles.actionButtonHalf, (!imageBase64 || !initialDescription.trim() || isLoading) && styles.buttonDisabled]}
+                        style={[styles.button, styles.analyzeButton, styles.actionButtonHalf, (!imageBase64 || !initialDescription.trim() || isLoading || !canGenerateStatement) && styles.buttonDisabled]}
                         onPress={handleAnalyze}
-                        disabled={!imageBase64 || !initialDescription.trim() || isLoading}
+                        disabled={!imageBase64 || !initialDescription.trim() || isLoading || !canGenerateStatement}
                     >
-                        <Text style={styles.buttonText}>Analyze Defect</Text>
+                        <Text style={styles.buttonText}>
+                          {!canGenerateStatement ? 'Limit Reached' : 'Analyze Defect'}
+                        </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                         style={[styles.button, styles.newChatButton, styles.actionButtonHalf, isLoading && styles.buttonDisabled]}
@@ -907,6 +929,9 @@ export default function NewInspectionScreen() {
                 </View>
 
                 {error && <Text style={styles.errorText}>{error}</Text>}
+
+                {/* SOP Alignment Card */}
+                <SopAlignmentCard />
 
                 {/* --- Send Feedback Link --- */}
                 <TouchableOpacity
@@ -1258,6 +1283,31 @@ const styles = StyleSheet.create({
     feedbackLinkText: {
         color: COLORS.primary,
         fontSize: 15,
+        textDecorationLine: 'underline',
+    },
+    staleWarning: {
+        backgroundColor: '#fff3cd',
+        borderWidth: 1,
+        borderColor: '#ffc107',
+        borderRadius: 8,
+        padding: 12,
+        marginBottom: 16,
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        width: '100%',
+        maxWidth: 500,
+    },
+    staleWarningText: {
+        flex: 1,
+        fontSize: 14,
+        color: '#856404',
+        fontWeight: '600',
+    },
+    staleWarningDismiss: {
+        fontSize: 14,
+        color: COLORS.primary,
+        fontWeight: 'bold',
         textDecorationLine: 'underline',
     },
 });

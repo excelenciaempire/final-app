@@ -6,31 +6,41 @@ import {
   DrawerItem,
   DrawerContentComponentProps,
 } from '@react-navigation/drawer';
-import { View, Text, StyleSheet, Image, ActivityIndicator, TouchableOpacity, Platform, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, Image, ActivityIndicator, TouchableOpacity, Platform, useWindowDimensions, Modal, ScrollView } from 'react-native';
 import { useAuth, useUser } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../styles/colors';
+import { useGlobalState, US_STATES } from '../context/GlobalStateContext';
+import { Picker } from '@react-native-picker/picker';
 
 // Import Screens
 import NewInspectionScreen from '../../app/(tabs)/newInspection';
 import InspectionHistoryScreen from '../screens/InspectionHistoryScreen';
 import ProfileSettingsScreen from '../screens/ProfileSettingsScreen';
 import WelcomeScreen from '../screens/WelcomeScreen';
+import SopScreen from '../screens/SopScreen';
+import DiscordScreen from '../screens/DiscordScreen';
+import PlanSelectionScreen from '../screens/PlanSelectionScreen';
+import SopHistoryScreen from '../screens/SopHistoryScreen';
 
 // Define Drawer Param List
 export type RootDrawerParamList = {
+  Home: { userState?: string };
   NewStatement: { userState?: string };
   InspectionHistory: undefined;
+  SOP: undefined;
+  Discord: undefined;
   ProfileSettings: undefined;
-  // AdminDashboard is not a direct route in this navigator for mobile/small screens
+  PlanSelection: undefined;
+  // AdminDashboard and SopHistory are not direct routes in drawer for mobile
 };
 
 const Drawer = createDrawerNavigator<RootDrawerParamList>();
 
-// --- Custom Header Title Component ---
+// --- Custom Header Title Component with State Selector ---
 const CustomHeaderTitle: React.FC = () => {
-  const { user } = useUser();
-  const userState = user?.unsafeMetadata?.inspectionState as string || 'N/A';
+  const { selectedState, setSelectedState } = useGlobalState();
+  const [showStatePicker, setShowStatePicker] = useState(false);
 
   return (
     <View style={styles.customHeaderContainer}>
@@ -38,7 +48,64 @@ const CustomHeaderTitle: React.FC = () => {
         source={require('../../assets/logo_header.png')} 
         style={styles.headerLogo}
       />
-      <Text style={styles.headerStateText}>State: {userState}</Text>
+      <TouchableOpacity 
+        style={styles.stateSelector}
+        onPress={() => setShowStatePicker(true)}
+      >
+        <Text style={styles.headerStateText}>
+          {selectedState || 'Select State'}
+        </Text>
+        <Ionicons name="chevron-down" size={16} color={COLORS.white} />
+      </TouchableOpacity>
+
+      {/* State Picker Modal */}
+      <Modal
+        visible={showStatePicker}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowStatePicker(false)}
+      >
+        <TouchableOpacity 
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowStatePicker(false)}
+        >
+          <View style={styles.statePickerContainer}>
+            <Text style={styles.statePickerTitle}>Select State</Text>
+            <ScrollView style={styles.statePickerScroll}>
+              {US_STATES.map((state) => (
+                <TouchableOpacity
+                  key={state.value}
+                  style={[
+                    styles.statePickerItem,
+                    selectedState === state.value && styles.statePickerItemActive
+                  ]}
+                  onPress={() => {
+                    setSelectedState(state.value);
+                    setShowStatePicker(false);
+                  }}
+                >
+                  <Text style={[
+                    styles.statePickerItemText,
+                    selectedState === state.value && styles.statePickerItemTextActive
+                  ]}>
+                    {state.value} - {state.label}
+                  </Text>
+                  {selectedState === state.value && (
+                    <Ionicons name="checkmark" size={20} color={COLORS.primary} />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <TouchableOpacity
+              style={styles.closePickerButton}
+              onPress={() => setShowStatePicker(false)}
+            >
+              <Text style={styles.closePickerButtonText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 };
@@ -59,11 +126,14 @@ const SidebarContent: React.FC<SidebarContentProps> = ({ onNavigate, activeScree
     return <ActivityIndicator style={{ marginTop: 20 }} color={COLORS.primary} />;
   }
 
-  const drawerItems: { name: keyof RootDrawerParamList | 'AdminDashboard'; label: string; icon: keyof typeof Ionicons.glyphMap, adminOnly?: boolean }[] = [
-    { name: 'NewStatement', label: 'New Statement', icon: 'add-circle-outline' },
+  const drawerItems: { name: keyof RootDrawerParamList | 'AdminDashboard' | 'SopHistory'; label: string; icon: keyof typeof Ionicons.glyphMap, adminOnly?: boolean }[] = [
+    { name: 'Home', label: 'Home', icon: 'home-outline' },
     { name: 'InspectionHistory', label: 'Statement History', icon: 'time-outline' },
+    { name: 'SOP', label: 'SOP', icon: 'document-text-outline' },
+    { name: 'Discord', label: 'Discord', icon: 'logo-discord' },
     { name: 'ProfileSettings', label: 'Profile', icon: 'person-circle-outline' },
-    { name: 'AdminDashboard', label: 'Admin Dashboard', icon: 'shield-checkmark-outline', adminOnly: true },
+    { name: 'AdminDashboard', label: 'Admin', icon: 'shield-checkmark-outline', adminOnly: true },
+    { name: 'SopHistory', label: 'SOP History', icon: 'git-commit-outline', adminOnly: true },
   ];
 
   return (
@@ -180,18 +250,25 @@ const RootNavigator: React.FC = () => {
 
   // --- Web Dashboard Layout (Large Screens) ---
   if (isWebLarge) {
-    let CurrentScreenComponent: React.ComponentType<any> | null = null; // Initialize as null
+    let CurrentScreenComponent: React.ComponentType<any> | null = null;
 
-    if (activeScreen === 'NewStatement') {
+    if (activeScreen === 'Home' || activeScreen === 'NewStatement') {
         CurrentScreenComponent = NewInspectionScreen;
     } else if (activeScreen === 'InspectionHistory') {
         CurrentScreenComponent = InspectionHistoryScreen;
+    } else if (activeScreen === 'SOP') {
+        CurrentScreenComponent = SopScreen;
+    } else if (activeScreen === 'Discord') {
+        CurrentScreenComponent = DiscordScreen;
     } else if (activeScreen === 'ProfileSettings') {
         CurrentScreenComponent = ProfileSettingsScreen;
-    } else if (activeScreen === 'AdminDashboard') { // No need to check isAdmin here
-        // Load component only when needed and on web
+    } else if (activeScreen === 'PlanSelection') {
+        CurrentScreenComponent = PlanSelectionScreen;
+    } else if (activeScreen === 'AdminDashboard') {
         const AdminDashboardScreen = require('../screens/AdminDashboardScreen').default;
         CurrentScreenComponent = AdminDashboardScreen;
+    } else if (activeScreen === 'SopHistory') {
+        CurrentScreenComponent = SopHistoryScreen;
     }
 
     return (
@@ -200,7 +277,6 @@ const RootNavigator: React.FC = () => {
                  <SidebarContent onNavigate={setActiveScreen} activeScreen={activeScreen} isAdmin={isAdmin} />
             </View>
             <View style={styles.webContent}>
-                 {/* Render only if component is found */}
                  {CurrentScreenComponent ? <CurrentScreenComponent /> : <Text>Select an option</Text>}
             </View>
         </View>
@@ -210,25 +286,21 @@ const RootNavigator: React.FC = () => {
   // --- Mobile/Small Web Drawer Layout ---
   return (
     <Drawer.Navigator
-        initialRouteName="NewStatement"
+        initialRouteName="Home"
         drawerContent={(props: DrawerContentComponentProps) => <CustomDrawerContent {...props} />}
         screenOptions={({ navigation, route }) => ({
             headerStyle: { backgroundColor: COLORS.primary },
             headerTintColor: COLORS.white,
             headerTitleAlign: 'center',
             headerLeft: () => (
-              <Image
-                source={require('../../assets/logo_header.png')}
-                style={styles.headerLeftLogo}
-              />
+              <TouchableOpacity onPress={() => navigation.navigate('Home' as any)}>
+                <Image
+                  source={require('../../assets/logo_header.png')}
+                  style={styles.headerLeftLogo}
+                />
+              </TouchableOpacity>
             ),
-            headerTitle: () => {
-                const { user } = useUser();
-                const userState = user?.unsafeMetadata?.inspectionState as string || 'N/A';
-                return (
-                    <Text style={styles.headerTitleTextCentral}>State: {userState}</Text>
-                );
-            },
+            headerTitle: () => <CustomHeaderTitle />,
             headerRight: () => (
               <TouchableOpacity onPress={() => navigation.toggleDrawer()} style={{ marginRight: 15 }}>
                 <Ionicons name="menu" size={28} color={COLORS.white} />
@@ -240,10 +312,12 @@ const RootNavigator: React.FC = () => {
         })}
         >
         {/* Regular Screens */}
-         <Drawer.Screen name="NewStatement" component={NewInspectionScreen} options={{ title: 'New Statement' }} />
+         <Drawer.Screen name="Home" component={NewInspectionScreen} options={{ title: 'Home' }} />
          <Drawer.Screen name="InspectionHistory" component={InspectionHistoryScreen} options={{ title: 'Statement History' }} />
-         <Drawer.Screen name="ProfileSettings" component={ProfileSettingsScreen} options={{ title: 'Profile Settings' }} />
-         {/* Admin Dashboard screen conditionally added for web by the web layout part */}
+         <Drawer.Screen name="SOP" component={SopScreen} options={{ title: 'SOP' }} />
+         <Drawer.Screen name="Discord" component={DiscordScreen} options={{ title: 'Discord' }} />
+         <Drawer.Screen name="ProfileSettings" component={ProfileSettingsScreen} options={{ title: 'Profile' }} />
+         <Drawer.Screen name="PlanSelection" component={PlanSelectionScreen} options={{ title: 'Plans' }} />
     </Drawer.Navigator>
   );
 };
@@ -364,6 +438,71 @@ const styles = StyleSheet.create({
         color: COLORS.white,
         fontWeight: 'bold',
         fontSize: 16,
+    },
+    stateSelector: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(255, 255, 255, 0.2)',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 6,
+        marginLeft: 10,
+    },
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    statePickerContainer: {
+        backgroundColor: COLORS.white,
+        borderRadius: 12,
+        width: '80%',
+        maxWidth: 400,
+        maxHeight: '70%',
+        padding: 20,
+    },
+    statePickerTitle: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        color: COLORS.darkText,
+        marginBottom: 15,
+        textAlign: 'center',
+    },
+    statePickerScroll: {
+        maxHeight: 400,
+    },
+    statePickerItem: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingVertical: 12,
+        paddingHorizontal: 16,
+        borderBottomWidth: 1,
+        borderBottomColor: '#eee',
+    },
+    statePickerItemActive: {
+        backgroundColor: COLORS.secondary,
+    },
+    statePickerItemText: {
+        fontSize: 16,
+        color: COLORS.darkText,
+    },
+    statePickerItemTextActive: {
+        fontWeight: 'bold',
+        color: COLORS.primary,
+    },
+    closePickerButton: {
+        marginTop: 15,
+        padding: 12,
+        backgroundColor: COLORS.primary,
+        borderRadius: 8,
+        alignItems: 'center',
+    },
+    closePickerButtonText: {
+        color: COLORS.white,
+        fontSize: 16,
+        fontWeight: 'bold',
     },
 });
 
