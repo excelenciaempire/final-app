@@ -6,6 +6,10 @@ const { generatePreDescription } = require('../controllers/preDescriptionControl
 const { generateDdid } = require('../controllers/ddidController');
 const { transcribeAudio } = require('../controllers/transcriptionController');
 const { getInspectionHistory, createInspection, getPrimaryEmail, updatePrimaryEmail, getPresignedUrl } = require('../controllers/inspectionController');
+const userController = require('../controllers/userController');
+const sopController = require('../controllers/sopController');
+const adController = require('../controllers/adController');
+const discordController = require('../controllers/discordController');
 
 // All routes in this file are protected
 router.use(requireAuth);
@@ -37,5 +41,25 @@ router.put('/update-email', updatePrimaryEmail);
 
 // Route to get a presigned URL for a private image
 router.get('/image-url', getPresignedUrl);
+
+// User Profile Routes
+router.get('/user/profile', userController.getUserProfile);
+router.put('/user/profile', userController.updateProfile);
+router.get('/user/subscription', userController.getSubscriptionStatus);
+router.post('/user/subscription/increment', userController.incrementStatementUsage);
+
+// SOP Routes
+router.get('/sop/active', sopController.getActiveSops);
+router.get('/sop/documents', sopController.getSopDocuments);
+
+// Ad Routes
+router.get('/ads/active', adController.getActiveAds);
+router.post('/ads/:id/click', adController.trackAdClick);
+
+// Discord Routes
+router.get('/discord/auth-url', discordController.getAuthUrl);
+router.get('/discord/callback', discordController.handleCallback);
+router.get('/discord/status', discordController.getConnectionStatus);
+router.delete('/discord/disconnect', discordController.disconnectDiscord);
 
 module.exports = router;

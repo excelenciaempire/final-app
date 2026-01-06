@@ -8,12 +8,50 @@ const openai = new OpenAI({
 
 const generateDdidController = async (req, res) => {
   const { imageBase64, description, userState } = req.body;
+  const clerkId = req.auth?.userId; // Get clerk ID from auth middleware
 
   if (!description || !userState || !imageBase64) {
     return res.status(400).json({ message: 'Missing required fields (image, description, userState).' });
   }
 
   try {
+    // Check subscription limits BEFORE generating DDID
+    if (clerkId) {
+      const subscriptionResult = await pool.query(
+        'SELECT plan_type, statements_used, statements_limit, last_reset_date FROM user_subscriptions WHERE clerk_id = $1',
+        [clerkId]
+      );
+
+      if (subscriptionResult.rows.length > 0) {
+        const subscription = subscriptionResult.rows[0];
+
+        // Check if free tier and needs reset (30 days)
+        if (subscription.plan_type === 'free') {
+          const now = new Date();
+          const lastReset = new Date(subscription.last_reset_date);
+          const daysSinceReset = (now - lastReset) / (1000 * 60 * 60 * 24);
+
+          if (daysSinceReset >= 30) {
+            // Reset usage counter
+            await pool.query(
+              'UPDATE user_subscriptions SET statements_used = 0, last_reset_date = NOW() WHERE clerk_id = $1',
+              [clerkId]
+            );
+            subscription.statements_used = 0;
+          }
+
+          // Check if at limit
+          if (subscription.statements_used >= subscription.statements_limit) {
+            return res.status(403).json({
+              message: 'Free plan limit reached. Please upgrade to Pro for unlimited statements.',
+              statements_used: subscription.statements_used,
+              statements_limit: subscription.statements_limit
+            });
+          }
+        }
+      }
+    }
+
     // Fetch the live prompt from the database
     const promptResult = await pool.query("SELECT prompt_content FROM prompts WHERE prompt_name = 'ddid_prompt'");
     if (promptResult.rows.length === 0) {
@@ -57,6 +95,21 @@ Generate the DDID statement now.
 
     let ddid = response.choices[0].message.content?.trim() || 'Error generating statement.';
     ddid = ddid.replace(/\*\*/g, '');
+
+    // Increment usage counter AFTER successful generation (for free tier only)
+    if (clerkId) {
+      const subscriptionCheck = await pool.query(
+        'SELECT plan_type FROM user_subscriptions WHERE clerk_id = $1',
+        [clerkId]
+      );
+      
+      if (subscriptionCheck.rows.length > 0 && subscriptionCheck.rows[0].plan_type === 'free') {
+        await pool.query(
+          'UPDATE user_subscriptions SET statements_used = statements_used + 1, updated_at = NOW() WHERE clerk_id = $1',
+          [clerkId]
+        );
+      }
+    }
 
     console.log("[DDID Final] Generated:", ddid);
     return res.json({ ddid });
