@@ -1,54 +1,130 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, ActivityIndicator, Platform } from 'react-native';
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  ScrollView, 
+  TouchableOpacity, 
+  TextInput, 
+  Alert, 
+  ActivityIndicator, 
+  Platform 
+} from 'react-native';
 import { Picker } from '@react-native-picker/picker';
-import { useAuth, useUser } from '@clerk/clerk-expo';
+import { useAuth } from '@clerk/clerk-expo';
 import axios from 'axios';
 import { BASE_URL } from '../../config/api';
 import { COLORS } from '../../styles/colors';
-import { Upload, FileText, Check } from 'lucide-react-native';
+import { Upload, FileText, Check, Plus, Trash2, History, ChevronDown, X, File } from 'lucide-react-native';
 import { US_STATES } from '../../context/GlobalStateContext';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 
-const ORGANIZATIONS = ['ASHI', 'InterNACHI'];
+// Default organizations - can be extended by admin
+const DEFAULT_ORGANIZATIONS = ['ASHI', 'InterNACHI'];
+
+interface SopAssignment {
+  id: number;
+  document_id: number;
+  assignment_type: 'state' | 'organization';
+  assignment_value: string;
+  document_name?: string;
+  file_url?: string;
+  created_at?: string;
+}
+
+interface SopDocument {
+  id: number;
+  document_name: string;
+  document_type: string;
+  file_url: string;
+  extraction_status: string;
+  created_at: string;
+}
 
 const SopManagementTab: React.FC = () => {
-  const { getToken, userId } = useAuth();
-  const { user } = useUser();
+  const { getToken } = useAuth();
   
-  // State SOP
+  // State SOP Management
   const [selectedState, setSelectedState] = useState<string>('NC');
-  const [sopDocuments, setSopDocuments] = useState<any[]>([]);
-  const [sopAssignments, setSopAssignments] = useState<any[]>([]);
-  const [isLoadingSops, setIsLoadingSops] = useState(false);
-  const [selectedSopFile, setSelectedSopFile] = useState<DocumentPicker.DocumentPickerResult | null>(null);
-  const [uploadingSop, setUploadingSop] = useState(false);
-  const [newSopDocName, setNewSopDocName] = useState('');
+  const [stateDocumentFile, setStateDocumentFile] = useState<any>(null);
+  const [stateDocumentName, setStateDocumentName] = useState('');
+  const [uploadingStateDoc, setUploadingStateDoc] = useState(false);
+  const [assigningState, setAssigningState] = useState(false);
   
-  // Organization SOP
+  // Organization SOP Management
+  const [organizations, setOrganizations] = useState<string[]>(DEFAULT_ORGANIZATIONS);
+  const [newOrgName, setNewOrgName] = useState('');
   const [selectedOrg, setSelectedOrg] = useState<string>('ASHI');
+  const [orgDocumentFile, setOrgDocumentFile] = useState<any>(null);
+  const [orgDocumentName, setOrgDocumentName] = useState('');
+  const [uploadingOrgDoc, setUploadingOrgDoc] = useState(false);
+  const [assigningOrg, setAssigningOrg] = useState(false);
+  
+  // Data
+  const [sopDocuments, setSopDocuments] = useState<SopDocument[]>([]);
+  const [sopAssignments, setSopAssignments] = useState<SopAssignment[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  
+  // Last uploaded document IDs for assignment
+  const [lastUploadedStateDocId, setLastUploadedStateDocId] = useState<number | null>(null);
+  const [lastUploadedOrgDocId, setLastUploadedOrgDocId] = useState<number | null>(null);
 
   useEffect(() => {
-    fetchSopDocuments();
-    fetchSopAssignments();
+    fetchData();
+    loadOrganizations();
   }, []);
+
+  const loadOrganizations = async () => {
+    try {
+      // Load organizations from local storage or keep defaults
+      // In a real implementation, this would come from the database
+      const storedOrgs = await getStoredOrganizations();
+      if (storedOrgs.length > 0) {
+        setOrganizations([...new Set([...DEFAULT_ORGANIZATIONS, ...storedOrgs])]);
+      }
+    } catch (error) {
+      console.log('Using default organizations');
+    }
+  };
+
+  const getStoredOrganizations = async (): Promise<string[]> => {
+    // Get organizations from assignments in the database
+    try {
+      const token = await getToken();
+      if (!token) return [];
+      
+      const response = await axios.get(`${BASE_URL}/api/admin/sop/assignments`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      const assignments = response.data.assignments || [];
+      const orgAssignments = assignments.filter((a: any) => a.assignment_type === 'organization');
+      const uniqueOrgs = [...new Set(orgAssignments.map((a: any) => a.assignment_value))] as string[];
+      return uniqueOrgs;
+    } catch {
+      return [];
+    }
+  };
+
+  const fetchData = async () => {
+    setIsLoading(true);
+    await Promise.all([fetchSopDocuments(), fetchSopAssignments()]);
+    setIsLoading(false);
+  };
 
   const fetchSopDocuments = async () => {
     try {
-      setIsLoadingSops(true);
       const token = await getToken();
       if (!token) return;
 
-      // Use the admin endpoint if available, or list all docs
       const response = await axios.get(`${BASE_URL}/api/sop/documents`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setSopDocuments(response.data.documents || []);
     } catch (error: any) {
-      console.log('No SOP documents found or error:', error.message);
+      console.log('Error fetching SOP documents:', error.message);
       setSopDocuments([]);
-    } finally {
-      setIsLoadingSops(false);
     }
   };
 
@@ -60,24 +136,50 @@ const SopManagementTab: React.FC = () => {
       const response = await axios.get(`${BASE_URL}/api/admin/sop/assignments`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setSopAssignments(response.data.assignments || []);
+      const assignments = response.data.assignments || [];
+      setSopAssignments(assignments);
+      
+      // Update organizations list from assignments
+      const orgAssignments = assignments.filter((a: any) => a.assignment_type === 'organization');
+      const uniqueOrgs = [...new Set(orgAssignments.map((a: any) => a.assignment_value))] as string[];
+      setOrganizations([...new Set([...DEFAULT_ORGANIZATIONS, ...uniqueOrgs])]);
     } catch (error: any) {
-      console.log('No SOP assignments found or error:', error.message);
+      console.log('Error fetching SOP assignments:', error.message);
       setSopAssignments([]);
     }
   };
 
-  const handlePickDocument = async () => {
+  // Get current assignment for a state
+  const getStateAssignment = (state: string): SopAssignment | undefined => {
+    return sopAssignments.find(a => a.assignment_type === 'state' && a.assignment_value === state);
+  };
+
+  // Get current assignment for an organization
+  const getOrgAssignment = (org: string): SopAssignment | undefined => {
+    return sopAssignments.find(a => a.assignment_type === 'organization' && a.assignment_value === org);
+  };
+
+  // Get recent state assignments (max 5)
+  const getRecentStateAssignments = (): SopAssignment[] => {
+    return sopAssignments
+      .filter(a => a.assignment_type === 'state')
+      .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
+      .slice(0, 5);
+  };
+
+  // Pick document for state SOP
+  const handlePickStateDocument = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: ['application/pdf', 'text/plain'],
         copyToCacheDirectory: true
       });
 
-      if (result.type === 'success') {
-        setSelectedSopFile(result);
-        if (!newSopDocName) {
-          setNewSopDocName(result.name.replace(/\.[^/.]+$/, ''));
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const file = result.assets[0];
+        setStateDocumentFile(file);
+        if (!stateDocumentName) {
+          setStateDocumentName(file.name.replace(/\.[^/.]+$/, ''));
         }
       }
     } catch (error) {
@@ -86,98 +188,241 @@ const SopManagementTab: React.FC = () => {
     }
   };
 
-  const handleUploadStateSop = async () => {
-    if (!selectedSopFile || selectedSopFile.type !== 'success') {
+  // Upload state document
+  const handleUploadStateDocument = async () => {
+    if (!stateDocumentFile) {
       Alert.alert('Error', 'Please select a document first');
       return;
     }
 
     try {
-      setUploadingSop(true);
+      setUploadingStateDoc(true);
       const token = await getToken();
       if (!token) return;
 
-      const base64 = await FileSystem.readAsStringAsync(selectedSopFile.uri, {
+      const base64 = await FileSystem.readAsStringAsync(stateDocumentFile.uri, {
         encoding: FileSystem.EncodingType.Base64,
       });
 
-      await axios.post(`${BASE_URL}/api/admin/sop/upload`, {
-        documentName: newSopDocName || selectedSopFile.name,
+      const response = await axios.post(`${BASE_URL}/api/admin/sop/upload`, {
+        documentName: stateDocumentName || stateDocumentFile.name,
         documentType: 'state',
-        fileBase64: base64,
+        fileBase64: base64
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      const uploadedDoc = response.data.document;
+      setLastUploadedStateDocId(uploadedDoc.id);
+      
+      Alert.alert('Success', 'Document uploaded successfully. Now you can assign it to the selected state.');
+      fetchSopDocuments();
+    } catch (error: any) {
+      console.error('Error uploading document:', error);
+      Alert.alert('Error', error.response?.data?.message || 'Failed to upload document');
+    } finally {
+      setUploadingStateDoc(false);
+    }
+  };
+
+  // Assign document to state
+  const handleAssignToState = async () => {
+    if (!lastUploadedStateDocId) {
+      Alert.alert('Error', 'Please upload a document first');
+      return;
+    }
+
+    try {
+      setAssigningState(true);
+      const token = await getToken();
+      if (!token) return;
+
+      await axios.post(`${BASE_URL}/api/admin/sop/assign-state`, {
+        documentId: lastUploadedStateDocId,
         state: selectedState
       }, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
-      Alert.alert('Success', `SOP uploaded for ${selectedState}`);
-      setSelectedSopFile(null);
-      setNewSopDocName('');
-      fetchSopDocuments();
+      Alert.alert('Success', `SOP assigned to ${selectedState} successfully`);
+      setStateDocumentFile(null);
+      setStateDocumentName('');
+      setLastUploadedStateDocId(null);
       fetchSopAssignments();
     } catch (error: any) {
-      console.error('Error uploading SOP:', error);
-      Alert.alert('Error', error.response?.data?.message || 'Failed to upload SOP');
+      console.error('Error assigning SOP:', error);
+      Alert.alert('Error', error.response?.data?.message || 'Failed to assign SOP');
     } finally {
-      setUploadingSop(false);
+      setAssigningState(false);
     }
   };
 
-  const handleUploadOrgSop = async () => {
-    if (!selectedSopFile || selectedSopFile.type !== 'success') {
+  // Add new organization
+  const handleAddOrganization = () => {
+    const trimmedName = newOrgName.trim();
+    if (!trimmedName) {
+      Alert.alert('Error', 'Please enter an organization name');
+      return;
+    }
+
+    if (organizations.includes(trimmedName)) {
+      Alert.alert('Error', 'Organization already exists');
+      return;
+    }
+
+    setOrganizations([...organizations, trimmedName]);
+    setSelectedOrg(trimmedName);
+    setNewOrgName('');
+    Alert.alert('Success', `Organization "${trimmedName}" added successfully`);
+  };
+
+  // Delete organization
+  const handleDeleteOrganization = async (orgName: string) => {
+    if (DEFAULT_ORGANIZATIONS.includes(orgName)) {
+      Alert.alert('Error', 'Cannot delete default organizations (ASHI, InterNACHI)');
+      return;
+    }
+
+    Alert.alert(
+      'Delete Organization',
+      `Are you sure you want to delete "${orgName}"? This will also remove any SOP assignments.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            // Remove from local list
+            setOrganizations(organizations.filter(o => o !== orgName));
+            if (selectedOrg === orgName) {
+              setSelectedOrg(organizations[0] || 'ASHI');
+            }
+            // Note: In production, you'd also delete from database
+          }
+        }
+      ]
+    );
+  };
+
+  // Pick document for organization SOP
+  const handlePickOrgDocument = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/pdf', 'text/plain'],
+        copyToCacheDirectory: true
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const file = result.assets[0];
+        setOrgDocumentFile(file);
+        if (!orgDocumentName) {
+          setOrgDocumentName(file.name.replace(/\.[^/.]+$/, ''));
+        }
+      }
+    } catch (error) {
+      console.error('Error picking document:', error);
+      Alert.alert('Error', 'Failed to pick document');
+    }
+  };
+
+  // Upload organization document
+  const handleUploadOrgDocument = async () => {
+    if (!orgDocumentFile) {
       Alert.alert('Error', 'Please select a document first');
       return;
     }
 
     try {
-      setUploadingSop(true);
+      setUploadingOrgDoc(true);
       const token = await getToken();
       if (!token) return;
 
-      const base64 = await FileSystem.readAsStringAsync(selectedSopFile.uri, {
+      const base64 = await FileSystem.readAsStringAsync(orgDocumentFile.uri, {
         encoding: FileSystem.EncodingType.Base64,
       });
 
-      await axios.post(`${BASE_URL}/api/admin/sop/upload`, {
-        documentName: newSopDocName || selectedSopFile.name,
+      const response = await axios.post(`${BASE_URL}/api/admin/sop/upload`, {
+        documentName: orgDocumentName || orgDocumentFile.name,
         documentType: 'organization',
-        fileBase64: base64,
+        fileBase64: base64
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      const uploadedDoc = response.data.document;
+      setLastUploadedOrgDocId(uploadedDoc.id);
+      
+      Alert.alert('Success', 'Document uploaded successfully. Now you can assign it to the selected organization.');
+      fetchSopDocuments();
+    } catch (error: any) {
+      console.error('Error uploading document:', error);
+      Alert.alert('Error', error.response?.data?.message || 'Failed to upload document');
+    } finally {
+      setUploadingOrgDoc(false);
+    }
+  };
+
+  // Assign document to organization
+  const handleAssignToOrganization = async () => {
+    if (!lastUploadedOrgDocId) {
+      Alert.alert('Error', 'Please upload a document first');
+      return;
+    }
+
+    try {
+      setAssigningOrg(true);
+      const token = await getToken();
+      if (!token) return;
+
+      await axios.post(`${BASE_URL}/api/admin/sop/assign-org`, {
+        documentId: lastUploadedOrgDocId,
         organization: selectedOrg
       }, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
-      Alert.alert('Success', `SOP uploaded for ${selectedOrg}`);
-      setSelectedSopFile(null);
-      setNewSopDocName('');
-      fetchSopDocuments();
+      Alert.alert('Success', `SOP assigned to ${selectedOrg} successfully`);
+      setOrgDocumentFile(null);
+      setOrgDocumentName('');
+      setLastUploadedOrgDocId(null);
       fetchSopAssignments();
     } catch (error: any) {
-      console.error('Error uploading SOP:', error);
-      Alert.alert('Error', error.response?.data?.message || 'Failed to upload SOP');
+      console.error('Error assigning SOP:', error);
+      Alert.alert('Error', error.response?.data?.message || 'Failed to assign SOP');
     } finally {
-      setUploadingSop(false);
+      setAssigningOrg(false);
     }
   };
 
-  const getStateAssignment = (state: string) => {
-    return sopAssignments.find(a => a.assignment_type === 'state' && a.assignment_value === state);
+  // View SOP history
+  const handleViewHistory = () => {
+    Alert.alert('SOP History', 'This would navigate to the SOP Change History page');
+    // TODO: Navigate to SOP history screen
   };
 
-  const getOrgAssignment = (org: string) => {
-    return sopAssignments.find(a => a.assignment_type === 'organization' && a.assignment_value === org);
-  };
+  const currentStateAssignment = getStateAssignment(selectedState);
+  const recentStateAssignments = getRecentStateAssignments();
+
+  if (isLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+        <Text style={styles.loadingText}>Loading SOP data...</Text>
+      </View>
+    );
+  }
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-      {/* State SOP Management */}
+      {/* ============== STATE SOP DOCUMENTS ============== */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>State SOP Documents</Text>
         <Text style={styles.cardDescription}>
-          Upload and manage state-specific Standards of Practice documents.
+          Upload and assign state-specific Standards of Practice. These assignments will be used by Spediak AI when generating statements for that state.
         </Text>
 
-        <Text style={styles.label}>Select State</Text>
+        {/* Step 1: Select State */}
+        <Text style={styles.stepLabel}>1) Select state to manage</Text>
         <View style={styles.pickerContainer}>
           <Picker
             selectedValue={selectedState}
@@ -185,112 +430,236 @@ const SopManagementTab: React.FC = () => {
             style={styles.picker}
           >
             {US_STATES.map((state) => (
-              <Picker.Item key={state.value} label={`${state.value} - ${state.label}`} value={state.value} />
+              <Picker.Item key={state.value} label={state.value} value={state.value} />
             ))}
           </Picker>
+          <ChevronDown size={20} color={COLORS.textSecondary} style={styles.pickerIcon} />
         </View>
+        <Text style={styles.currentStateText}>Current state: {selectedState}</Text>
 
-        {/* Current Assignment */}
-        {getStateAssignment(selectedState) && (
+        {/* Show current assignment for this state */}
+        {currentStateAssignment ? (
           <View style={styles.currentAssignment}>
             <Check size={16} color="#10B981" />
             <Text style={styles.currentAssignmentText}>
-              Currently assigned: {getStateAssignment(selectedState)?.document_name || 'Document'}
+              Document assigned: {currentStateAssignment.document_name || 'SOP Document'}
             </Text>
+          </View>
+        ) : (
+          <View style={styles.noAssignmentBanner}>
+            <Text style={styles.noAssignmentText}>No SOP document assigned to {selectedState} yet</Text>
           </View>
         )}
 
-        {/* File Selection */}
-        {selectedSopFile && selectedSopFile.type === 'success' && (
+        {/* Step 2: Upload / Name Document */}
+        <Text style={styles.stepLabel}>2) Upload / name a document, then assign it to the selected state.</Text>
+        
+        {/* Document Name Input */}
+        <TextInput
+          style={styles.textInput}
+          placeholder="Document name (optional)"
+          value={stateDocumentName}
+          onChangeText={setStateDocumentName}
+          placeholderTextColor="#9CA3AF"
+        />
+
+        {/* Selected File Display */}
+        {stateDocumentFile && (
           <View style={styles.selectedFile}>
             <FileText size={16} color={COLORS.primary} />
             <Text style={styles.selectedFileName} numberOfLines={1}>
-              {selectedSopFile.name}
+              {stateDocumentFile.name}
             </Text>
+            <TouchableOpacity onPress={() => { setStateDocumentFile(null); setStateDocumentName(''); }}>
+              <X size={16} color="#EF4444" />
+            </TouchableOpacity>
           </View>
         )}
 
-        <TouchableOpacity style={styles.pickButton} onPress={handlePickDocument}>
-          <Upload size={18} color={COLORS.primary} />
-          <Text style={styles.pickButtonText}>Select PDF Document</Text>
-        </TouchableOpacity>
+        {/* Upload / Assign Buttons Row */}
+        <View style={styles.buttonRow}>
+          <TouchableOpacity 
+            style={[styles.primaryButton, styles.buttonHalf]} 
+            onPress={handlePickStateDocument}
+          >
+            <Upload size={16} color="#fff" />
+            <Text style={styles.primaryButtonText}>Upload / name document</Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity 
-          style={[styles.uploadButton, uploadingSop && styles.buttonDisabled]} 
-          onPress={handleUploadStateSop}
-          disabled={uploadingSop || !selectedSopFile}
-        >
-          {uploadingSop ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <>
-              <Upload size={18} color="#fff" />
-              <Text style={styles.uploadButtonText}>Upload SOP Document</Text>
-            </>
-          )}
+          <TouchableOpacity 
+            style={[
+              styles.outlineButton, 
+              styles.buttonHalf,
+              (!stateDocumentFile && !lastUploadedStateDocId) && styles.buttonDisabled
+            ]} 
+            onPress={stateDocumentFile ? handleUploadStateDocument : handleAssignToState}
+            disabled={(!stateDocumentFile && !lastUploadedStateDocId) || uploadingStateDoc || assigningState}
+          >
+            {(uploadingStateDoc || assigningState) ? (
+              <ActivityIndicator size="small" color={COLORS.primary} />
+            ) : (
+              <Text style={styles.outlineButtonText}>
+                {stateDocumentFile && !lastUploadedStateDocId ? 'Upload document' : 'Assign to selected state'}
+              </Text>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        {/* Status Message */}
+        <Text style={styles.statusMessage}>
+          {lastUploadedStateDocId 
+            ? 'Document uploaded. Click "Assign to selected state" to assign it.'
+            : 'No document uploaded for assignment yet.'}
+        </Text>
+
+        {/* Divider */}
+        <View style={styles.divider} />
+
+        {/* Recent State Assignments */}
+        <Text style={styles.sectionTitle}>Most recent state SOP assignments (max 5)</Text>
+        {recentStateAssignments.length > 0 ? (
+          recentStateAssignments.map((assignment, idx) => (
+            <View key={idx} style={styles.assignmentItem}>
+              <Text style={styles.assignmentState}>{assignment.assignment_value}</Text>
+              <Text style={styles.assignmentDoc} numberOfLines={1}>
+                {assignment.document_name || 'Document'}
+              </Text>
+            </View>
+          ))
+        ) : (
+          <Text style={styles.noDataText}>No state SOP assignments yet.</Text>
+        )}
+
+        {/* View History Button */}
+        <TouchableOpacity style={styles.historyButton} onPress={handleViewHistory}>
+          <History size={16} color={COLORS.primary} />
+          <Text style={styles.historyButtonText}>View SOP Change History</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Organization SOP Management */}
+      {/* ============== ORGANIZATION SOP DOCUMENTS ============== */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Organization SOP Documents</Text>
         <Text style={styles.cardDescription}>
-          Manage organization-specific SOPs.
+          Manage organization-level SOP documents (e.g., InterNACHI, ASHI) and assign them for use alongside or instead of state SOPs.
         </Text>
 
-        <Text style={styles.label}>Select Organization</Text>
+        {/* Add New Organization */}
+        <Text style={styles.stepLabel}>Add new organization</Text>
+        <View style={styles.addOrgRow}>
+          <TextInput
+            style={[styles.textInput, styles.addOrgInput]}
+            placeholder="e.g., InterNACHI"
+            value={newOrgName}
+            onChangeText={setNewOrgName}
+            placeholderTextColor="#9CA3AF"
+          />
+          <TouchableOpacity 
+            style={styles.addOrgButton}
+            onPress={handleAddOrganization}
+          >
+            <Text style={styles.addOrgButtonText}>Add organization</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Select Organization */}
+        <Text style={styles.stepLabel}>Assign document to organization</Text>
         <View style={styles.pickerContainer}>
           <Picker
             selectedValue={selectedOrg}
             onValueChange={(value) => setSelectedOrg(value)}
             style={styles.picker}
           >
-            {ORGANIZATIONS.map((org) => (
+            {organizations.map((org) => (
               <Picker.Item key={org} label={org} value={org} />
             ))}
           </Picker>
+          <ChevronDown size={20} color={COLORS.textSecondary} style={styles.pickerIcon} />
         </View>
 
-        {/* Current Assignment */}
-        {getOrgAssignment(selectedOrg) && (
-          <View style={styles.currentAssignment}>
-            <Check size={16} color="#10B981" />
-            <Text style={styles.currentAssignmentText}>
-              Currently assigned: {getOrgAssignment(selectedOrg)?.document_name || 'Document'}
+        {/* Selected Org File Display */}
+        {orgDocumentFile && (
+          <View style={styles.selectedFile}>
+            <FileText size={16} color={COLORS.primary} />
+            <Text style={styles.selectedFileName} numberOfLines={1}>
+              {orgDocumentFile.name}
             </Text>
+            <TouchableOpacity onPress={() => { setOrgDocumentFile(null); setOrgDocumentName(''); }}>
+              <X size={16} color="#EF4444" />
+            </TouchableOpacity>
           </View>
         )}
 
-        <TouchableOpacity 
-          style={[styles.uploadButton, uploadingSop && styles.buttonDisabled]} 
-          onPress={handleUploadOrgSop}
-          disabled={uploadingSop || !selectedSopFile}
-        >
-          {uploadingSop ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <>
-              <Upload size={18} color="#fff" />
-              <Text style={styles.uploadButtonText}>Upload SOP Document</Text>
-            </>
-          )}
-        </TouchableOpacity>
+        {/* Upload / Assign Buttons Row */}
+        <View style={styles.buttonRow}>
+          <TouchableOpacity 
+            style={[styles.primaryButton, styles.buttonHalf]} 
+            onPress={handlePickOrgDocument}
+          >
+            <Upload size={16} color="#fff" />
+            <Text style={styles.primaryButtonText}>Upload org document</Text>
+          </TouchableOpacity>
 
-        <Text style={styles.recentTitle}>Recent Assignments</Text>
-        {sopAssignments.length > 0 ? (
-          sopAssignments.slice(0, 5).map((assignment, idx) => (
-            <View key={idx} style={styles.assignmentItem}>
-              <Text style={styles.assignmentType}>
-                {assignment.assignment_type === 'state' ? '🏛️' : '🏢'} {assignment.assignment_value}
+          <TouchableOpacity 
+            style={[
+              styles.outlineButton, 
+              styles.buttonHalf,
+              (!orgDocumentFile && !lastUploadedOrgDocId) && styles.buttonDisabled
+            ]} 
+            onPress={orgDocumentFile ? handleUploadOrgDocument : handleAssignToOrganization}
+            disabled={(!orgDocumentFile && !lastUploadedOrgDocId) || uploadingOrgDoc || assigningOrg}
+          >
+            {(uploadingOrgDoc || assigningOrg) ? (
+              <ActivityIndicator size="small" color={COLORS.primary} />
+            ) : (
+              <Text style={styles.outlineButtonText}>
+                {orgDocumentFile && !lastUploadedOrgDocId ? 'Upload document' : 'Assign to organization'}
               </Text>
-              <Text style={styles.assignmentDoc} numberOfLines={1}>
-                {assignment.document_name}
-              </Text>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        {/* Status Message */}
+        <Text style={styles.statusMessage}>
+          {lastUploadedOrgDocId 
+            ? 'Document uploaded. Click "Assign to organization" to assign it.'
+            : 'No organization document uploaded for assignment yet.'}
+        </Text>
+
+        {/* Divider */}
+        <View style={styles.divider} />
+
+        {/* Current Organization SOP Assignments */}
+        <Text style={styles.sectionTitle}>Current organization SOP assignments</Text>
+        {organizations.map((org) => {
+          const assignment = getOrgAssignment(org);
+          return (
+            <View key={org} style={styles.orgAssignmentItem}>
+              <View style={styles.orgAssignmentLeft}>
+                <Text style={styles.orgName}>{org}</Text>
+                <Text style={styles.orgStatus}>
+                  {assignment ? `— ${assignment.document_name || 'Document assigned'}` : '— (no SOP assigned)'}
+                </Text>
+              </View>
+              <View style={styles.orgAssignmentActions}>
+                <TouchableOpacity 
+                  style={styles.viewHistoryLink}
+                  onPress={() => Alert.alert('History', `View history for ${org}`)}
+                >
+                  <Text style={styles.viewHistoryLinkText}>View history</Text>
+                </TouchableOpacity>
+                {!DEFAULT_ORGANIZATIONS.includes(org) && (
+                  <TouchableOpacity 
+                    style={styles.deleteOrgButton}
+                    onPress={() => handleDeleteOrganization(org)}
+                  >
+                    <Text style={styles.deleteOrgButtonText}>Delete org</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
             </View>
-          ))
-        ) : (
-          <Text style={styles.noAssignments}>No assignments yet</Text>
-        )}
+          );
+        })}
       </View>
     </ScrollView>
   );
@@ -305,6 +674,17 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 40,
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F5F7FA',
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: COLORS.textSecondary,
+  },
   card: {
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
@@ -317,33 +697,46 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   cardTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '700',
-    color: COLORS.textPrimary,
-    marginBottom: 6,
+    color: '#1F2937',
+    marginBottom: 8,
   },
   cardDescription: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    marginBottom: 16,
-    lineHeight: 18,
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 20,
+    lineHeight: 20,
   },
-  label: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: COLORS.textSecondary,
-    marginBottom: 6,
+  stepLabel: {
+    fontSize: 14,
+    color: '#374151',
+    marginBottom: 8,
+    marginTop: 8,
   },
   pickerContainer: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#F9FAFB',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: '#E5E7EB',
     borderRadius: 8,
-    marginBottom: 16,
+    marginBottom: 8,
+    position: 'relative',
     overflow: 'hidden',
   },
   picker: {
     height: 50,
+    color: '#1F2937',
+  },
+  pickerIcon: {
+    position: 'absolute',
+    right: 12,
+    top: 15,
+    pointerEvents: 'none',
+  },
+  currentStateText: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginBottom: 12,
   },
   currentAssignment: {
     flexDirection: 'row',
@@ -355,9 +748,30 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   currentAssignmentText: {
-    fontSize: 13,
+    fontSize: 14,
     color: '#065F46',
     flex: 1,
+  },
+  noAssignmentBanner: {
+    backgroundColor: '#FEF3C7',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  noAssignmentText: {
+    fontSize: 13,
+    color: '#92400E',
+  },
+  textInput: {
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 14,
+    color: '#1F2937',
+    marginBottom: 12,
   },
   selectedFile: {
     flexDirection: 'row',
@@ -373,46 +787,61 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     flex: 1,
   },
-  pickButton: {
+  buttonRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#F0F4F8',
-    paddingVertical: 14,
-    borderRadius: 10,
-    marginBottom: 12,
-    gap: 8,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderStyle: 'dashed',
+    gap: 12,
+    marginBottom: 8,
   },
-  pickButtonText: {
-    fontSize: 15,
-    color: COLORS.primary,
-    fontWeight: '600',
+  buttonHalf: {
+    flex: 1,
   },
-  uploadButton: {
+  primaryButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: COLORS.primary,
     paddingVertical: 14,
-    borderRadius: 10,
+    borderRadius: 8,
     gap: 8,
   },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  uploadButtonText: {
-    fontSize: 15,
+  primaryButtonText: {
+    fontSize: 14,
     color: '#fff',
-    fontWeight: '700',
-  },
-  recentTitle: {
-    fontSize: 15,
     fontWeight: '600',
-    color: COLORS.textPrimary,
-    marginTop: 20,
+  },
+  outlineButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+    paddingVertical: 14,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  outlineButtonText: {
+    fontSize: 14,
+    color: '#374151',
+    fontWeight: '500',
+  },
+  buttonDisabled: {
+    opacity: 0.5,
+  },
+  statusMessage: {
+    fontSize: 13,
+    color: '#9CA3AF',
+    fontStyle: 'italic',
+    marginBottom: 16,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#E5E7EB',
+    marginVertical: 16,
+  },
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
     marginBottom: 12,
   },
   assignmentItem: {
@@ -421,26 +850,113 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    borderBottomColor: '#F3F4F6',
   },
-  assignmentType: {
+  assignmentState: {
     fontSize: 14,
     fontWeight: '600',
-    color: COLORS.textPrimary,
+    color: '#1F2937',
+    width: 50,
   },
   assignmentDoc: {
     fontSize: 13,
-    color: COLORS.textSecondary,
+    color: '#6B7280',
     flex: 1,
     textAlign: 'right',
-    marginLeft: 12,
   },
-  noAssignments: {
+  noDataText: {
     fontSize: 13,
-    color: COLORS.textSecondary,
+    color: '#9CA3AF',
     fontStyle: 'italic',
-    textAlign: 'center',
-    paddingVertical: 16,
+    paddingVertical: 12,
+  },
+  historyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F3F4F6',
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginTop: 16,
+    gap: 8,
+  },
+  historyButtonText: {
+    fontSize: 14,
+    color: COLORS.primary,
+    fontWeight: '600',
+  },
+  addOrgRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 16,
+  },
+  addOrgInput: {
+    flex: 1,
+    marginBottom: 0,
+  },
+  addOrgButton: {
+    backgroundColor: '#fff',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    justifyContent: 'center',
+  },
+  addOrgButtonText: {
+    fontSize: 14,
+    color: '#374151',
+    fontWeight: '500',
+  },
+  orgAssignmentItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+    flexWrap: 'wrap',
+  },
+  orgAssignmentLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    flexWrap: 'wrap',
+    gap: 4,
+  },
+  orgName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  orgStatus: {
+    fontSize: 13,
+    color: '#6B7280',
+  },
+  orgAssignmentActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  viewHistoryLink: {
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
+  viewHistoryLinkText: {
+    fontSize: 13,
+    color: COLORS.primary,
+    textDecorationLine: 'underline',
+  },
+  deleteOrgButton: {
+    backgroundColor: '#FEE2E2',
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 4,
+  },
+  deleteOrgButtonText: {
+    fontSize: 12,
+    color: '#DC2626',
+    fontWeight: '500',
   },
 });
 
