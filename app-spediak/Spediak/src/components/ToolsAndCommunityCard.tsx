@@ -1,7 +1,7 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Linking } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Linking, Platform } from 'react-native';
 import { COLORS } from '../styles/colors';
-import { Book, MessageCircle, ExternalLink } from 'lucide-react-native';
+import { Book, MessageCircle } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 
 const DISCORD_INVITE_URL = 'https://discord.gg/2XEWBe64';
@@ -10,17 +10,36 @@ const ToolsAndCommunityCard: React.FC = () => {
   const navigation = useNavigation<any>();
 
   const handleSopReference = () => {
-    navigation.navigate('SOP');
+    try {
+      navigation.navigate('SOP');
+    } catch (err) {
+      console.error('Error navigating to SOP:', err);
+      // Fallback for web
+      if (Platform.OS === 'web') {
+        window.location.href = '/sop';
+      }
+    }
   };
 
   const handleDiscordCommunity = async () => {
     try {
+      // Use window.open for web (more reliable)
+      if (Platform.OS === 'web') {
+        window.open(DISCORD_INVITE_URL, '_blank', 'noopener,noreferrer');
+        return;
+      }
+      
+      // For native platforms
       const canOpen = await Linking.canOpenURL(DISCORD_INVITE_URL);
       if (canOpen) {
         await Linking.openURL(DISCORD_INVITE_URL);
       }
     } catch (err) {
       console.error('Error opening Discord link:', err);
+      // Fallback
+      if (Platform.OS === 'web') {
+        window.open(DISCORD_INVITE_URL, '_blank');
+      }
     }
   };
 
@@ -29,12 +48,22 @@ const ToolsAndCommunityCard: React.FC = () => {
       <Text style={styles.title}>Tools & Community</Text>
 
       <View style={styles.buttonRow}>
-        <TouchableOpacity style={styles.button} onPress={handleSopReference}>
+        <TouchableOpacity 
+          style={[styles.button, Platform.OS === 'web' && { cursor: 'pointer' } as any]} 
+          onPress={handleSopReference}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+        >
           <Book size={18} color={COLORS.primary} />
           <Text style={styles.buttonText}>SOP & Code Reference</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.button} onPress={handleDiscordCommunity}>
+        <TouchableOpacity 
+          style={[styles.button, Platform.OS === 'web' && { cursor: 'pointer' } as any]} 
+          onPress={handleDiscordCommunity}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+        >
           <MessageCircle size={18} color={COLORS.primary} />
           <Text style={styles.buttonText}>Discord Community</Text>
         </TouchableOpacity>
