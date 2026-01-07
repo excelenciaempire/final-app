@@ -112,6 +112,25 @@ const handleClerkWebhook = async (req, res) => {
         ];
         await pool.query(insertQuery, insertValues);
         console.log(`[Webhook] user.created: Successfully INSERTED new user ${clerk_id_created}`);
+        
+        // Create user_profiles entry
+        const organizationCreated = unsafe_metadata_created?.organization || null;
+        const companyNameCreated = unsafe_metadata_created?.companyName || null;
+        
+        await pool.query(`
+          INSERT INTO user_profiles (clerk_id, primary_state, secondary_states, organization, company_name)
+          VALUES ($1, $2, $3, $4, $5)
+          ON CONFLICT (clerk_id) DO NOTHING
+        `, [clerk_id_created, userStateCreated || 'NC', [], organizationCreated, companyNameCreated]);
+        console.log(`[Webhook] user.created: Created user_profiles for ${clerk_id_created}`);
+        
+        // Create user_subscriptions entry
+        await pool.query(`
+          INSERT INTO user_subscriptions (clerk_id, plan_type, statements_used, statements_limit, last_reset_date)
+          VALUES ($1, $2, $3, $4, NOW())
+          ON CONFLICT (clerk_id) DO NOTHING
+        `, [clerk_id_created, 'free', 0, 5]);
+        console.log(`[Webhook] user.created: Created user_subscriptions for ${clerk_id_created}`);
       } catch (insertErr) {
         if (insertErr.code === '23505') { // Unique constraint violation (e.g., clerk_id or email already exists)
           console.warn(`[Webhook] user.created: INSERT failed for ${clerk_id_created} due to unique constraint (likely already exists). Attempting UPDATE as a fallback.`);

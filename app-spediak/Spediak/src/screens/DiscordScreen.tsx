@@ -69,7 +69,11 @@ const DiscordScreen: React.FC = () => {
 
       if (Platform.OS === 'web') {
         // For web, open in same window
-        window.location.href = authUrl;
+        if (Platform.OS === 'web' && typeof window !== 'undefined') {
+          window.location.href = authUrl;
+        } else {
+          Linking.openURL(authUrl);
+        }
       } else {
         // For mobile, use WebBrowser
         const result = await WebBrowser.openAuthSessionAsync(authUrl, `${BASE_URL}/api/discord/callback`);

@@ -130,6 +130,10 @@ const AllInspections: React.FC = () => {
             try {
                 const response = await fetch(imageUrl);
                 const blob = await response.blob();
+                if (Platform.OS !== 'web' || typeof window === 'undefined' || typeof document === 'undefined') {
+                    throw new Error('Download not supported on this platform');
+                }
+                
                 const url = window.URL.createObjectURL(blob);
                 const link = document.createElement('a');
                 link.href = url;
@@ -273,7 +277,7 @@ const AllUsers: React.FC = () => {
         };
 
         if (Platform.OS === 'web') {
-            if (window.confirm("Are you sure you want to delete this user?")) {
+            if (Platform.OS === 'web' && typeof window !== 'undefined' && window.confirm("Are you sure you want to delete this user?")) {
                 await performDelete();
             } else {
                 console.log(`[handleDeleteUser] Deletion cancelled for user ID: ${userId}`);

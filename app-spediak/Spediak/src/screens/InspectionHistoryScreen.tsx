@@ -242,7 +242,7 @@ export default function InspectionHistoryScreen() {
 
         if (Platform.OS === 'web') {
             // Web: Use window.confirm
-            if (window.confirm("Are you sure you want to delete this inspection?")) {
+            if (Platform.OS === 'web' && typeof window !== 'undefined' && window.confirm("Are you sure you want to delete this inspection?")) {
                 await deleteConfirmedAction();
             }
         } else {
@@ -277,6 +277,10 @@ export default function InspectionHistoryScreen() {
                 if (!response.ok) {
                     throw new Error(`Failed to fetch image. Status: ${response.status} ${response.statusText}`);
                 }
+                if (Platform.OS !== 'web' || typeof window === 'undefined' || typeof document === 'undefined') {
+                    throw new Error('Download not supported on this platform');
+                }
+                
                 const blob = await response.blob();
                 
                 // Create an object URL for the blob

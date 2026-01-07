@@ -8,7 +8,8 @@ import {
     Alert,
     ActivityIndicator,
     ScrollView,
-    Platform
+    Platform,
+    TextInput
 } from 'react-native';
 import { useUser } from '@clerk/clerk-expo';
 import { Picker } from '@react-native-picker/picker';
@@ -39,6 +40,8 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = () => {
     const [open, setOpen] = useState(false); // State for dropdown open/closed
     const [selectedState, setSelectedState] = useState<string | null>(null); // Keep this for the value
     const [items, setItems] = useState(stateItems); // Items for the dropdown
+    const [selectedOrganization, setSelectedOrganization] = useState<string | null>(null);
+    const [companyName, setCompanyName] = useState<string>('');
 
     const [profileImageUri, setProfileImageUri] = useState<string | null>(null);
     const [profileImageBase64, setProfileImageBase64] = useState<string | null>(null);
@@ -155,38 +158,34 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = () => {
                 }
             }
 
-            // --- Step 2: Update State Metadata ---
-            // Check if state actually needs updating (might already be set via Clerk dashboard/previous attempts)
-            if (user.unsafeMetadata?.inspectionState !== selectedState) {
-                 console.log(`Updating inspection state to: ${selectedState}`);
-                 await user.update({
-                     unsafeMetadata: { ...user.unsafeMetadata, inspectionState: selectedState }
-                 });
-                 console.log("User state metadata updated.");
-            } else {
-                 console.log("Selected state already matches metadata, no update needed.");
+            // --- Step 2: Update Clerk Metadata ---
+            const metadataUpdate: any = { inspectionState: selectedState };
+            if (selectedOrganization) {
+                metadataUpdate.organization = selectedOrganization;
+            }
+            if (companyName.trim()) {
+                metadataUpdate.companyName = companyName.trim();
             }
 
+            console.log(`Updating user metadata:`, metadataUpdate);
+            await user.update({
+                unsafeMetadata: { ...user.unsafeMetadata, ...metadataUpdate }
+            });
+            console.log("User metadata updated.");
+
             // --- Step 3: Reload User & Trigger Navigation ---
-            // Reloading the user data will cause the useUser hook elsewhere (e.g., RootNavigator)
-            // to get the updated data, which should then satisfy the 'isProfileComplete' check.
             console.log("Reloading user data...");
             await user.reload();
             console.log("User data reloaded.");
-            // No explicit navigation needed here - App's root logic should react to updated user state
 
         } catch (err: any) {
             console.error("Error saving welcome screen data:", err);
             setError(`Failed to save settings: ${err.message || 'Unknown error'}`);
             Alert.alert("Error", `Failed to save settings: ${err.message || 'Please try again.'}`);
-            // Don't necessarily stop loading on error, user might retry
         } finally {
-            // Stop loading indicator *only* if there wasn't an error that requires user action/retry
-             if (!error) {
+            if (!error) {
                  setIsLoading(false);
-             }
-             // We don't manually navigate away here. The RootNavigator should detect
-             // the updated user state after reload() and render the main app.
+            }
         }
     };
 
@@ -217,19 +216,43 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = () => {
 
             {/* State Picker */}
             <Text style={styles.label}>Select Inspection State (Required):</Text>
-            {/* Wrap Picker in a styled View */}
             <View style={styles.pickerContainer}>
                 <Picker
                     selectedValue={selectedState}
                     onValueChange={(itemValue, itemIndex) => setSelectedState(itemValue)}
                     style={styles.picker}
-                    itemStyle={styles.pickerItem} // Optional: style for items if needed
+                    itemStyle={styles.pickerItem}
                 >
                     <Picker.Item label="Select State..." value={null} style={styles.pickerPlaceholder} />
                     <Picker.Item label="North Carolina" value="NC" />
                     <Picker.Item label="South Carolina" value="SC" />
                 </Picker>
             </View>
+
+            {/* Organization Picker */}
+            <Text style={styles.label}>Organization (Optional):</Text>
+            <View style={styles.pickerContainer}>
+                <Picker
+                    selectedValue={selectedOrganization}
+                    onValueChange={(itemValue) => setSelectedOrganization(itemValue)}
+                    style={styles.picker}
+                    itemStyle={styles.pickerItem}
+                >
+                    <Picker.Item label="Select Organization..." value={null} style={styles.pickerPlaceholder} />
+                    <Picker.Item label="ASHI" value="ASHI" />
+                    <Picker.Item label="InterNACHI" value="InterNACHI" />
+                </Picker>
+            </View>
+
+            {/* Company Name Input */}
+            <Text style={styles.label}>Company Name (Optional):</Text>
+            <TextInput
+                style={styles.textInput}
+                placeholder="Enter your company name"
+                value={companyName}
+                onChangeText={setCompanyName}
+                autoCapitalize="words"
+            />
 
              {error && <Text style={styles.errorText}>{error}</Text>}
 
@@ -379,6 +402,18 @@ const styles = StyleSheet.create({
         marginTop: 15,
         textAlign: 'center',
         fontSize: 14,
+    },
+    textInput: {
+        width: '100%',
+        height: 50,
+        backgroundColor: '#ffffff',
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: '#ced4da',
+        marginBottom: 30,
+        paddingHorizontal: 15,
+        fontSize: 16,
+        color: '#333',
     },
 });
 

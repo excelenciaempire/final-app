@@ -113,7 +113,7 @@ const SopHistoryScreen: React.FC = () => {
         responseType: 'text',
       });
 
-      if (Platform.OS === 'web') {
+      if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof document !== 'undefined') {
         // Web: Trigger download
         const blob = new Blob([response.data], { type: 'text/csv' });
         const url = window.URL.createObjectURL(blob);
