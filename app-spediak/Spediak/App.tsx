@@ -9,12 +9,13 @@ import AuthNavigator from "./src/navigation/AuthNavigator";
 import RootNavigator from "./src/navigation/RootNavigator";
 import RootNavigatorSimple from "./src/navigation/RootNavigatorSimple";
 import RootNavigatorIntermediate from "./src/navigation/RootNavigatorIntermediate";
+import RootNavigatorNavTest from "./src/navigation/RootNavigatorNavTest";
 import { GlobalStateProvider } from "./src/context/GlobalStateContext";
 import { SubscriptionProvider } from "./src/context/SubscriptionContext";
 
-// Version: 2.0.3 - Testing contexts
-// DEBUG MODES: 'simple' | 'intermediate' | 'full'
-const DEBUG_MODE = 'intermediate' as const;
+// Version: 2.0.4 - Testing NavigationContainer
+// DEBUG MODES: 'simple' | 'intermediate' | 'navtest' | 'full'
+const DEBUG_MODE = 'navtest' as const;
 
 // Error Boundary Component
 class ErrorBoundary extends React.Component<
@@ -120,6 +121,10 @@ export default function App() {
                   <RootNavigatorSimple />
                 ) : DEBUG_MODE === 'intermediate' ? (
                   <RootNavigatorIntermediate />
+                ) : DEBUG_MODE === 'navtest' ? (
+                  <NavigationContainer>
+                    <RootNavigatorNavTest />
+                  </NavigationContainer>
                 ) : (
                   <NavigationContainer>
                     <RootNavigator />
