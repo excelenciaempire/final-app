@@ -33,6 +33,7 @@ const SopAlignmentCard: React.FC = () => {
   const fetchActiveSops = useCallback(async () => {
     if (!selectedState) {
       setIsLoading(false);
+      setActiveSops({ stateSop: null, orgSop: null });
       return;
     }
 
@@ -43,6 +44,7 @@ const SopAlignmentCard: React.FC = () => {
       
       if (!token) {
         setIsLoading(false);
+        setActiveSops({ stateSop: null, orgSop: null });
         return;
       }
 
@@ -54,7 +56,7 @@ const SopAlignmentCard: React.FC = () => {
       const response = await axios.get(`${BASE_URL}/api/sop/active`, {
         headers: { Authorization: `Bearer ${token}` },
         params,
-        timeout: 8000 // 8 second timeout
+        timeout: 5000
       });
 
       setActiveSops({
@@ -69,10 +71,9 @@ const SopAlignmentCard: React.FC = () => {
       });
       setError(null);
     } catch (err: any) {
-      console.error('Error fetching active SOPs:', err);
-      // Set empty state to prevent infinite retries
+      // Silently handle - no console error spam
       setActiveSops({ stateSop: null, orgSop: null });
-      setError('Could not load SOPs');
+      setError(null); // Don't show error to user
     } finally {
       setIsLoading(false);
     }

@@ -1,23 +1,19 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Platform, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { useSubscription } from '../context/SubscriptionContext';
 import { useNavigation } from '@react-navigation/native';
 import { COLORS } from '../styles/colors';
-import { TrendingUp, AlertCircle, Zap } from 'lucide-react-native';
+import { FileText } from 'lucide-react-native';
 
 const StatementUsageCard: React.FC = () => {
   const { subscription, isLoading } = useSubscription();
   const navigation = useNavigation<any>();
   const { width } = useWindowDimensions();
-  const isLargeScreen = width > 600;
 
   if (isLoading) {
     return (
-      <View style={[styles.card, isLargeScreen && styles.cardLarge]}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
-          <Text style={styles.loadingText}>Loading usage...</Text>
-        </View>
+      <View style={styles.card}>
+        <ActivityIndicator size="small" color={COLORS.primary} />
       </View>
     );
   }
@@ -28,324 +24,173 @@ const StatementUsageCard: React.FC = () => {
 
   const { plan_type, statements_used, statements_limit, statements_remaining, is_unlimited } = subscription;
   const isFreePlan = plan_type === 'free';
-  const usagePercentage = isFreePlan ? (statements_used / statements_limit) * 100 : 0;
-  const isLowUsage = isFreePlan && statements_remaining <= 2 && statements_remaining > 0;
-  const isLimitReached = isFreePlan && statements_remaining <= 0;
+  const isPro = plan_type === 'pro';
+  const isPlatinum = plan_type === 'platinum';
 
   const handleUpgrade = () => {
     navigation.navigate('PlanSelection');
   };
 
-  return (
-    <View style={[styles.card, isLargeScreen && styles.cardLarge]}>
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.titleRow}>
-          <View style={styles.iconContainer}>
-            <TrendingUp size={24} color="#FFFFFF" />
+  const handleViewDetails = () => {
+    navigation.navigate('Profile');
+  };
+
+  // For paid plans
+  if (!isFreePlan) {
+    return (
+      <View style={styles.card}>
+        <View style={styles.headerRow}>
+          <View style={styles.iconBox}>
+            <FileText size={20} color={COLORS.primary} />
           </View>
-          <Text style={[styles.title, isLargeScreen && styles.titleLarge]}>Statement Usage</Text>
+          <View style={styles.titleContainer}>
+            <Text style={styles.title}>
+              Statements ({isPro ? 'Pro Plan' : 'Platinum Plan'})
+            </Text>
+            <Text style={styles.subtitle}>Unlimited statements included</Text>
+          </View>
+          <View style={styles.badgeUnlimited}>
+            <Text style={styles.badgeUnlimitedText}>∞ Unlimited</Text>
+          </View>
         </View>
-        {isFreePlan && (
-          <TouchableOpacity style={styles.upgradeButton} onPress={handleUpgrade}>
-            <Zap size={16} color="#FFFFFF" />
-            <Text style={styles.upgradeButtonText}>Upgrade</Text>
-          </TouchableOpacity>
-        )}
+      </View>
+    );
+  }
+
+  // Free plan view
+  return (
+    <View style={styles.card}>
+      <View style={styles.headerRow}>
+        <View style={styles.iconBox}>
+          <FileText size={20} color={COLORS.primary} />
+        </View>
+        <View style={styles.titleContainer}>
+          <Text style={styles.title}>Statements (Free Plan)</Text>
+          <Text style={styles.subtitle}>
+            You have {statements_remaining} of {statements_limit} free statements remaining.
+          </Text>
+        </View>
+        <View style={styles.usageBadge}>
+          <Text style={styles.usageBadgeText}>{statements_used} / {statements_limit} used</Text>
+        </View>
       </View>
 
-      {isFreePlan ? (
-        <>
-          {/* Usage Stats */}
-          <View style={[styles.statsContainer, isLargeScreen && styles.statsContainerLarge]}>
-            <View style={styles.statBox}>
-              <Text style={[styles.statNumber, isLargeScreen && styles.statNumberLarge]}>
-                {statements_used}
-              </Text>
-              <Text style={styles.statLabel}>Used</Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statBox}>
-              <Text style={[styles.statNumber, styles.statNumberRemaining, isLargeScreen && styles.statNumberLarge]}>
-                {statements_remaining}
-              </Text>
-              <Text style={styles.statLabel}>Remaining</Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statBox}>
-              <Text style={[styles.statNumber, styles.statNumberTotal, isLargeScreen && styles.statNumberLarge]}>
-                {statements_limit}
-              </Text>
-              <Text style={styles.statLabel}>Total</Text>
-            </View>
-          </View>
+      <Text style={styles.infoText}>
+        Free plan statements reset every 30 days. Upgrade now to unlock{' '}
+        <Text style={styles.boldText}>unlimited statements</Text> and remove ads.
+      </Text>
 
-          {/* Progress Bar */}
-          <View style={styles.progressSection}>
-            <View style={styles.progressBarContainer}>
-              <View 
-                style={[
-                  styles.progressBarFill, 
-                  { 
-                    width: `${Math.min(usagePercentage, 100)}%`,
-                    backgroundColor: isLimitReached ? COLORS.error : isLowUsage ? '#FFA500' : COLORS.primary
-                  }
-                ]} 
-              />
-            </View>
-            <Text style={styles.progressText}>{Math.round(usagePercentage)}% used</Text>
-          </View>
-
-          {/* Warnings */}
-          {isLowUsage && (
-            <View style={styles.warningContainer}>
-              <AlertCircle size={18} color="#FFA500" />
-              <Text style={styles.warningText}>
-                Only {statements_remaining} statement{statements_remaining !== 1 ? 's' : ''} left this period
-              </Text>
-            </View>
-          )}
-
-          {isLimitReached && (
-            <View style={styles.limitReachedContainer}>
-              <AlertCircle size={18} color={COLORS.error} />
-              <View style={styles.limitReachedContent}>
-                <Text style={styles.limitReachedText}>Free plan limit reached</Text>
-                <TouchableOpacity onPress={handleUpgrade}>
-                  <Text style={styles.upgradeLink}>Upgrade to Pro for unlimited →</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
-        </>
-      ) : (
-        <View style={styles.unlimitedContainer}>
-          <View style={styles.unlimitedBadge}>
-            <Zap size={20} color="#FFFFFF" />
-            <Text style={styles.unlimitedBadgeText}>UNLIMITED</Text>
-          </View>
-          <Text style={[styles.unlimitedText, isLargeScreen && styles.unlimitedTextLarge]}>
-            Generate unlimited statements
-          </Text>
-          <Text style={styles.planBadge}>
-            {plan_type === 'pro' ? '⭐ Pro Plan' : '👑 Platinum Plan'} Active
-          </Text>
-        </View>
-      )}
+      <View style={styles.buttonRow}>
+        <TouchableOpacity style={styles.upgradeButton} onPress={handleUpgrade}>
+          <Text style={styles.upgradeButtonText}>Upgrade to Pro</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.detailsButton} onPress={handleViewDetails}>
+          <Text style={styles.detailsButtonText}>View limits & details</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 16,
-    width: '100%',
-    maxWidth: 500,
-    alignSelf: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 5,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.05)',
-  },
-  cardLarge: {
-    padding: 24,
-  },
-  loadingContainer: {
-    padding: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 14,
-    color: COLORS.textSecondary,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  iconContainer: {
-    backgroundColor: COLORS.primary,
-    borderRadius: 10,
-    padding: 8,
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
-  },
-  titleLarge: {
-    fontSize: 24,
-  },
-  upgradeButton: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    shadowColor: COLORS.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  upgradeButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  statsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-    backgroundColor: '#F8F9FA',
+    backgroundColor: '#FFF9E6',
     borderRadius: 12,
     padding: 16,
     marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#F0E6CC',
   },
-  statsContainerLarge: {
-    padding: 20,
-  },
-  statBox: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  statDivider: {
-    width: 1,
-    height: 40,
-    backgroundColor: '#E0E0E0',
-  },
-  statNumber: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: COLORS.textPrimary,
-    marginBottom: 4,
-  },
-  statNumberLarge: {
-    fontSize: 36,
-  },
-  statNumberRemaining: {
-    color: COLORS.primary,
-  },
-  statNumberTotal: {
-    color: COLORS.textSecondary,
-  },
-  statLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: COLORS.textSecondary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  progressSection: {
-    marginBottom: 16,
-  },
-  progressBarContainer: {
-    height: 12,
-    backgroundColor: '#E8E8E8',
-    borderRadius: 6,
-    overflow: 'hidden',
-    marginBottom: 8,
-  },
-  progressBarFill: {
-    height: '100%',
-    borderRadius: 6,
-  },
-  progressText: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    textAlign: 'right',
-    fontWeight: '500',
-  },
-  warningContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    padding: 14,
-    backgroundColor: '#FFF8E1',
-    borderRadius: 10,
-    borderLeftWidth: 4,
-    borderLeftColor: '#FFA500',
-  },
-  warningText: {
-    fontSize: 14,
-    color: '#E65100',
-    fontWeight: '600',
-    flex: 1,
-  },
-  limitReachedContainer: {
+  headerRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 10,
-    padding: 14,
-    backgroundColor: '#FFEBEE',
-    borderRadius: 10,
-    borderLeftWidth: 4,
-    borderLeftColor: COLORS.error,
-  },
-  limitReachedContent: {
-    flex: 1,
-  },
-  limitReachedText: {
-    fontSize: 14,
-    color: COLORS.error,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  upgradeLink: {
-    fontSize: 13,
-    color: COLORS.primary,
-    fontWeight: '700',
-  },
-  unlimitedContainer: {
-    alignItems: 'center',
-    paddingVertical: 16,
-  },
-  unlimitedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
     marginBottom: 12,
   },
-  unlimitedBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '800',
-    letterSpacing: 1,
+  iconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    backgroundColor: '#E8F4FD',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
   },
-  unlimitedText: {
-    fontSize: 18,
-    fontWeight: '600',
+  titleContainer: {
+    flex: 1,
+  },
+  title: {
+    fontSize: 16,
+    fontWeight: '700',
     color: COLORS.textPrimary,
-    marginBottom: 8,
-    textAlign: 'center',
+    marginBottom: 4,
   },
-  unlimitedTextLarge: {
-    fontSize: 20,
-  },
-  planBadge: {
-    fontSize: 14,
+  subtitle: {
+    fontSize: 13,
     color: COLORS.textSecondary,
+    lineHeight: 18,
+  },
+  usageBadge: {
+    backgroundColor: '#E8F4FD',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  usageBadgeText: {
+    fontSize: 12,
     fontWeight: '600',
+    color: COLORS.primary,
+  },
+  badgeUnlimited: {
+    backgroundColor: '#E8F5E9',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  badgeUnlimitedText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#2E7D32',
+  },
+  infoText: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  boldText: {
+    fontWeight: '700',
+    color: COLORS.primary,
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  upgradeButton: {
+    flex: 1,
+    backgroundColor: COLORS.primary,
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  upgradeButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  detailsButton: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+  },
+  detailsButtonText: {
+    color: COLORS.textPrimary,
+    fontSize: 15,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
   },
 });
 

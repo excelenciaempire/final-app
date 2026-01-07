@@ -14,6 +14,7 @@ import * as MediaLibrary from 'expo-media-library';
 import { format } from 'date-fns';
 import SopManagementTab from './admin/SopManagementTab';
 import UserSearchTab from './admin/UserSearchTab';
+import AdManagerTab from './admin/AdManagerTab';
 
 const api = axios.create({
     baseURL: BASE_URL + '/api'
@@ -727,9 +728,10 @@ const AdminDashboardScreen = () => {
             <Tab.Screen name="All Inspections" component={AllInspections} />
             <Tab.Screen name="All Users" component={AllUsers} />
             <Tab.Screen name="User Search" component={UserSearchTab} options={{ tabBarLabel: 'User Search' }} />
+            <Tab.Screen name="Ad Manager" component={AdManagerTab} options={{ tabBarLabel: 'Ad Manager' }} />
+            <Tab.Screen name="SOP Management" component={SopManagementTab} options={{ tabBarLabel: 'SOP Management' }} />
             <Tab.Screen name="Prompt Editor" component={PromptEditor} listeners={{ tabPress: (e: any) => { if (isPromptEditorLocked) { e.preventDefault(); Alert.alert('Locked', `Locked by ${promptLocker}.`); } } }} options={{ tabBarLabel: isPromptEditorLocked ? `Prompt Editor (Locked)` : 'Prompt Editor' }} />
             <Tab.Screen name="Knowledge" component={KnowledgeManager} options={{ tabBarLabel: 'Knowledge Base' }} />
-            <Tab.Screen name="SOP Management" component={SopManagementTab} options={{ tabBarLabel: 'SOP Management' }} />
         </Tab.Navigator>
     );
 };

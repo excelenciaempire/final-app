@@ -1,243 +1,123 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, Linking, Platform } from 'react-native';
-import { useAuth } from '@clerk/clerk-expo';
-import axios from 'axios';
-import { BASE_URL } from '../config/api';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Linking, ScrollView, useWindowDimensions } from 'react-native';
 import { COLORS } from '../styles/colors';
-import { CheckCircle, XCircle, LogOut } from 'lucide-react-native';
-import * as WebBrowser from 'expo-web-browser';
+import { MessageCircle, Users, Lightbulb, Bell, BarChart3, X } from 'lucide-react-native';
 
-WebBrowser.maybeCompleteAuthSession();
+// Discord invite link - replace with your actual Discord server invite
+const DISCORD_INVITE_URL = 'https://discord.gg/spediak-community';
 
 const DiscordScreen: React.FC = () => {
-  const { getToken } = useAuth();
-  const [isConnected, setIsConnected] = useState(false);
-  const [discordUsername, setDiscordUsername] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { width } = useWindowDimensions();
+  const isLargeScreen = width > 600;
+  const [showCancel, setShowCancel] = useState(false);
 
-  const checkConnectionStatus = useCallback(async () => {
+  const handleAuthorize = async () => {
     try {
-      setIsLoading(true);
-      setError(null);
-      
-      const token = await getToken();
-      
-      if (!token) {
-        setError('Authentication required. Please log in again.');
-        setIsLoading(false);
-        return;
+      const canOpen = await Linking.canOpenURL(DISCORD_INVITE_URL);
+      if (canOpen) {
+        await Linking.openURL(DISCORD_INVITE_URL);
       }
-
-      const response = await axios.get(`${BASE_URL}/api/discord/status`, {
-        headers: { Authorization: `Bearer ${token}` },
-        timeout: 10000 // 10 second timeout
-      });
-
-      setIsConnected(response.data.connected);
-      if (response.data.connected && response.data.connection) {
-        const username = response.data.connection.discordUsername;
-        const discriminator = response.data.connection.discordDiscriminator;
-        setDiscordUsername(discriminator !== '0' ? `${username}#${discriminator}` : username);
-      }
-    } catch (err: any) {
-      console.error('Error checking Discord connection:', err);
-      if (err.code === 'ECONNABORTED') {
-        setError('Request timed out. Please check your connection and try again.');
-      } else if (err.response?.status === 401) {
-        setError('Authentication expired. Please log out and log in again.');
-      } else {
-        setError(err.response?.data?.message || 'Failed to check connection status');
-      }
-      // Set connected to false on error so UI is usable
-      setIsConnected(false);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [getToken]);
-
-  useEffect(() => {
-    checkConnectionStatus();
-  }, [checkConnectionStatus]);
-
-  const handleConnect = async () => {
-    try {
-      setIsConnecting(true);
-      setError(null);
-      const token = await getToken();
-      
-      if (!token) {
-        Alert.alert('Error', 'Authentication required');
-        return;
-      }
-
-      const response = await axios.get(`${BASE_URL}/api/discord/auth-url`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-
-      const authUrl = response.data.authUrl;
-
-      if (Platform.OS === 'web') {
-        // For web, open in same window
-        if (Platform.OS === 'web' && typeof window !== 'undefined') {
-          window.location.href = authUrl;
-        } else {
-          Linking.openURL(authUrl);
-        }
-      } else {
-        // For mobile, use WebBrowser
-        const result = await WebBrowser.openAuthSessionAsync(authUrl, `${BASE_URL}/api/discord/callback`);
-        
-        if (result.type === 'success') {
-          // Re-check connection status after successful auth
-          await checkConnectionStatus();
-          Alert.alert('Success', 'Discord account connected successfully!');
-        } else if (result.type === 'cancel') {
-          Alert.alert('Cancelled', 'Discord connection was cancelled');
-        }
-      }
-    } catch (err: any) {
-      console.error('Error connecting Discord:', err);
-      setError(err.response?.data?.message || err.message);
-      Alert.alert('Error', 'Failed to connect Discord account');
-    } finally {
-      setIsConnecting(false);
+    } catch (err) {
+      console.error('Error opening Discord link:', err);
     }
   };
 
-  const handleDisconnect = async () => {
-    Alert.alert(
-      'Disconnect Discord',
-      'Are you sure you want to disconnect your Discord account?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Disconnect',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const token = await getToken();
-              
-              if (!token) {
-                Alert.alert('Error', 'Authentication required');
-                return;
-              }
-
-              await axios.delete(`${BASE_URL}/api/discord/disconnect`, {
-                headers: { Authorization: `Bearer ${token}` }
-              });
-
-              setIsConnected(false);
-              setDiscordUsername(null);
-              Alert.alert('Success', 'Discord account disconnected');
-            } catch (err: any) {
-              console.error('Error disconnecting Discord:', err);
-              Alert.alert('Error', 'Failed to disconnect Discord account');
-            }
-          }
-        }
-      ]
-    );
+  const handleCancel = () => {
+    // Navigate back or close
+    setShowCancel(true);
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Connect Discord</Text>
-      <Text style={styles.description}>
-        Join the Spediak community on Discord to connect with other home inspectors, share insights, and get support.
-      </Text>
+    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+      <View style={[styles.card, isLargeScreen && styles.cardLarge]}>
+        <Text style={styles.title}>Connect Discord</Text>
+        <Text style={styles.description}>
+          Join the National Inspector Community to collaborate, share findings, and track feature updates.
+        </Text>
 
-      {isLoading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
+        {/* Status Box */}
+        <View style={styles.statusBox}>
+          <Text style={styles.statusLabel}>Status: <Text style={styles.statusValue}>Not linked</Text></Text>
+          <Text style={styles.statusHint}>
+            Connect your Discord to unlock discussion channels, release notes, and AI tips.
+          </Text>
         </View>
-      ) : (
-        <>
-          {/* Connection Status */}
-          <View style={styles.statusCard}>
-            <View style={styles.statusHeader}>
-              <Text style={styles.statusLabel}>Connection Status</Text>
-              {isConnected ? (
-                <CheckCircle size={24} color="#4CAF50" />
-              ) : (
-                <XCircle size={24} color="#9E9E9E" />
-              )}
-            </View>
-            <Text style={[styles.statusText, isConnected && styles.statusTextConnected]}>
-              {isConnected ? 'Connected' : 'Not connected'}
-            </Text>
-            {isConnected && discordUsername && (
-              <Text style={styles.usernameText}>
-                Connected as: {discordUsername}
-              </Text>
-            )}
+
+        {/* Buttons */}
+        <View style={styles.buttonRow}>
+          <TouchableOpacity style={styles.authorizeButton} onPress={handleAuthorize}>
+            <Text style={styles.authorizeButtonText}>Authorize with Discord</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.cancelButton} onPress={handleCancel}>
+            <Text style={styles.cancelButtonText}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Benefits Card */}
+      <View style={[styles.card, isLargeScreen && styles.cardLarge]}>
+        <Text style={styles.benefitsTitle}>What you'll get</Text>
+        
+        <View style={styles.benefitItem}>
+          <View style={styles.benefitIcon}>
+            <MessageCircle size={18} color={COLORS.primary} />
           </View>
+          <Text style={styles.benefitText}>Inspector-only Q&A and discussion channels</Text>
+        </View>
 
-          {/* Error Message */}
-          {error && (
-            <View style={styles.errorContainer}>
-              <Text style={styles.errorText}>{error}</Text>
-            </View>
-          )}
-
-          {/* Action Button */}
-          {!isConnected ? (
-            <TouchableOpacity 
-              style={[styles.button, isConnecting && styles.buttonDisabled]}
-              onPress={handleConnect}
-              disabled={isConnecting}
-            >
-              {isConnecting ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <Text style={styles.buttonText}>Authorize with Discord</Text>
-              )}
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity 
-              style={[styles.button, styles.disconnectButton]}
-              onPress={handleDisconnect}
-            >
-              <LogOut size={20} color="#FFFFFF" />
-              <Text style={styles.buttonText}>Disconnect</Text>
-            </TouchableOpacity>
-          )}
-
-          {/* Benefits */}
-          <View style={styles.benefitsContainer}>
-            <Text style={styles.benefitsTitle}>Why Connect Discord?</Text>
-            <View style={styles.benefitItem}>
-              <Text style={styles.benefitBullet}>•</Text>
-              <Text style={styles.benefitText}>Get real-time support from the community</Text>
-            </View>
-            <View style={styles.benefitItem}>
-              <Text style={styles.benefitBullet}>•</Text>
-              <Text style={styles.benefitText}>Share inspection tips and best practices</Text>
-            </View>
-            <View style={styles.benefitItem}>
-              <Text style={styles.benefitBullet}>•</Text>
-              <Text style={styles.benefitText}>Stay updated on new features and updates</Text>
-            </View>
-            <View style={styles.benefitItem}>
-              <Text style={styles.benefitBullet}>•</Text>
-              <Text style={styles.benefitText}>Network with other home inspectors</Text>
-            </View>
+        <View style={styles.benefitItem}>
+          <View style={styles.benefitIcon}>
+            <Lightbulb size={18} color="#F59E0B" />
           </View>
-        </>
-      )}
-    </View>
+          <Text style={styles.benefitText}>AI usage tips and best practices</Text>
+        </View>
+
+        <View style={styles.benefitItem}>
+          <View style={styles.benefitIcon}>
+            <Bell size={18} color="#10B981" />
+          </View>
+          <Text style={styles.benefitText}>Release notes, bug reports, and early betas</Text>
+        </View>
+
+        <View style={styles.benefitItem}>
+          <View style={styles.benefitIcon}>
+            <BarChart3 size={18} color="#8B5CF6" />
+          </View>
+          <Text style={styles.benefitText}>Polls to help shape future Spediak features</Text>
+        </View>
+      </View>
+    </ScrollView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#F5F7FA',
+  },
+  contentContainer: {
     padding: 16,
+    paddingBottom: 40,
+  },
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
+    maxWidth: 500,
+    alignSelf: 'center',
+    width: '100%',
+  },
+  cardLarge: {
+    padding: 24,
   },
   title: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '700',
     color: COLORS.textPrimary,
     marginBottom: 8,
@@ -245,100 +125,80 @@ const styles = StyleSheet.create({
   description: {
     fontSize: 14,
     color: COLORS.textSecondary,
-    marginBottom: 24,
     lineHeight: 20,
+    marginBottom: 20,
   },
-  loadingContainer: {
-    padding: 40,
-    alignItems: 'center',
-  },
-  statusCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  statusHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
+  statusBox: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    padding: 16,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
   },
   statusLabel: {
     fontSize: 14,
-    fontWeight: '600',
     color: COLORS.textSecondary,
+    marginBottom: 6,
   },
-  statusText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#9E9E9E',
+  statusValue: {
+    fontWeight: '700',
+    color: COLORS.textPrimary,
   },
-  statusTextConnected: {
-    color: '#4CAF50',
-  },
-  usernameText: {
-    fontSize: 14,
+  statusHint: {
+    fontSize: 13,
     color: COLORS.textSecondary,
-    marginTop: 8,
+    lineHeight: 18,
   },
-  errorContainer: {
-    backgroundColor: '#FFEBEE',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
-  },
-  errorText: {
-    fontSize: 14,
-    color: COLORS.error,
-    textAlign: 'center',
-  },
-  button: {
+  buttonRow: {
     flexDirection: 'row',
+    gap: 12,
+  },
+  authorizeButton: {
+    flex: 1,
+    backgroundColor: COLORS.primary,
+    paddingVertical: 14,
+    borderRadius: 10,
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: '#5865F2', // Discord blue
-    paddingVertical: 16,
-    borderRadius: 12,
-    marginBottom: 24,
   },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  disconnectButton: {
-    backgroundColor: '#ED4245', // Discord red
-  },
-  buttonText: {
+  authorizeButtonText: {
     color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 15,
+    fontWeight: '700',
   },
-  benefitsContainer: {
-    backgroundColor: '#E3F2FD',
-    borderRadius: 12,
-    padding: 16,
+  cancelButton: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+  },
+  cancelButtonText: {
+    color: COLORS.textPrimary,
+    fontSize: 15,
+    fontWeight: '600',
   },
   benefitsTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: COLORS.primary,
-    marginBottom: 12,
+    fontSize: 18,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+    marginBottom: 16,
   },
   benefitItem: {
     flexDirection: 'row',
-    marginBottom: 8,
+    alignItems: 'center',
+    marginBottom: 14,
   },
-  benefitBullet: {
-    fontSize: 16,
-    color: COLORS.primary,
-    marginRight: 8,
-    fontWeight: '600',
+  benefitIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: '#F0F4F8',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
   },
   benefitText: {
     fontSize: 14,
@@ -349,4 +209,3 @@ const styles = StyleSheet.create({
 });
 
 export default DiscordScreen;
-

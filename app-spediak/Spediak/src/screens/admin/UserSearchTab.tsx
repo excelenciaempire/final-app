@@ -10,7 +10,8 @@ import {
   Switch, 
   ActivityIndicator, 
   Platform,
-  useWindowDimensions
+  useWindowDimensions,
+  Modal
 } from 'react-native';
 import { useAuth } from '@clerk/clerk-expo';
 import axios from 'axios';
@@ -29,7 +30,9 @@ import {
   X,
   Tag,
   AlertTriangle,
-  Calendar
+  Calendar,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react-native';
 
 // Predefined support tags
@@ -80,6 +83,12 @@ const UserSearchTab: React.FC = () => {
   const [promoStatements, setPromoStatements] = useState('');
   const [activePromotion, setActivePromotion] = useState<any>(null);
   const [isLoadingPromo, setIsLoadingPromo] = useState(false);
+  
+  // Date Picker State
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [datePickerTarget, setDatePickerTarget] = useState<'start' | 'end'>('start');
+  const [datePickerMonth, setDatePickerMonth] = useState(new Date());
+  const [datePickerYear, setDatePickerYear] = useState(new Date().getFullYear());
 
   // Gift Credits State
   const [giftAmount, setGiftAmount] = useState('5');
@@ -904,21 +913,33 @@ const UserSearchTab: React.FC = () => {
           <View style={styles.promoRow}>
             <View style={styles.promoField}>
               <Text style={styles.label}>Start date</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="YYYY-MM-DD"
-                value={promoStartDate}
-                onChangeText={setPromoStartDate}
-              />
+              <TouchableOpacity 
+                style={styles.datePickerButton}
+                onPress={() => {
+                  setDatePickerTarget('start');
+                  setShowDatePicker(true);
+                }}
+              >
+                <Calendar size={18} color={COLORS.primary} />
+                <Text style={[styles.datePickerText, !promoStartDate && styles.datePickerPlaceholder]}>
+                  {promoStartDate || 'Select date'}
+                </Text>
+              </TouchableOpacity>
             </View>
             <View style={styles.promoField}>
               <Text style={styles.label}>End date</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="YYYY-MM-DD"
-                value={promoEndDate}
-                onChangeText={setPromoEndDate}
-              />
+              <TouchableOpacity 
+                style={styles.datePickerButton}
+                onPress={() => {
+                  setDatePickerTarget('end');
+                  setShowDatePicker(true);
+                }}
+              >
+                <Calendar size={18} color={COLORS.primary} />
+                <Text style={[styles.datePickerText, !promoEndDate && styles.datePickerPlaceholder]}>
+                  {promoEndDate || 'Select date'}
+                </Text>
+              </TouchableOpacity>
             </View>
             <View style={styles.promoField}>
               <Text style={styles.label}>Free statements</Text>
@@ -961,6 +982,109 @@ const UserSearchTab: React.FC = () => {
           </Text>
         </View>
       </View>
+
+      {/* Date Picker Modal */}
+      <Modal
+        visible={showDatePicker}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowDatePicker(false)}
+      >
+        <TouchableOpacity 
+          style={styles.datePickerOverlay}
+          activeOpacity={1}
+          onPress={() => setShowDatePicker(false)}
+        >
+          <View style={styles.datePickerModal} onStartShouldSetResponder={() => true}>
+            <Text style={styles.datePickerTitle}>
+              Select {datePickerTarget === 'start' ? 'Start' : 'End'} Date
+            </Text>
+            
+            {/* Month/Year Navigation */}
+            <View style={styles.datePickerNav}>
+              <TouchableOpacity 
+                onPress={() => {
+                  const newDate = new Date(datePickerMonth);
+                  newDate.setMonth(newDate.getMonth() - 1);
+                  setDatePickerMonth(newDate);
+                }}
+              >
+                <ChevronLeft size={24} color={COLORS.primary} />
+              </TouchableOpacity>
+              <Text style={styles.datePickerMonthYear}>
+                {datePickerMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}
+              </Text>
+              <TouchableOpacity 
+                onPress={() => {
+                  const newDate = new Date(datePickerMonth);
+                  newDate.setMonth(newDate.getMonth() + 1);
+                  setDatePickerMonth(newDate);
+                }}
+              >
+                <ChevronRight size={24} color={COLORS.primary} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Day Headers */}
+            <View style={styles.datePickerDayHeaders}>
+              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
+                <Text key={day} style={styles.datePickerDayHeader}>{day}</Text>
+              ))}
+            </View>
+
+            {/* Calendar Grid */}
+            <View style={styles.datePickerGrid}>
+              {(() => {
+                const year = datePickerMonth.getFullYear();
+                const month = datePickerMonth.getMonth();
+                const firstDay = new Date(year, month, 1).getDay();
+                const daysInMonth = new Date(year, month + 1, 0).getDate();
+                const days = [];
+                
+                // Empty cells for days before month starts
+                for (let i = 0; i < firstDay; i++) {
+                  days.push(<View key={`empty-${i}`} style={styles.datePickerDay} />);
+                }
+                
+                // Days of the month
+                for (let day = 1; day <= daysInMonth; day++) {
+                  const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                  const isSelected = (datePickerTarget === 'start' && promoStartDate === dateStr) || 
+                                     (datePickerTarget === 'end' && promoEndDate === dateStr);
+                  
+                  days.push(
+                    <TouchableOpacity
+                      key={day}
+                      style={[styles.datePickerDay, isSelected && styles.datePickerDaySelected]}
+                      onPress={() => {
+                        if (datePickerTarget === 'start') {
+                          setPromoStartDate(dateStr);
+                        } else {
+                          setPromoEndDate(dateStr);
+                        }
+                        setShowDatePicker(false);
+                      }}
+                    >
+                      <Text style={[styles.datePickerDayText, isSelected && styles.datePickerDayTextSelected]}>
+                        {day}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                }
+                
+                return days;
+              })()}
+            </View>
+
+            <TouchableOpacity 
+              style={styles.datePickerCloseButton}
+              onPress={() => setShowDatePicker(false)}
+            >
+              <Text style={styles.datePickerCloseText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </ScrollView>
   );
 };
@@ -1315,6 +1439,107 @@ const styles = StyleSheet.create({
   promoField: {
     flex: 1,
     minWidth: 120,
+  },
+  datePickerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  datePickerText: {
+    fontSize: 15,
+    color: COLORS.textPrimary,
+    flex: 1,
+  },
+  datePickerPlaceholder: {
+    color: COLORS.textSecondary,
+  },
+  datePickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  datePickerModal: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    width: '100%',
+    maxWidth: 360,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  datePickerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  datePickerNav: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  datePickerMonthYear: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+  },
+  datePickerDayHeaders: {
+    flexDirection: 'row',
+    marginBottom: 8,
+  },
+  datePickerDayHeader: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+  },
+  datePickerGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  datePickerDay: {
+    width: '14.28%',
+    aspectRatio: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  datePickerDaySelected: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 20,
+  },
+  datePickerDayText: {
+    fontSize: 14,
+    color: COLORS.textPrimary,
+  },
+  datePickerDayTextSelected: {
+    color: '#fff',
+    fontWeight: '700',
+  },
+  datePickerCloseButton: {
+    marginTop: 16,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+  },
+  datePickerCloseText: {
+    fontSize: 15,
+    color: COLORS.textSecondary,
+    fontWeight: '500',
   },
 });
 

@@ -39,29 +39,18 @@ export type RootDrawerParamList = {
 
 const Drawer = createDrawerNavigator<RootDrawerParamList>();
 
-// --- Custom Header Title Component with State Selector ---
+// --- Custom Header Title Component with State Selector (Mobile Only - No Logo) ---
 const CustomHeaderTitleInner: React.FC = () => {
   const { selectedState, setSelectedState } = useGlobalState();
   const [showStatePicker, setShowStatePicker] = useState(false);
 
   // Don't render state selector until context is ready
   if (!setSelectedState) {
-    return (
-      <View style={styles.customHeaderContainer}>
-        <Image 
-          source={require('../../assets/logo_header.png')} 
-          style={styles.headerLogo}
-        />
-      </View>
-    );
+    return null;
   }
 
   return (
     <View style={styles.customHeaderContainer}>
-      <Image 
-        source={require('../../assets/logo_header.png')} 
-        style={styles.headerLogo}
-      />
       <TouchableOpacity 
         style={styles.stateSelector}
         onPress={() => setShowStatePicker(true)}
@@ -143,6 +132,75 @@ const CustomHeaderTitle: React.FC = () => {
   );
 };
 
+// --- State Selector for Desktop Sidebar ---
+const DesktopStateSelector: React.FC = () => {
+  const { selectedState, setSelectedState } = useGlobalState();
+  const [showStatePicker, setShowStatePicker] = useState(false);
+
+  if (!setSelectedState) return null;
+
+  return (
+    <View style={styles.desktopStateSelectorContainer}>
+      <TouchableOpacity 
+        style={styles.desktopStateSelector}
+        onPress={() => setShowStatePicker(true)}
+      >
+        <Ionicons name="location-outline" size={18} color={COLORS.primary} />
+        <Text style={styles.desktopStateText}>{selectedState || 'NC'}</Text>
+        <Ionicons name="chevron-down" size={16} color={COLORS.textSecondary} />
+      </TouchableOpacity>
+
+      <Modal
+        visible={showStatePicker}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowStatePicker(false)}
+      >
+        <TouchableOpacity 
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowStatePicker(false)}
+        >
+          <View style={styles.statePickerContainer}>
+            <Text style={styles.statePickerTitle}>Select State</Text>
+            <ScrollView style={styles.statePickerScroll}>
+              {US_STATES.map((state) => (
+                <TouchableOpacity
+                  key={state.value}
+                  style={[
+                    styles.statePickerItem,
+                    selectedState === state.value && styles.statePickerItemActive
+                  ]}
+                  onPress={() => {
+                    setSelectedState(state.value);
+                    setShowStatePicker(false);
+                  }}
+                >
+                  <Text style={[
+                    styles.statePickerItemText,
+                    selectedState === state.value && styles.statePickerItemTextActive
+                  ]}>
+                    {state.value} - {state.label}
+                  </Text>
+                  {selectedState === state.value && (
+                    <Ionicons name="checkmark" size={20} color={COLORS.primary} />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <TouchableOpacity
+              style={styles.closePickerButton}
+              onPress={() => setShowStatePicker(false)}
+            >
+              <Text style={styles.closePickerButtonText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+    </View>
+  );
+};
+
 // --- Reusable Sidebar/Drawer Content ---
 interface SidebarContentProps {
   onNavigate: (screen: keyof RootDrawerParamList | 'AdminDashboard') => void;
@@ -181,6 +239,9 @@ const SidebarContent: React.FC<SidebarContentProps> = ({ onNavigate, activeScree
         <Text style={styles.userEmail}>{user?.primaryEmailAddress?.emailAddress || 'Email Address'}</Text>
         <Text style={styles.userState}>{`State: ${sidebarUserStateDisplay}`}</Text>
       </View>
+      
+      {/* Desktop State Selector */}
+      {Platform.OS === 'web' && <DesktopStateSelector />}
 
       {/* Navigation Items */}
       <View style={styles.drawerListContainer}>
@@ -536,6 +597,27 @@ const styles = StyleSheet.create({
         color: COLORS.white,
         fontSize: 16,
         fontWeight: 'bold',
+    },
+    desktopStateSelectorContainer: {
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        borderBottomWidth: 1,
+        borderBottomColor: '#eee',
+    },
+    desktopStateSelector: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#F5F7FA',
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+        borderRadius: 8,
+        gap: 8,
+    },
+    desktopStateText: {
+        flex: 1,
+        fontSize: 15,
+        fontWeight: '600',
+        color: COLORS.darkText,
     },
 });
 

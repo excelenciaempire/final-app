@@ -20,7 +20,6 @@ const AdBanner: React.FC = () => {
   const [ads, setAds] = useState<AdData[]>([]);
   const [currentAdIndex, setCurrentAdIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   // Only show ads for free tier users
   const shouldShowAds = subscription?.plan_type === 'free';
@@ -28,7 +27,6 @@ const AdBanner: React.FC = () => {
   const fetchAds = useCallback(async () => {
     try {
       setIsLoading(true);
-      setError(null);
       const token = await getToken();
       
       if (!token) {
@@ -37,15 +35,15 @@ const AdBanner: React.FC = () => {
       }
 
       const response = await axios.get(`${BASE_URL}/api/ads/active`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 5000
       });
 
       if (response.data.ads && response.data.ads.length > 0) {
         setAds(response.data.ads);
       }
     } catch (err: any) {
-      console.error('Error fetching ads:', err);
-      setError(err.message);
+      console.log('No active ads or error fetching:', err.message);
     } finally {
       setIsLoading(false);
     }
@@ -54,6 +52,8 @@ const AdBanner: React.FC = () => {
   useEffect(() => {
     if (shouldShowAds) {
       fetchAds();
+    } else {
+      setIsLoading(false);
     }
   }, [shouldShowAds, fetchAds]);
 
@@ -63,22 +63,19 @@ const AdBanner: React.FC = () => {
       const interval = setInterval(() => {
         setCurrentAdIndex((prevIndex) => (prevIndex + 1) % ads.length);
       }, 10000);
-
       return () => clearInterval(interval);
     }
   }, [ads.length]);
 
   const handleAdClick = async (ad: AdData) => {
     try {
-      // Track click
       const token = await getToken();
       if (token) {
-        await axios.post(`${BASE_URL}/api/ads/${ad.id}/click`, {}, {
+        axios.post(`${BASE_URL}/api/ads/${ad.id}/click`, {}, {
           headers: { Authorization: `Bearer ${token}` }
-        });
+        }).catch(() => {}); // Silent fail for tracking
       }
 
-      // Open destination URL
       if (ad.destination_url) {
         const canOpen = await Linking.canOpenURL(ad.destination_url);
         if (canOpen) {
@@ -95,11 +92,6 @@ const AdBanner: React.FC = () => {
     return null;
   }
 
-  // Don't render if loading failed or no ads
-  if (error || ads.length === 0) {
-    return null;
-  }
-
   if (isLoading) {
     return (
       <View style={styles.card}>
@@ -108,44 +100,62 @@ const AdBanner: React.FC = () => {
     );
   }
 
+  // Show placeholder if no ads
+  if (ads.length === 0) {
+    return (
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Ad Banner</Text>
+        <View style={styles.placeholderBox}>
+          <Text style={styles.placeholderText}>
+            Ad space placeholder (e.g., 320×100 or 468×60).
+          </Text>
+          <Text style={styles.placeholderSubtext}>
+            This is where ad units will appear in the production app.
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
   const currentAd = ads[currentAdIndex];
 
   return (
-    <TouchableOpacity 
-      style={styles.card} 
-      onPress={() => handleAdClick(currentAd)}
-      activeOpacity={0.8}
-    >
-      {currentAd.image_url && (
-        <Image 
-          source={{ uri: currentAd.image_url }} 
-          style={styles.adImage}
-          resizeMode="cover"
-        />
-      )}
-      <View style={styles.adContent}>
-        <Text style={styles.adTitle}>{currentAd.title}</Text>
-        {currentAd.subtitle && (
-          <Text style={styles.adSubtitle}>{currentAd.subtitle}</Text>
+    <View style={styles.card}>
+      <Text style={styles.cardTitle}>Ad Banner</Text>
+      <TouchableOpacity 
+        style={styles.adContainer} 
+        onPress={() => handleAdClick(currentAd)}
+        activeOpacity={0.8}
+      >
+        {currentAd.image_url ? (
+          <Image 
+            source={{ uri: currentAd.image_url }} 
+            style={styles.adImage}
+            resizeMode="cover"
+          />
+        ) : (
+          <View style={styles.adContent}>
+            <Text style={styles.adTitle}>{currentAd.title}</Text>
+            {currentAd.subtitle && (
+              <Text style={styles.adSubtitle}>{currentAd.subtitle}</Text>
+            )}
+          </View>
         )}
-        <View style={styles.adIndicator}>
-          <Text style={styles.adLabel}>Sponsored</Text>
+        <View style={styles.sponsoredRow}>
+          <Text style={styles.sponsoredLabel}>Sponsored</Text>
           {ads.length > 1 && (
             <View style={styles.dotContainer}>
               {ads.map((_, index) => (
                 <View
                   key={index}
-                  style={[
-                    styles.dot,
-                    index === currentAdIndex && styles.dotActive
-                  ]}
+                  style={[styles.dot, index === currentAdIndex && styles.dotActive]}
                 />
               ))}
             </View>
           )}
         </View>
-      </View>
-    </TouchableOpacity>
+      </TouchableOpacity>
+    </View>
   );
 };
 
@@ -153,42 +163,77 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
+    padding: 16,
     marginBottom: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.06,
     shadowRadius: 4,
-    elevation: 3,
+    elevation: 2,
+  },
+  cardTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+    marginBottom: 12,
+  },
+  placeholderBox: {
+    borderWidth: 2,
+    borderColor: '#E0E0E0',
+    borderStyle: 'dashed',
+    borderRadius: 8,
+    paddingVertical: 30,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FAFAFA',
+  },
+  placeholderText: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  placeholderSubtext: {
+    fontSize: 12,
+    color: '#999',
+    textAlign: 'center',
+  },
+  adContainer: {
+    borderRadius: 8,
     overflow: 'hidden',
+    backgroundColor: '#F5F5F5',
   },
   adImage: {
     width: '100%',
-    height: 150,
-    backgroundColor: '#F5F5F5',
+    height: 120,
+    backgroundColor: '#E0E0E0',
   },
   adContent: {
     padding: 16,
+    backgroundColor: '#F0F4F8',
   },
   adTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
     color: COLORS.textPrimary,
     marginBottom: 4,
   },
   adSubtitle: {
-    fontSize: 14,
+    fontSize: 13,
     color: COLORS.textSecondary,
-    marginBottom: 8,
   },
-  adIndicator: {
+  sponsoredRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: '#FAFAFA',
   },
-  adLabel: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
+  sponsoredLabel: {
+    fontSize: 11,
+    color: '#999',
     fontStyle: 'italic',
   },
   dotContainer: {
