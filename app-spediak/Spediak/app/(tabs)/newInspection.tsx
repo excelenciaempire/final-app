@@ -210,6 +210,9 @@ export default function NewInspectionScreen() {
     const [isGeneratingPreDescription, setIsGeneratingPreDescription] = useState<boolean>(false);
     const [isGeneratingFinalDdid, setIsGeneratingFinalDdid] = useState<boolean>(false);
     const [cloudinaryUrl, setCloudinaryUrl] = useState<string | null>(null);
+    
+    // --- Image dimensions state ---
+    const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(null);
 
     // --- Use Global State Context for selected state and organization ---
     const { selectedState, selectedOrganization, isContentStale, clearStaleFlag } = useGlobalState();
@@ -295,7 +298,7 @@ export default function NewInspectionScreen() {
     };
 
     // Helper function to handle result from either picker or drag/drop
-    const handleImageResult = (result: ImagePicker.ImagePickerResult | { assets: { uri: string; base64?: string }[] }) => {
+    const handleImageResult = (result: ImagePicker.ImagePickerResult | { assets: { uri: string; base64?: string; width?: number; height?: number }[] }) => {
          if (!('canceled' in result && result.canceled) && result.assets && result.assets.length > 0) {
             const asset = result.assets[0];
             setImageUri(asset.uri);
@@ -305,6 +308,21 @@ export default function NewInspectionScreen() {
             setFinalDescriptionForDdid('');
             setCloudinaryUrl(null);
             setError(null);
+            
+            // Get image dimensions
+            if (asset.width && asset.height) {
+                setImageDimensions({ width: asset.width, height: asset.height });
+            } else if (Platform.OS === 'web' && asset.uri) {
+                // For web, get dimensions from the image
+                const img = new (window as any).Image();
+                img.onload = () => {
+                    setImageDimensions({ width: img.width, height: img.height });
+                };
+                img.src = asset.uri;
+            } else {
+                // Default to square if we can't get dimensions
+                setImageDimensions(null);
+            }
         } else {
             console.log('Image selection cancelled or failed');
         }
@@ -783,6 +801,7 @@ export default function NewInspectionScreen() {
         setIsGeneratingFinalDdid(false);
         setFinalDescriptionForDdid('');
         setCloudinaryUrl(null);
+        setImageDimensions(null);
         console.log("Inspection reset");
     };
 
@@ -926,9 +945,25 @@ export default function NewInspectionScreen() {
                         onDrop={handleDrop} 
                         style={webDropZoneStyleRN}
                     >
-                        <TouchableOpacity style={styles.imagePickerWebMain} onPress={launchLibrary}> 
+                        <TouchableOpacity 
+                            style={[
+                                styles.imagePickerWebMain, 
+                                imageUri && imageDimensions && { 
+                                    aspectRatio: imageDimensions.width / imageDimensions.height,
+                                    maxHeight: 400
+                                }
+                            ]} 
+                            onPress={launchLibrary}
+                        > 
                             {imageUri ? (
-                                <Image source={{ uri: imageUri }} style={styles.imagePreview} />
+                                <Image 
+                                    source={{ uri: imageUri }} 
+                                    style={[
+                                        styles.imagePreviewAdaptive,
+                                        imageDimensions && { aspectRatio: imageDimensions.width / imageDimensions.height }
+                                    ]} 
+                                    resizeMode="contain"
+                                />
                             ) : (
                                 <View style={styles.imagePlaceholder}>
                                     <ImagePlus size={50} color="#6c757d" />
@@ -944,9 +979,25 @@ export default function NewInspectionScreen() {
                         )}
                     </View>
                  ) : (
-                    <TouchableOpacity style={styles.imagePicker} onPress={selectImageSource}>
+                    <TouchableOpacity 
+                        style={[
+                            styles.imagePicker,
+                            imageUri && imageDimensions && { 
+                                aspectRatio: imageDimensions.width / imageDimensions.height,
+                                maxHeight: 400
+                            }
+                        ]} 
+                        onPress={selectImageSource}
+                    >
                         {imageUri ? (
-                            <Image source={{ uri: imageUri }} style={styles.imagePreview} />
+                            <Image 
+                                source={{ uri: imageUri }} 
+                                style={[
+                                    styles.imagePreviewAdaptive,
+                                    imageDimensions && { aspectRatio: imageDimensions.width / imageDimensions.height }
+                                ]} 
+                                resizeMode="contain"
+                            />
                         ) : (
                             <View style={styles.imagePlaceholder}>
                                 <ImagePlus size={50} color="#6c757d" />
@@ -1128,6 +1179,12 @@ const styles = StyleSheet.create({
         width: '100%',
         height: '100%',
         borderRadius: 8,
+    },
+    imagePreviewAdaptive: {
+        width: '100%',
+        height: '100%',
+        borderRadius: 8,
+        maxHeight: 400,
     },
     imagePlaceholder: { justifyContent: 'center', alignItems: 'center', },
     imagePlaceholderText: { marginTop: 10, color: '#6c757d', },

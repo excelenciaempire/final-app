@@ -286,45 +286,38 @@ const generateStatementDirect = async (req, res) => {
     console.log(`[Generate Statement] SOP Context loaded: ${hasSopContext ? 'Yes' : 'No'}`);
 
     // Build comprehensive prompt with clear instructions
-    const prompt = `You are an expert home inspector writing professional inspection reports.
+    const prompt = `You are an expert home inspector assistant. Your job is to help inspectors write professional reports.
 
-=== ROLE & CONTEXT ===
-You must analyze the attached image of a home inspection defect and generate a professional statement.
-The inspector is working in ${userState} state${organization && organization !== 'None' ? ` and is a member of ${organization}` : ''}.
+TASK: Analyze the attached image showing a home inspection finding and write a professional inspection statement.
 
-=== STANDARDS OF PRACTICE (SOPs) ===
-${hasSopContext ? `The following regulatory documents apply to this inspection:
+CONTEXT:
+- Inspector Location: ${userState}
+${organization && organization !== 'None' ? `- Professional Organization: ${organization}` : ''}
+- Inspector Notes: ${notes || 'None provided'}
 
+${hasSopContext ? `APPLICABLE STANDARDS:
 ${sopContext}
 
-CRITICAL HIERARCHY RULE: If there is ANY conflict between State regulations and Organization standards, you MUST follow the State (${userState}) regulations. State rules always take precedence over Organization guidelines.` : 'No specific SOP documents are loaded for this state/organization. Use general home inspection best practices.'}
+Note: State regulations take precedence over organization standards if there's any conflict.` : 'Using general home inspection best practices.'}
 
-=== OUTPUT FORMAT: DDID ===
-You MUST structure your response using the DDID format:
-1. **DESCRIBE**: What is the component or system being inspected? (Be specific about location and type)
-2. **DETERMINE**: What is the defect or issue? (State the problem clearly)
-3. **IMPLICATION**: What damage or risk does this pose? (Explain the consequences if not addressed)
-4. **DIRECTION**: What action should be taken? (Provide a clear recommendation)
+FORMAT REQUIRED (DDID):
+Write a SINGLE paragraph that covers these four elements:
+1. DESCRIBE the component/system being inspected
+2. DETERMINE the specific issue or defect visible
+3. IMPLICATION - explain potential consequences if not addressed  
+4. DIRECTION - provide a clear recommendation for repair/further evaluation
 
-Combine these four elements into a SINGLE, cohesive professional paragraph. Do NOT use bullet points or numbered lists.
+${ddid_prompt_template ? `ADDITIONAL GUIDANCE:\n${ddid_prompt_template}\n` : ''}
+${knowledge ? `RELEVANT KNOWLEDGE:\n${knowledge}\n` : ''}
+OUTPUT RULES:
+- Write ONE cohesive professional paragraph
+- Be technical but understandable
+- No bullet points, no numbered lists
+- No greetings or explanations - just the statement itself
+- If the image shows a defect, describe it professionally
+- If unsure what the image shows, describe what IS visible and recommend further evaluation
 
-${ddid_prompt_template ? `=== ADDITIONAL GUIDANCE ===\n${ddid_prompt_template}\n` : ''}
-${knowledge ? `=== RELEVANT KNOWLEDGE ===\n${knowledge}\n` : ''}
-=== INSPECTOR INPUT ===
-- Location (State): ${userState}
-${organization && organization !== 'None' ? `- Organization: ${organization}` : ''}
-- Inspector Notes: ${notes || 'No additional notes provided'}
-- Image: [Attached below]
-
-=== INSTRUCTIONS ===
-1. Analyze the image thoroughly
-2. Identify the defect shown
-3. Write a single professional paragraph following the DDID format
-4. Cite applicable standards if relevant
-5. Be technical but clear
-6. Do NOT include greetings, explanations, or meta-commentary - just the statement
-
-Generate the DDID statement now:`;
+Write the inspection statement:`;
 
     console.log('[Generate Statement] Sending request to OpenAI...');
 
