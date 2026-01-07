@@ -31,12 +31,12 @@ const LastStatementCard: React.FC = () => {
 
       const response = await axios.get(`${BASE_URL}/api/inspections`, {
         headers: { Authorization: `Bearer ${token}` },
-        params: { limit: 1 },
+        params: { limit: 1, page: 1 },
         timeout: 8000
       });
 
-      // Handle both possible response structures
-      const inspections = response.data.inspections || response.data.history || response.data || [];
+      // Handle the actual response structure from inspectionController
+      const inspections = response.data.items || response.data.inspections || response.data.history || response.data || [];
       if (Array.isArray(inspections) && inspections.length > 0) {
         const inspection = inspections[0];
         setLastStatement({
@@ -52,11 +52,11 @@ const LastStatementCard: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [getToken]);
+  }, []); // Remove getToken from deps to prevent loops
 
   useEffect(() => {
     fetchLastStatement();
-  }, [fetchLastStatement]);
+  }, []); // Only run once on mount
 
   const handleViewHistory = () => {
     navigation.navigate('Statement History');

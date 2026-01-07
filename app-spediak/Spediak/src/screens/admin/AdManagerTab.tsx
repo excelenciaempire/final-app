@@ -80,23 +80,28 @@ const AdManagerTab: React.FC = () => {
     try {
       setIsLoading(true);
       const token = await getToken();
-      if (!token) return;
+      if (!token) {
+        setIsLoading(false);
+        return;
+      }
 
       const response = await axios.get(`${BASE_URL}/api/admin/ads`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 10000
       });
       setAds(response.data.ads || []);
     } catch (error: any) {
       console.error('Error fetching ads:', error);
-      Alert.alert('Error', 'Failed to load ads');
+      // Don't show alert on every error - just log it
+      setAds([]);
     } finally {
       setIsLoading(false);
     }
-  }, [getToken]);
+  }, []); // Remove getToken to prevent loops
 
   useEffect(() => {
     fetchAds();
-  }, [fetchAds]);
+  }, []); // Only run once on mount
 
   const pickImage = async () => {
     try {

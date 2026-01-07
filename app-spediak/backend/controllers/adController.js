@@ -27,7 +27,11 @@ const getActiveAds = async (req, res) => {
  */
 const createAd = async (req, res) => {
   try {
-    const { title, subtitle, destinationUrl, imageUrl } = req.body;
+    // Support both camelCase and snake_case
+    const title = req.body.title;
+    const subtitle = req.body.subtitle;
+    const destinationUrl = req.body.destinationUrl || req.body.destination_url;
+    const imageUrl = req.body.imageUrl || req.body.image_url;
 
     if (!title || !destinationUrl) {
       return res.status(400).json({ message: 'Title and destination URL are required' });
@@ -62,7 +66,13 @@ const createAd = async (req, res) => {
 const updateAdStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { status } = req.body;
+    // Support both 'status' and 'is_active' from frontend
+    let status = req.body.status;
+    
+    // Convert is_active boolean to status string
+    if (req.body.is_active !== undefined) {
+      status = req.body.is_active ? 'active' : 'inactive';
+    }
 
     if (!status || !['active', 'inactive'].includes(status)) {
       return res.status(400).json({ message: 'Invalid status. Must be "active" or "inactive"' });
@@ -153,7 +163,16 @@ const trackAdClick = async (req, res) => {
 const getAllAds = async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT *
+      SELECT 
+        id, 
+        title, 
+        subtitle, 
+        destination_url, 
+        image_url, 
+        status,
+        (status = 'active') as is_active,
+        click_count,
+        created_at
       FROM ad_inventory
       ORDER BY created_at DESC
     `);

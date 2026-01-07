@@ -51,7 +51,7 @@ const AdBanner: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [getToken]);
+  }, []); // Remove getToken from deps to prevent infinite loops
 
   useEffect(() => {
     if (shouldShowAds) {
@@ -59,7 +59,7 @@ const AdBanner: React.FC = () => {
     } else {
       setIsLoading(false);
     }
-  }, [shouldShowAds, fetchAds]);
+  }, [shouldShowAds]); // Remove fetchAds from deps
 
   // Rotate ads every 10 seconds
   useEffect(() => {
