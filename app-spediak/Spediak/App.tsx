@@ -7,10 +7,12 @@ import { NavigationContainer } from '@react-navigation/native';
 import { StyleSheet, Text, View, Platform, ScrollView } from 'react-native';
 import AuthNavigator from "./src/navigation/AuthNavigator";
 import RootNavigator from "./src/navigation/RootNavigator";
+import RootNavigatorSimple from "./src/navigation/RootNavigatorSimple";
 import { GlobalStateProvider } from "./src/context/GlobalStateContext";
 import { SubscriptionProvider } from "./src/context/SubscriptionContext";
 
-// Version: 2.0.1 - Force rebuild
+// Version: 2.0.2 - Debug mode with simplified navigator
+const USE_SIMPLE_NAVIGATOR = true; // Set to false to use full navigator
 
 // Error Boundary Component
 class ErrorBoundary extends React.Component<
@@ -111,14 +113,20 @@ export default function App() {
         >
           <GlobalStateProvider>
             <SubscriptionProvider>
-              <NavigationContainer>
-                <SignedIn>
-                  <RootNavigator />
-                </SignedIn>
-                <SignedOut>
+              <SignedIn>
+                {USE_SIMPLE_NAVIGATOR ? (
+                  <RootNavigatorSimple />
+                ) : (
+                  <NavigationContainer>
+                    <RootNavigator />
+                  </NavigationContainer>
+                )}
+              </SignedIn>
+              <SignedOut>
+                <NavigationContainer>
                   <AuthNavigator />
-                </SignedOut>
-              </NavigationContainer>
+                </NavigationContainer>
+              </SignedOut>
               <StatusBar style="auto" />
             </SubscriptionProvider>
           </GlobalStateProvider>

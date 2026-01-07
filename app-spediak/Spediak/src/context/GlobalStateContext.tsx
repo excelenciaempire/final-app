@@ -78,12 +78,12 @@ export const GlobalStateProvider: React.FC<{ children: ReactNode }> = ({ childre
   useEffect(() => {
     const loadPersistedState = async () => {
       try {
-        if (Platform.OS === 'web') {
+        if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
           const saved = localStorage.getItem(STORAGE_KEY);
           if (saved) {
             setSelectedStateInternal(saved);
           }
-        } else {
+        } else if (Platform.OS !== 'web') {
           const saved = await AsyncStorage.getItem(STORAGE_KEY);
           if (saved) {
             setSelectedStateInternal(saved);
@@ -109,9 +109,9 @@ export const GlobalStateProvider: React.FC<{ children: ReactNode }> = ({ childre
 
     // Persist to storage
     try {
-      if (Platform.OS === 'web') {
+      if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
         localStorage.setItem(STORAGE_KEY, state);
-      } else {
+      } else if (Platform.OS !== 'web') {
         await AsyncStorage.setItem(STORAGE_KEY, state);
       }
     } catch (error) {
@@ -122,9 +122,9 @@ export const GlobalStateProvider: React.FC<{ children: ReactNode }> = ({ childre
   const markContentAsStale = () => {
     setIsContentStale(true);
     try {
-      if (Platform.OS === 'web') {
+      if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
         localStorage.setItem(STALE_FLAG_KEY, 'true');
-      } else {
+      } else if (Platform.OS !== 'web') {
         AsyncStorage.setItem(STALE_FLAG_KEY, 'true');
       }
     } catch (error) {
@@ -135,9 +135,9 @@ export const GlobalStateProvider: React.FC<{ children: ReactNode }> = ({ childre
   const clearStaleFlag = () => {
     setIsContentStale(false);
     try {
-      if (Platform.OS === 'web') {
+      if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
         localStorage.removeItem(STALE_FLAG_KEY);
-      } else {
+      } else if (Platform.OS !== 'web') {
         AsyncStorage.removeItem(STALE_FLAG_KEY);
       }
     } catch (error) {
