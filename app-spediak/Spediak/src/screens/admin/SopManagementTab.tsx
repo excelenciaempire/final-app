@@ -483,7 +483,7 @@ const SopManagementTab: React.FC = () => {
             onPress={handlePickStateDocument}
           >
             <Upload size={16} color="#fff" />
-            <Text style={styles.primaryButtonText}>Upload / name document</Text>
+            <Text style={styles.primaryButtonText}>Select Document</Text>
           </TouchableOpacity>
 
           <TouchableOpacity 
@@ -499,7 +499,7 @@ const SopManagementTab: React.FC = () => {
               <ActivityIndicator size="small" color={COLORS.primary} />
             ) : (
               <Text style={styles.outlineButtonText}>
-                {stateDocumentFile && !lastUploadedStateDocId ? 'Upload document' : 'Assign to selected state'}
+                {stateDocumentFile && !lastUploadedStateDocId ? 'Upload & Assign' : 'Assign Document'}
               </Text>
             )}
           </TouchableOpacity>
@@ -597,7 +597,7 @@ const SopManagementTab: React.FC = () => {
             onPress={handlePickOrgDocument}
           >
             <Upload size={16} color="#fff" />
-            <Text style={styles.primaryButtonText}>Upload org document</Text>
+            <Text style={styles.primaryButtonText}>Select Document</Text>
           </TouchableOpacity>
 
           <TouchableOpacity 
@@ -613,7 +613,7 @@ const SopManagementTab: React.FC = () => {
               <ActivityIndicator size="small" color={COLORS.primary} />
             ) : (
               <Text style={styles.outlineButtonText}>
-                {orgDocumentFile && !lastUploadedOrgDocId ? 'Upload document' : 'Assign to organization'}
+                {orgDocumentFile && !lastUploadedOrgDocId ? 'Upload & Assign' : 'Assign Document'}
               </Text>
             )}
           </TouchableOpacity>

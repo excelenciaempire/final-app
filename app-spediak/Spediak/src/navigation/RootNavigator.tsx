@@ -383,6 +383,7 @@ const RootNavigator: React.FC = () => {
         initialRouteName="Home"
         drawerContent={(props: DrawerContentComponentProps) => <CustomDrawerContent {...props} />}
         screenOptions={({ navigation, route }) => ({
+            drawerPosition: 'right', // Open drawer from right side
             headerStyle: { backgroundColor: COLORS.primary },
             headerTintColor: COLORS.white,
             headerTitleAlign: 'center',

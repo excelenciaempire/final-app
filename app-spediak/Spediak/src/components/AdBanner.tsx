@@ -23,8 +23,8 @@ const AdBanner: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(false);
 
-  // Only show ads for free tier users
-  const shouldShowAds = subscription?.plan_type === 'free';
+  // Only show ads for free tier users (not for admins or paid users)
+  const shouldShowAds = subscription?.plan_type === 'free' && !subscription?.is_admin;
 
   const fetchAds = useCallback(async () => {
     try {

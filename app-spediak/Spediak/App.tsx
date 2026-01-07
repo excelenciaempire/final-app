@@ -103,6 +103,13 @@ const tokenCache = {
 };
 
 export default function App() {
+  // Set document title for web
+  React.useEffect(() => {
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      document.title = 'Spediak';
+    }
+  }, []);
+
   return (
     <ErrorBoundary>
       <View style={styles.appWrapper}>

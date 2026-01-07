@@ -377,20 +377,28 @@ const getActiveSops = async (req, res) => {
  */
 const getSopAssignments = async (req, res) => {
   try {
+    // Use LEFT JOIN to be more resilient if documents are missing
     const result = await pool.query(`
-      SELECT sa.*, sd.document_name, sd.document_type, sd.file_url
+      SELECT sa.*, 
+             COALESCE(sd.document_name, 'Unknown Document') as document_name, 
+             sd.document_type, 
+             sd.file_url
       FROM sop_assignments sa
-      JOIN sop_documents sd ON sa.document_id = sd.id
-      ORDER BY sa.updated_at DESC
+      LEFT JOIN sop_documents sd ON sa.document_id = sd.id
+      ORDER BY sa.updated_at DESC NULLS LAST, sa.created_at DESC
     `);
 
     res.json({
-      assignments: result.rows
+      assignments: result.rows || []
     });
 
   } catch (error) {
     console.error('Error fetching SOP assignments:', error);
-    res.status(500).json({ message: 'Failed to fetch SOP assignments', error: error.message });
+    // Return empty array instead of 500 so frontend can handle gracefully
+    res.json({
+      assignments: [],
+      warning: 'Could not load SOP assignments: ' + error.message
+    });
   }
 };
 

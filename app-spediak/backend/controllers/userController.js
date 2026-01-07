@@ -288,15 +288,17 @@ const getSubscriptionStatus = async (req, res) => {
       }
     }
 
-    // Check if user is suspended
+    // Check if user is admin or suspended
     const securityResult = await pool.query(
-      'SELECT is_suspended FROM user_security_flags WHERE user_clerk_id = $1',
+      'SELECT is_suspended, is_admin FROM user_security_flags WHERE user_clerk_id = $1',
       [clerkId]
     );
     
     const isSuspended = securityResult.rows.length > 0 && securityResult.rows[0].is_suspended;
+    const isAdmin = securityResult.rows.length > 0 && securityResult.rows[0].is_admin;
 
-    const isUnlimited = subscription.plan_type !== 'free' && subscription.plan_type !== 'trial';
+    // Admins always have unlimited access
+    const isUnlimited = isAdmin || subscription.plan_type !== 'free' && subscription.plan_type !== 'trial';
     const statementsRemaining = isUnlimited 
       ? -1 
       : subscription.statements_limit - subscription.statements_used;
@@ -305,8 +307,10 @@ const getSubscriptionStatus = async (req, res) => {
       ...subscription,
       statements_remaining: statementsRemaining,
       is_unlimited: isUnlimited,
+      is_admin: isAdmin,
       can_generate: !isSuspended && (isUnlimited || subscription.statements_used < subscription.statements_limit),
-      is_suspended: isSuspended
+      is_suspended: isSuspended,
+      plan_display: isAdmin ? 'Admin (Unlimited)' : subscription.plan_type
     });
 
   } catch (error) {

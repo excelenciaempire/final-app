@@ -185,8 +185,8 @@ const AdManagerTab: React.FC = () => {
   };
 
   const handleCreateAd = async () => {
-    if (!newAd.title.trim()) {
-      Alert.alert('Error', 'Title is required');
+    if (!newAd.imageUrl && !previewUrl) {
+      Alert.alert('Error', 'Please upload an ad image');
       return;
     }
     if (!newAd.destinationUrl.trim()) {
@@ -200,8 +200,7 @@ const AdManagerTab: React.FC = () => {
       if (!token) return;
 
       await axios.post(`${BASE_URL}/api/admin/ads`, {
-        title: newAd.title,
-        subtitle: newAd.subtitle,
+        title: 'Ad',  // Simple default title for internal use
         destination_url: newAd.destinationUrl,
         image_url: newAd.imageUrl || previewUrl
       }, {
@@ -414,7 +413,7 @@ const AdManagerTab: React.FC = () => {
 
         {/* Image Upload Section */}
         <View style={styles.imageUploadSection}>
-          <Text style={styles.label}>Ad Image</Text>
+          <Text style={styles.label}>Ad Image *</Text>
           
           {previewUrl || newAd.imageUrl ? (
             <View style={styles.imagePreviewContainer}>
@@ -436,40 +435,11 @@ const AdManagerTab: React.FC = () => {
           ) : (
             <TouchableOpacity style={styles.uploadButton} onPress={pickImage}>
               <Upload size={24} color={COLORS.primary} />
-              <Text style={styles.uploadButtonText}>Upload Image</Text>
-              <Text style={styles.uploadHint}>Click to select an image from your device</Text>
+              <Text style={styles.uploadButtonText}>Upload Ad Image</Text>
+              <Text style={styles.uploadHint}>Recommended: 500 × 120px</Text>
             </TouchableOpacity>
           )}
-
-          <Text style={styles.orText}>— or paste image URL —</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="https://example.com/image.jpg"
-            value={newAd.imageUrl}
-            onChangeText={(text) => {
-              setNewAd({ ...newAd, imageUrl: text });
-              setPreviewUrl(null);
-            }}
-            autoCapitalize="none"
-            keyboardType="url"
-          />
         </View>
-
-        <Text style={styles.label}>Title *</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="e.g., Upgrade to Pro!"
-          value={newAd.title}
-          onChangeText={(text) => setNewAd({ ...newAd, title: text })}
-        />
-
-        <Text style={styles.label}>Subtitle</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="e.g., Get unlimited statements"
-          value={newAd.subtitle}
-          onChangeText={(text) => setNewAd({ ...newAd, subtitle: text })}
-        />
 
         <Text style={styles.label}>Destination URL *</Text>
         <TextInput

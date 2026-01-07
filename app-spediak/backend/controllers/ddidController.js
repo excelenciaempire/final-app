@@ -324,7 +324,7 @@ Now write the inspection statement for this image:`;
     console.log('[Generate Statement] Sending request to OpenAI...');
 
     const response = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-4o-mini', // Using mini for faster responses
       messages: [
         {
           role: 'user',
@@ -339,8 +339,8 @@ Now write the inspection statement for this image:`;
           ],
         },
       ],
-      max_tokens: 800,
-      temperature: 0.7,
+      max_tokens: 600,
+      temperature: 0.5, // Lower temperature for more consistent results
     });
 
     let statement = response.choices[0].message.content?.trim() || 'Error generating statement.';

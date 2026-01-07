@@ -22,7 +22,7 @@ const StatementUsageCard: React.FC = () => {
     return null;
   }
 
-  const { plan_type, statements_used, statements_limit, statements_remaining, is_unlimited } = subscription;
+  const { plan_type, statements_used, statements_limit, statements_remaining, is_unlimited, is_admin } = subscription;
   const isFreePlan = plan_type === 'free';
   const isPro = plan_type === 'pro';
   const isPlatinum = plan_type === 'platinum';
@@ -34,6 +34,11 @@ const StatementUsageCard: React.FC = () => {
   const handleViewDetails = () => {
     navigation.navigate('Profile');
   };
+
+  // Don't show for admins - they have unlimited access
+  if (is_admin) {
+    return null;
+  }
 
   // For paid plans
   if (!isFreePlan) {
