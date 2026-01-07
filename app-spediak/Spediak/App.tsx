@@ -14,8 +14,8 @@ import RootNavigatorDrawerTest from "./src/navigation/RootNavigatorDrawerTest";
 import { GlobalStateProvider } from "./src/context/GlobalStateContext";
 import { SubscriptionProvider } from "./src/context/SubscriptionContext";
 
-// Version: 2.0.8 - Full RootNavigator with simplified Home
-// DEBUG MODES: 'simple' | 'intermediate' | 'navtest' | 'drawertest' | 'full'
+// Version: 2.0.9 - Phase 7: Full app with newInspection.tsx complete
+// All components tested individually and passed. Testing full integration now.
 const DEBUG_MODE = 'full' as const;
 
 // Error Boundary Component
