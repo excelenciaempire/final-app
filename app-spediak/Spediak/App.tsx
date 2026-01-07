@@ -10,12 +10,13 @@ import RootNavigator from "./src/navigation/RootNavigator";
 import RootNavigatorSimple from "./src/navigation/RootNavigatorSimple";
 import RootNavigatorIntermediate from "./src/navigation/RootNavigatorIntermediate";
 import RootNavigatorNavTest from "./src/navigation/RootNavigatorNavTest";
+import RootNavigatorDrawerTest from "./src/navigation/RootNavigatorDrawerTest";
 import { GlobalStateProvider } from "./src/context/GlobalStateContext";
 import { SubscriptionProvider } from "./src/context/SubscriptionContext";
 
-// Version: 2.0.4 - Testing NavigationContainer
-// DEBUG MODES: 'simple' | 'intermediate' | 'navtest' | 'full'
-const DEBUG_MODE = 'navtest' as const;
+// Version: 2.0.5 - Testing Drawer Navigator
+// DEBUG MODES: 'simple' | 'intermediate' | 'navtest' | 'drawertest' | 'full'
+const DEBUG_MODE = 'drawertest' as const;
 
 // Error Boundary Component
 class ErrorBoundary extends React.Component<
@@ -124,6 +125,10 @@ export default function App() {
                 ) : DEBUG_MODE === 'navtest' ? (
                   <NavigationContainer>
                     <RootNavigatorNavTest />
+                  </NavigationContainer>
+                ) : DEBUG_MODE === 'drawertest' ? (
+                  <NavigationContainer>
+                    <RootNavigatorDrawerTest />
                   </NavigationContainer>
                 ) : (
                   <NavigationContainer>
