@@ -2,6 +2,8 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Linking, ScrollView, useWindowDimensions, Image } from 'react-native';
 import { COLORS } from '../styles/colors';
 import { MessageCircle, Users, Lightbulb, Bell, BarChart3, ExternalLink } from 'lucide-react-native';
+import StatementUsageCard from '../components/StatementUsageCard';
+import AdBanner from '../components/AdBanner';
 
 // Discord invite link
 const DISCORD_INVITE_URL = 'https://discord.gg/2XEWBe64';
@@ -23,6 +25,10 @@ const DiscordScreen: React.FC = () => {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+      {/* Usage & Ad Banner for free users */}
+      <StatementUsageCard />
+      <AdBanner />
+      
       {/* Main Card */}
       <View style={[styles.card, isLargeScreen && styles.cardLarge]}>
         {/* Discord Logo/Icon */}

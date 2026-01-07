@@ -5,6 +5,8 @@ import { Picker } from '@react-native-picker/picker';
 import * as ImagePicker from 'expo-image-picker';
 import { COLORS } from '../styles/colors';
 import { Check, Edit2, User, Phone, Building, MapPin, Award, Mail, ChevronDown } from 'lucide-react-native';
+import StatementUsageCard from '../components/StatementUsageCard';
+import AdBanner from '../components/AdBanner';
 
 // Define the states available for selection
 const availableStates = [
@@ -348,6 +350,10 @@ const ProfileSettingsScreen: React.FC = () => {
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}
             >
+                {/* Usage & Ad Banner for free users */}
+                <StatementUsageCard />
+                <AdBanner />
+                
                 {/* Profile Image */}
                 <TouchableOpacity onPress={pickImage} style={styles.profileImageContainer} disabled={isLoading}>
                     <Image

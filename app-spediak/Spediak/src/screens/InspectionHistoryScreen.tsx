@@ -25,6 +25,8 @@ import { COLORS } from '../styles/colors';
 import * as Clipboard from 'expo-clipboard';
 import * as FileSystem from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library';
+import StatementUsageCard from '../components/StatementUsageCard';
+import AdBanner from '../components/AdBanner';
 
 interface Inspection {
   id: string;
@@ -497,6 +499,12 @@ export default function InspectionHistoryScreen() {
   return (
     <View style={styles.container}>
       <Text style={styles.headerTitle}>Statement History</Text>
+      
+      {/* Usage & Ad Banner for free users */}
+      <View style={styles.promoContainer}>
+        <StatementUsageCard />
+        <AdBanner />
+      </View>
 
       {/* Search */}
       <View style={styles.searchContainer}>
@@ -555,6 +563,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f5f7fa',
+  },
+  promoContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
   },
   headerTitle: {
     fontSize: 24,

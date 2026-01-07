@@ -19,6 +19,7 @@ import { BASE_URL } from '../config/api';
 import { COLORS } from '../styles/colors';
 import { FileText, Download, CheckSquare, Square, ExternalLink, AlertCircle } from 'lucide-react-native';
 import AdBanner from '../components/AdBanner';
+import StatementUsageCard from '../components/StatementUsageCard';
 
 const ORGANIZATIONS = [
   { value: 'None', label: 'None / Not using organization SOP' },
@@ -114,15 +115,9 @@ const SopScreen: React.FC = () => {
       style={styles.container}
       contentContainerStyle={[styles.contentContainer, isLargeScreen && styles.contentContainerLarge]}
     >
-      {/* Ad Banner */}
-      <View style={[styles.cardContainer, isLargeScreen && styles.cardContainerLarge]}>
-        <Text style={styles.adBannerTitle}>Ad Banner</Text>
-        <View style={styles.adBannerPlaceholder}>
-          <Text style={styles.adBannerText}>
-            SOP reference & compliance helper. Ad placeholder or educational banner here.
-          </Text>
-        </View>
-      </View>
+      {/* Usage & Ad Banner for free users */}
+      <StatementUsageCard />
+      <AdBanner />
 
       {/* Main SOP Card */}
       <View style={[styles.cardContainer, isLargeScreen && styles.cardContainerLarge]}>
