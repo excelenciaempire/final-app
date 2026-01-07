@@ -14,8 +14,8 @@ import RootNavigatorDrawerTest from "./src/navigation/RootNavigatorDrawerTest";
 import { GlobalStateProvider } from "./src/context/GlobalStateContext";
 import { SubscriptionProvider } from "./src/context/SubscriptionContext";
 
-// Version: 2.0.9 - Phase 7: Full app with newInspection.tsx complete
-// All components tested individually and passed. Testing full integration now.
+// Version: 2.1.0 - FIXED: Corrected imports in newInspection.tsx (Error #130 resolved)
+// Changed from destructuring imports to default imports for AdBanner, SopAlignmentCard, StatementUsageCard
 const DEBUG_MODE = 'full' as const;
 
 // Error Boundary Component

@@ -12,9 +12,9 @@ import { COLORS } from '../../src/styles/colors'; // Corrected import path
 import * as Clipboard from 'expo-clipboard'; // Corrected import
 import { useGlobalState } from '../../src/context/GlobalStateContext';
 import { useSubscription } from '../../src/context/SubscriptionContext';
-import { AdBanner } from '../../src/components/AdBanner';
-import { SopAlignmentCard } from '../../src/components/SopAlignmentCard';
-import { StatementUsageCard } from '../../src/components/StatementUsageCard';
+import AdBanner from '../../src/components/AdBanner';
+import SopAlignmentCard from '../../src/components/SopAlignmentCard';
+import StatementUsageCard from '../../src/components/StatementUsageCard';
 
 // --- API Response Interfaces ---
 interface UploadImageResponse {
