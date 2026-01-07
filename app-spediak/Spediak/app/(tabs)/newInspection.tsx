@@ -15,6 +15,8 @@ import { useSubscription } from '../../src/context/SubscriptionContext';
 import AdBanner from '../../src/components/AdBanner';
 import SopAlignmentCard from '../../src/components/SopAlignmentCard';
 import StatementUsageCard from '../../src/components/StatementUsageCard';
+import LastStatementCard from '../../src/components/LastStatementCard';
+import ToolsAndCommunityCard from '../../src/components/ToolsAndCommunityCard';
 
 // --- API Response Interfaces ---
 interface UploadImageResponse {
@@ -1005,6 +1007,12 @@ export default function NewInspectionScreen() {
 
                 {/* SOP Alignment Card */}
                 <SopAlignmentCard />
+
+                {/* Last Statement Card */}
+                <LastStatementCard />
+
+                {/* Tools & Community Card */}
+                <ToolsAndCommunityCard />
 
                 {/* --- Send Feedback Link --- */}
                 <TouchableOpacity

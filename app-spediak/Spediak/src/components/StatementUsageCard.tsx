@@ -100,6 +100,9 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     borderWidth: 1,
     borderColor: '#F0E6CC',
+    width: '100%',
+    maxWidth: 500,
+    alignSelf: 'center',
   },
   headerRow: {
     flexDirection: 'row',

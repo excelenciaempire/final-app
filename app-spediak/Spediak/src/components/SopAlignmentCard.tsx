@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Linking } from 'react-native';
 import { useGlobalState } from '../context/GlobalStateContext';
 import { useAuth, useUser } from '@clerk/clerk-expo';
 import axios from 'axios';
 import { BASE_URL } from '../config/api';
 import { COLORS } from '../styles/colors';
-import { FileText, Settings } from 'lucide-react-native';
+import { FileText, Settings, Info } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 
 interface ActiveSop {
@@ -20,7 +20,7 @@ interface ActiveSop {
 }
 
 const SopAlignmentCard: React.FC = () => {
-  const { selectedState } = useGlobalState();
+  const { selectedState, selectedOrganization } = useGlobalState();
   const { getToken } = useAuth();
   const { user } = useUser();
   const navigation = useNavigation<any>();
@@ -28,12 +28,14 @@ const SopAlignmentCard: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const hasFetchedRef = useRef(false);
   const lastStateRef = useRef<string | null>(null);
+  const lastOrgRef = useRef<string | null>(null);
 
-  const organization = user?.unsafeMetadata?.organization as string || null;
+  // Use global context organization or fallback to user metadata
+  const organization = selectedOrganization || user?.unsafeMetadata?.organization as string || null;
 
   useEffect(() => {
-    // Only fetch if state changed or hasn't been fetched
-    if (lastStateRef.current === selectedState && hasFetchedRef.current) {
+    // Only fetch if state/org changed or hasn't been fetched
+    if (lastStateRef.current === selectedState && lastOrgRef.current === organization && hasFetchedRef.current) {
       return;
     }
 
@@ -54,7 +56,7 @@ const SopAlignmentCard: React.FC = () => {
         }
 
         const params: any = { state: selectedState };
-        if (organization) {
+        if (organization && organization !== 'None') {
           params.organization = organization;
         }
 
@@ -81,27 +83,16 @@ const SopAlignmentCard: React.FC = () => {
         setIsLoading(false);
         hasFetchedRef.current = true;
         lastStateRef.current = selectedState;
+        lastOrgRef.current = organization;
       }
     };
 
     fetchActiveSops();
-  }, [selectedState, organization]); // Remove getToken from dependencies
+  }, [selectedState, organization]);
 
   const handleConfigureClick = () => {
     navigation.navigate('SOP');
   };
-
-  if (isLoading) {
-    return (
-      <View style={styles.card}>
-        <View style={styles.header}>
-          <FileText size={20} color={COLORS.primary} />
-          <Text style={styles.title}>SOP Alignment</Text>
-        </View>
-        <ActivityIndicator size="small" color={COLORS.primary} />
-      </View>
-    );
-  }
 
   const hasStateSop = activeSops?.stateSop !== null;
   const hasOrgSop = activeSops?.orgSop !== null;
@@ -112,39 +103,60 @@ const SopAlignmentCard: React.FC = () => {
       <View style={styles.header}>
         <View style={styles.titleRow}>
           <FileText size={20} color={COLORS.primary} />
-          <Text style={styles.title}>SOP Alignment</Text>
+          <Text style={styles.title}>SOP Alignment for Statements</Text>
         </View>
         <TouchableOpacity onPress={handleConfigureClick}>
           <Settings size={20} color={COLORS.textSecondary} />
         </TouchableOpacity>
       </View>
 
-      {hasAnySop ? (
-        <View style={styles.sopList}>
-          {hasStateSop && (
-            <View style={styles.sopItem}>
-              <Text style={styles.sopLabel}>State SOP:</Text>
-              <Text style={styles.sopValue}>{activeSops.stateSop?.documentName}</Text>
-            </View>
-          )}
-          {hasOrgSop && (
-            <View style={styles.sopItem}>
-              <Text style={styles.sopLabel}>Organization SOP:</Text>
-              <Text style={styles.sopValue}>{activeSops.orgSop?.documentName}</Text>
-            </View>
-          )}
+      <Text style={styles.subtitle}>
+        Your AI-generated statements will follow the active SOP sources shown below.
+      </Text>
+
+      {isLoading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="small" color={COLORS.primary} />
         </View>
       ) : (
-        <View style={styles.noSopContainer}>
-          <Text style={styles.noSopText}>
-            No active SOPs configured for {selectedState || 'your state'}
-          </Text>
-        </View>
-      )}
+        <>
+          {/* Active SOP Sources Banner */}
+          <View style={styles.sopBanner}>
+            <View style={styles.sopBannerHeader}>
+              <View style={[styles.statusDot, hasAnySop ? styles.statusDotActive : styles.statusDotInactive]} />
+              <Text style={styles.sopBannerTitle}>ACTIVE SOP SOURCES FOR STATEMENTS</Text>
+            </View>
+            
+            {hasAnySop ? (
+              <View style={styles.sopSourcesList}>
+                {hasStateSop && (
+                  <Text style={styles.sopSourceItem}>
+                    • State SOP: {activeSops.stateSop?.documentName}
+                  </Text>
+                )}
+                {hasOrgSop && (
+                  <Text style={styles.sopSourceItem}>
+                    • Organization SOP: {activeSops.orgSop?.documentName}
+                  </Text>
+                )}
+              </View>
+            ) : (
+              <Text style={styles.sopBannerText}>
+                No State or Organization SOP is currently active. Statements will follow general best-practice guidance only.
+              </Text>
+            )}
+          </View>
 
-      <TouchableOpacity style={styles.configureButton} onPress={handleConfigureClick}>
-        <Text style={styles.configureButtonText}>Configure SOPs →</Text>
-      </TouchableOpacity>
+          {/* Configure Link */}
+          <Text style={styles.configureHint}>
+            To change this, adjust SOP settings on the{' '}
+            <Text style={styles.sopPageLink} onPress={handleConfigureClick}>
+              SOP page
+            </Text>
+            .
+          </Text>
+        </>
+      )}
     </View>
   );
 };
@@ -157,63 +169,92 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 3,
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
+    width: '100%',
+    maxWidth: 500,
+    alignSelf: 'center',
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
+    flex: 1,
   },
   title: {
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: '700',
     color: COLORS.textPrimary,
+    flex: 1,
   },
-  sopList: {
-    marginBottom: 12,
-  },
-  sopItem: {
-    marginBottom: 12,
-  },
-  sopLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.textSecondary,
-    marginBottom: 4,
-  },
-  sopValue: {
-    fontSize: 16,
-    color: COLORS.textPrimary,
-  },
-  noSopContainer: {
-    padding: 12,
-    backgroundColor: '#F8FAFC',
-    borderRadius: 8,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  noSopText: {
+  subtitle: {
     fontSize: 14,
     color: COLORS.textSecondary,
-    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 16,
   },
-  configureButton: {
+  loadingContainer: {
+    paddingVertical: 20,
     alignItems: 'center',
-    paddingVertical: 8,
   },
-  configureButtonText: {
-    fontSize: 14,
-    color: COLORS.primary,
-    fontWeight: '600',
+  sopBanner: {
+    backgroundColor: '#1E293B',
+    borderRadius: 8,
+    padding: 14,
+    marginBottom: 12,
+  },
+  sopBannerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  statusDotActive: {
+    backgroundColor: '#22C55E',
+  },
+  statusDotInactive: {
+    backgroundColor: '#6B7280',
+  },
+  sopBannerTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
+  },
+  sopBannerText: {
+    fontSize: 13,
+    color: '#94A3B8',
+    lineHeight: 18,
+  },
+  sopSourcesList: {
+    gap: 4,
+  },
+  sopSourceItem: {
+    fontSize: 13,
+    color: '#E2E8F0',
+    lineHeight: 18,
+  },
+  configureHint: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    lineHeight: 18,
+  },
+  sopPageLink: {
+    color: '#DC2626',
+    textDecorationLine: 'underline',
+    fontWeight: '500',
   },
 });
 

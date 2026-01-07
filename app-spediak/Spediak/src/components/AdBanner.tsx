@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, ActivityIndicator, Linking } from 'react-native';
+import { View, Text, StyleSheet, Image, TouchableOpacity, ActivityIndicator, Linking, Platform } from 'react-native';
 import axios from 'axios';
 import { useAuth } from '@clerk/clerk-expo';
 import { BASE_URL } from '../config/api';
 import { COLORS } from '../styles/colors';
 import { useSubscription } from '../context/SubscriptionContext';
+import { Megaphone } from 'lucide-react-native';
 
 interface AdData {
   id: number;
@@ -20,6 +21,7 @@ const AdBanner: React.FC = () => {
   const [ads, setAds] = useState<AdData[]>([]);
   const [currentAdIndex, setCurrentAdIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   // Only show ads for free tier users
   const shouldShowAds = subscription?.plan_type === 'free';
@@ -27,6 +29,7 @@ const AdBanner: React.FC = () => {
   const fetchAds = useCallback(async () => {
     try {
       setIsLoading(true);
+      setError(false);
       const token = await getToken();
       
       if (!token) {
@@ -36,7 +39,7 @@ const AdBanner: React.FC = () => {
 
       const response = await axios.get(`${BASE_URL}/api/ads/active`, {
         headers: { Authorization: `Bearer ${token}` },
-        timeout: 5000
+        timeout: 8000
       });
 
       if (response.data.ads && response.data.ads.length > 0) {
@@ -44,6 +47,7 @@ const AdBanner: React.FC = () => {
       }
     } catch (err: any) {
       console.log('No active ads or error fetching:', err.message);
+      setError(true);
     } finally {
       setIsLoading(false);
     }
@@ -95,22 +99,22 @@ const AdBanner: React.FC = () => {
   if (isLoading) {
     return (
       <View style={styles.card}>
-        <ActivityIndicator size="small" color={COLORS.primary} />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="small" color={COLORS.primary} />
+        </View>
       </View>
     );
   }
 
-  // Show placeholder if no ads
+  // Show placeholder if no ads or error
   if (ads.length === 0) {
     return (
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Ad Banner</Text>
         <View style={styles.placeholderBox}>
-          <Text style={styles.placeholderText}>
-            Ad space placeholder (e.g., 320×100 or 468×60).
-          </Text>
+          <Megaphone size={24} color="#9CA3AF" style={{ marginBottom: 8 }} />
+          <Text style={styles.placeholderText}>Ad space placeholder</Text>
           <Text style={styles.placeholderSubtext}>
-            This is where ad units will appear in the production app.
+            Sponsored content will appear here
           </Text>
         </View>
       </View>
@@ -121,7 +125,6 @@ const AdBanner: React.FC = () => {
 
   return (
     <View style={styles.card}>
-      <Text style={styles.cardTitle}>Ad Banner</Text>
       <TouchableOpacity 
         style={styles.adContainer} 
         onPress={() => handleAdClick(currentAd)}
@@ -170,34 +173,38 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.06,
     shadowRadius: 4,
     elevation: 2,
+    width: '100%',
+    maxWidth: 500,
+    alignSelf: 'center',
   },
-  cardTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
-    marginBottom: 12,
+  loadingContainer: {
+    paddingVertical: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   placeholderBox: {
     borderWidth: 2,
-    borderColor: '#E0E0E0',
+    borderColor: '#E5E7EB',
     borderStyle: 'dashed',
     borderRadius: 8,
-    paddingVertical: 30,
+    paddingVertical: 24,
     paddingHorizontal: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FAFAFA',
+    backgroundColor: '#F9FAFB',
+    minHeight: 100,
   },
   placeholderText: {
     fontSize: 14,
-    color: COLORS.textSecondary,
+    color: '#6B7280',
     textAlign: 'center',
-    marginBottom: 4,
+    fontWeight: '500',
   },
   placeholderSubtext: {
     fontSize: 12,
-    color: '#999',
+    color: '#9CA3AF',
     textAlign: 'center',
+    marginTop: 4,
   },
   adContainer: {
     borderRadius: 8,
@@ -212,6 +219,8 @@ const styles = StyleSheet.create({
   adContent: {
     padding: 16,
     backgroundColor: '#F0F4F8',
+    minHeight: 80,
+    justifyContent: 'center',
   },
   adTitle: {
     fontSize: 15,
