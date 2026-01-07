@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { 
   View, 
   Text, 
@@ -7,12 +7,10 @@ import {
   TouchableOpacity, 
   TextInput, 
   Alert, 
-  Switch, 
   ActivityIndicator, 
-  Platform,
   useWindowDimensions,
-  Modal
 } from 'react-native';
+import { Picker } from '@react-native-picker/picker';
 import { useAuth } from '@clerk/clerk-expo';
 import axios from 'axios';
 import { BASE_URL } from '../../config/api';
@@ -24,24 +22,34 @@ import {
   CreditCard, 
   MessageSquare, 
   History, 
-  Settings,
-  Gift,
   RefreshCcw,
   X,
-  Tag,
-  AlertTriangle,
-  Calendar,
-  ChevronLeft,
-  ChevronRight
+  ChevronDown,
+  Check
 } from 'lucide-react-native';
 
-// Predefined support tags
-const SUPPORT_TAGS = [
-  { name: 'VIP', color: '#8B5CF6' },
-  { name: 'Beta Tester', color: '#06B6D4' },
-  { name: 'Billing Issue', color: '#F59E0B' },
-  { name: 'Fraud Check', color: '#EF4444' },
-  { name: 'Support Priority', color: '#10B981' },
+interface LoadedUser {
+  id: number;
+  clerk_id: string;
+  email: string;
+  name?: string;
+  role?: string;
+  plan_type?: string;
+  statements_used?: number;
+  statements_limit?: number;
+  subscription_status?: string;
+  is_active?: boolean;
+  created_at?: string;
+  last_login?: string;
+  updated_at?: string;
+}
+
+// Support tag options
+const SUPPORT_TAG_OPTIONS = [
+  { key: 'vip', label: 'VIP' },
+  { key: 'beta_tester', label: 'Beta tester' },
+  { key: 'fraud_risk', label: 'Fraud risk' },
+  { key: 'chargeback_risk', label: 'Chargeback risk' },
 ];
 
 const UserSearchTab: React.FC = () => {
@@ -51,51 +59,35 @@ const UserSearchTab: React.FC = () => {
 
   // User Search State
   const [searchEmail, setSearchEmail] = useState('');
-  const [loadedUser, setLoadedUser] = useState<any>(null);
+  const [loadedUser, setLoadedUser] = useState<LoadedUser | null>(null);
   const [isSearching, setIsSearching] = useState(false);
 
-  // Security Flags State
-  const [securityFlags, setSecurityFlags] = useState<any>(null);
-  const [isLoadingFlags, setIsLoadingFlags] = useState(false);
+  // Admin Notes State
+  const [adminNotes, setAdminNotes] = useState('');
+  const [isSavingNotes, setIsSavingNotes] = useState(false);
 
-  // Support Tags State
-  const [userTags, setUserTags] = useState<any[]>([]);
-  const [isLoadingTags, setIsLoadingTags] = useState(false);
+  // Roles & Security State
+  const [userRole, setUserRole] = useState('standard');
+  const [twoFARequirement, setTwoFARequirement] = useState('off');
+  const [isSavingSecurity, setIsSavingSecurity] = useState(false);
 
-  // Notes State
-  const [userNotes, setUserNotes] = useState<any[]>([]);
-  const [newNote, setNewNote] = useState('');
-  const [isLoadingNotes, setIsLoadingNotes] = useState(false);
+  // Usage & Billing State
+  const [statementEvents, setStatementEvents] = useState<any[]>([]);
+  const [isLoadingEvents, setIsLoadingEvents] = useState(false);
+
+  // Support Workflow State
+  const [supportTags, setSupportTags] = useState<Record<string, boolean>>({
+    vip: false,
+    beta_tester: false,
+    fraud_risk: false,
+    chargeback_risk: false,
+  });
+  const [supportNotes, setSupportNotes] = useState('');
+  const [isSavingSupport, setIsSavingSupport] = useState(false);
 
   // Audit Trail State
-  const [auditTrail, setAuditTrail] = useState<any[]>([]);
+  const [auditEvents, setAuditEvents] = useState<any[]>([]);
   const [isLoadingAudit, setIsLoadingAudit] = useState(false);
-
-  // User Override State
-  const [overrideEmail, setOverrideEmail] = useState('');
-  const [overrideAllowance, setOverrideAllowance] = useState('');
-  const [currentOverride, setCurrentOverride] = useState<any>(null);
-  const [isLoadingOverride, setIsLoadingOverride] = useState(false);
-
-  // Promotion State
-  const [promoStartDate, setPromoStartDate] = useState('');
-  const [promoEndDate, setPromoEndDate] = useState('');
-  const [promoStatements, setPromoStatements] = useState('');
-  const [activePromotion, setActivePromotion] = useState<any>(null);
-  const [isLoadingPromo, setIsLoadingPromo] = useState(false);
-  
-  // Date Picker State
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [datePickerTarget, setDatePickerTarget] = useState<'start' | 'end'>('start');
-  const [datePickerMonth, setDatePickerMonth] = useState(new Date());
-  const [datePickerYear, setDatePickerYear] = useState(new Date().getFullYear());
-
-  // Gift Credits State
-  const [giftAmount, setGiftAmount] = useState('5');
-  const [giftReason, setGiftReason] = useState('');
-
-  // Reset Trial State
-  const [resetReason, setResetReason] = useState('');
 
   // Action loading states
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -114,19 +106,26 @@ const UserSearchTab: React.FC = () => {
 
       const response = await axios.get(`${BASE_URL}/api/admin/search-user`, {
         headers: { Authorization: `Bearer ${token}` },
-        params: { email: searchEmail }
+        params: { email: searchEmail.trim() }
       });
 
       if (response.data.user) {
-        setLoadedUser(response.data.user);
+        const user = response.data.user;
+        setLoadedUser(user);
+        
+        // Set initial values
+        setUserRole(user.role || 'standard');
+        setAdminNotes(user.admin_notes || '');
+        setSupportNotes(user.support_notes || '');
+        
         // Load related data
-        loadSecurityFlags(response.data.user.clerk_id);
-        loadSupportTags(response.data.user.clerk_id);
-        loadUserNotes(response.data.user.clerk_id);
-        loadAuditTrail(response.data.user.clerk_id);
+        loadUserSecurityFlags(user.clerk_id);
+        loadStatementEvents(user.clerk_id);
+        loadAuditTrail(user.clerk_id);
+        loadSupportTags(user.clerk_id);
       } else {
         Alert.alert('Not Found', 'No user found with that email address');
-        setLoadedUser(null);
+        handleClearUser();
       }
     } catch (error: any) {
       console.error('Error searching user:', error);
@@ -139,16 +138,17 @@ const UserSearchTab: React.FC = () => {
   // Clear loaded user
   const handleClearUser = () => {
     setLoadedUser(null);
-    setSecurityFlags(null);
-    setUserTags([]);
-    setUserNotes([]);
-    setAuditTrail([]);
-    setSearchEmail('');
+    setAdminNotes('');
+    setUserRole('standard');
+    setTwoFARequirement('off');
+    setStatementEvents([]);
+    setSupportTags({ vip: false, beta_tester: false, fraud_risk: false, chargeback_risk: false });
+    setSupportNotes('');
+    setAuditEvents([]);
   };
 
   // Load security flags
-  const loadSecurityFlags = async (userId: string) => {
-    setIsLoadingFlags(true);
+  const loadUserSecurityFlags = async (userId: string) => {
     try {
       const token = await getToken();
       if (!token) return;
@@ -156,40 +156,17 @@ const UserSearchTab: React.FC = () => {
       const response = await axios.get(`${BASE_URL}/api/admin/users/${userId}/security-flags`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setSecurityFlags(response.data.flags);
+      
+      const flags = response.data.flags || {};
+      setUserRole(flags.role || 'standard');
+      setTwoFARequirement(flags.two_fa_required ? 'on' : 'off');
     } catch (error) {
-      console.error('Error loading security flags:', error);
-    } finally {
-      setIsLoadingFlags(false);
-    }
-  };
-
-  // Update security flag
-  const handleUpdateSecurityFlag = async (flagName: string, value: boolean) => {
-    if (!loadedUser) return;
-
-    setActionLoading(`flag-${flagName}`);
-    try {
-      const token = await getToken();
-      if (!token) return;
-
-      const updatedFlags = { ...securityFlags, [flagName]: value };
-
-      await axios.put(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/security-flags`, updatedFlags, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-
-      setSecurityFlags(updatedFlags);
-    } catch (error: any) {
-      Alert.alert('Error', 'Failed to update security flag');
-    } finally {
-      setActionLoading(null);
+      console.log('Error loading security flags:', error);
     }
   };
 
   // Load support tags
   const loadSupportTags = async (userId: string) => {
-    setIsLoadingTags(true);
     try {
       const token = await getToken();
       if (!token) return;
@@ -197,99 +174,46 @@ const UserSearchTab: React.FC = () => {
       const response = await axios.get(`${BASE_URL}/api/admin/users/${userId}/tags`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setUserTags(response.data.tags || []);
-    } catch (error) {
-      console.error('Error loading tags:', error);
-    } finally {
-      setIsLoadingTags(false);
-    }
-  };
-
-  // Add support tag
-  const handleAddTag = async (tagName: string, tagColor: string) => {
-    if (!loadedUser) return;
-
-    setActionLoading(`tag-${tagName}`);
-    try {
-      const token = await getToken();
-      if (!token) return;
-
-      await axios.post(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/tags`, 
-        { tagName, tagColor },
-        { headers: { Authorization: `Bearer ${token}` }}
-      );
-
-      loadSupportTags(loadedUser.clerk_id);
-    } catch (error: any) {
-      if (error.response?.status === 409) {
-        Alert.alert('Info', 'Tag already exists for this user');
-      } else {
-        Alert.alert('Error', 'Failed to add tag');
-      }
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  // Remove support tag
-  const handleRemoveTag = async (tagId: number) => {
-    if (!loadedUser) return;
-
-    setActionLoading(`remove-tag-${tagId}`);
-    try {
-      const token = await getToken();
-      if (!token) return;
-
-      await axios.delete(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/tags/${tagId}`, {
-        headers: { Authorization: `Bearer ${token}` }
+      
+      const tags = response.data.tags || [];
+      const tagMap: Record<string, boolean> = {
+        vip: false,
+        beta_tester: false,
+        fraud_risk: false,
+        chargeback_risk: false,
+      };
+      
+      tags.forEach((tag: any) => {
+        const key = tag.tag_name?.toLowerCase().replace(' ', '_');
+        if (key in tagMap) {
+          tagMap[key] = true;
+        }
       });
-
-      loadSupportTags(loadedUser.clerk_id);
+      
+      setSupportTags(tagMap);
     } catch (error) {
-      Alert.alert('Error', 'Failed to remove tag');
-    } finally {
-      setActionLoading(null);
+      console.log('Error loading support tags:', error);
     }
   };
 
-  // Load user notes
-  const loadUserNotes = async (userId: string) => {
-    setIsLoadingNotes(true);
+  // Load statement events
+  const loadStatementEvents = async (userId: string) => {
+    setIsLoadingEvents(true);
     try {
       const token = await getToken();
       if (!token) return;
 
-      const response = await axios.get(`${BASE_URL}/api/admin/users/${userId}/notes`, {
-        headers: { Authorization: `Bearer ${token}` }
+      const response = await axios.get(`${BASE_URL}/api/admin/users/${userId}/statement-events`, {
+        headers: { Authorization: `Bearer ${token}` },
+        params: { limit: 10 }
       });
-      setUserNotes(response.data.notes || []);
+      
+      setStatementEvents(response.data.events || []);
     } catch (error) {
-      console.error('Error loading notes:', error);
+      console.log('Error loading statement events:', error);
+      setStatementEvents([]);
     } finally {
-      setIsLoadingNotes(false);
-    }
-  };
-
-  // Add note
-  const handleAddNote = async () => {
-    if (!loadedUser || !newNote.trim()) return;
-
-    setActionLoading('add-note');
-    try {
-      const token = await getToken();
-      if (!token) return;
-
-      await axios.post(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/notes`, 
-        { note: newNote },
-        { headers: { Authorization: `Bearer ${token}` }}
-      );
-
-      setNewNote('');
-      loadUserNotes(loadedUser.clerk_id);
-    } catch (error) {
-      Alert.alert('Error', 'Failed to add note');
-    } finally {
-      setActionLoading(null);
+      setIsLoadingEvents(false);
     }
   };
 
@@ -304,238 +228,461 @@ const UserSearchTab: React.FC = () => {
         headers: { Authorization: `Bearer ${token}` },
         params: { limit: 20 }
       });
-      setAuditTrail(response.data.events || []);
+      
+      setAuditEvents(response.data.events || []);
     } catch (error) {
-      console.error('Error loading audit trail:', error);
+      console.log('Error loading audit trail:', error);
+      setAuditEvents([]);
     } finally {
       setIsLoadingAudit(false);
     }
   };
 
-  // Gift credits
-  const handleGiftCredits = async () => {
+  // Save admin notes
+  const handleSaveNotes = async () => {
     if (!loadedUser) return;
 
-    const amount = parseInt(giftAmount);
-    if (isNaN(amount) || amount <= 0 || amount > 100) {
-      Alert.alert('Error', 'Please enter a valid amount (1-100)');
-      return;
-    }
-
-    setActionLoading('gift-credits');
+    setIsSavingNotes(true);
     try {
       const token = await getToken();
       if (!token) return;
 
-      await axios.post(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/gift-credits`, 
-        { credits: amount, reason: giftReason },
+      await axios.post(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/notes`, 
+        { note: adminNotes },
         { headers: { Authorization: `Bearer ${token}` }}
       );
 
-      Alert.alert('Success', `${amount} credits gifted successfully`);
-      setGiftAmount('5');
-      setGiftReason('');
-      handleSearchUser(); // Refresh user data
+      Alert.alert('Success', 'Notes saved successfully');
+      addLocalAuditEvent('Notes updated');
     } catch (error) {
-      Alert.alert('Error', 'Failed to gift credits');
+      Alert.alert('Error', 'Failed to save notes');
     } finally {
-      setActionLoading(null);
+      setIsSavingNotes(false);
     }
   };
 
-  // Reset trial
-  const handleResetTrial = async () => {
+  // Suspend user
+  const handleSuspendUser = async () => {
     if (!loadedUser) return;
 
-    setActionLoading('reset-trial');
-    try {
-      const token = await getToken();
-      if (!token) return;
+    Alert.alert('Confirm Suspend', 'Are you sure you want to suspend this user?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Suspend',
+        style: 'destructive',
+        onPress: async () => {
+          setActionLoading('suspend');
+          try {
+            const token = await getToken();
+            if (!token) return;
 
-      await axios.post(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/reset-trial`, 
-        { reason: resetReason },
-        { headers: { Authorization: `Bearer ${token}` }}
-      );
+            await axios.post(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/suspend`, {}, {
+              headers: { Authorization: `Bearer ${token}` }
+            });
 
-      Alert.alert('Success', 'Trial reset successfully');
-      setResetReason('');
-      handleSearchUser(); // Refresh user data
-    } catch (error) {
-      Alert.alert('Error', 'Failed to reset trial');
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  // Check override
-  const handleCheckOverride = async () => {
-    if (!overrideEmail.trim()) return;
-
-    setIsLoadingOverride(true);
-    try {
-      const token = await getToken();
-      if (!token) return;
-
-      const response = await axios.get(`${BASE_URL}/api/admin/user-override`, {
-        headers: { Authorization: `Bearer ${token}` },
-        params: { email: overrideEmail }
-      });
-
-      setCurrentOverride(response.data.override);
-      if (response.data.override) {
-        setOverrideAllowance(response.data.override.statement_allowance.toString());
+            Alert.alert('Success', 'User suspended');
+            addLocalAuditEvent('User suspended');
+            handleSearchUser();
+          } catch (error) {
+            Alert.alert('Error', 'Failed to suspend user');
+          } finally {
+            setActionLoading(null);
+          }
+        }
       }
-    } catch (error) {
-      console.error('Error checking override:', error);
-    } finally {
-      setIsLoadingOverride(false);
-    }
+    ]);
   };
 
-  // Save override
-  const handleSaveOverride = async () => {
-    if (!overrideEmail.trim() || !overrideAllowance) {
-      Alert.alert('Error', 'Email and statement allowance are required');
-      return;
-    }
+  // Reactivate user
+  const handleReactivateUser = async () => {
+    if (!loadedUser) return;
 
-    setActionLoading('save-override');
+    setActionLoading('reactivate');
     try {
       const token = await getToken();
       if (!token) return;
 
-      await axios.post(`${BASE_URL}/api/admin/user-override`, 
-        { email: overrideEmail, statementAllowance: parseInt(overrideAllowance) },
-        { headers: { Authorization: `Bearer ${token}` }}
-      );
-
-      Alert.alert('Success', 'Override saved successfully');
-      handleCheckOverride();
-    } catch (error) {
-      Alert.alert('Error', 'Failed to save override');
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  // Clear override
-  const handleClearOverride = async () => {
-    if (!overrideEmail.trim()) return;
-
-    setActionLoading('clear-override');
-    try {
-      const token = await getToken();
-      if (!token) return;
-
-      await axios.post(`${BASE_URL}/api/admin/user-override/clear`, 
-        { email: overrideEmail },
-        { headers: { Authorization: `Bearer ${token}` }}
-      );
-
-      Alert.alert('Success', 'Override cleared successfully');
-      setCurrentOverride(null);
-      setOverrideAllowance('');
-    } catch (error) {
-      Alert.alert('Error', 'Failed to clear override');
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  // Load active promotion
-  const loadActivePromotion = useCallback(async () => {
-    setIsLoadingPromo(true);
-    try {
-      const token = await getToken();
-      if (!token) return;
-
-      const response = await axios.get(`${BASE_URL}/api/admin/promotions/active`, {
+      await axios.post(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/reactivate`, {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
-      setActivePromotion(response.data.promotion);
+      Alert.alert('Success', 'User reactivated');
+      addLocalAuditEvent('User reactivated');
+      handleSearchUser();
     } catch (error) {
-      console.error('Error loading promotion:', error);
-    } finally {
-      setIsLoadingPromo(false);
-    }
-  }, [getToken]);
-
-  // Save promotion
-  const handleSavePromotion = async () => {
-    if (!promoStartDate || !promoEndDate || !promoStatements) {
-      Alert.alert('Error', 'All promotion fields are required');
-      return;
-    }
-
-    setActionLoading('save-promo');
-    try {
-      const token = await getToken();
-      if (!token) return;
-
-      await axios.post(`${BASE_URL}/api/admin/promotions`, 
-        { startDate: promoStartDate, endDate: promoEndDate, freeStatements: parseInt(promoStatements) },
-        { headers: { Authorization: `Bearer ${token}` }}
-      );
-
-      Alert.alert('Success', 'Promotion saved successfully');
-      loadActivePromotion();
-      setPromoStartDate('');
-      setPromoEndDate('');
-      setPromoStatements('');
-    } catch (error) {
-      Alert.alert('Error', 'Failed to save promotion');
+      Alert.alert('Error', 'Failed to reactivate user');
     } finally {
       setActionLoading(null);
     }
   };
 
-  // Clear promotion
-  const handleClearPromotion = async () => {
-    setActionLoading('clear-promo');
+  // Cancel subscription
+  const handleCancelSubscription = async () => {
+    if (!loadedUser) return;
+
+    Alert.alert('Confirm Cancel', 'Are you sure you want to cancel this subscription?', [
+      { text: 'No', style: 'cancel' },
+      {
+        text: 'Yes, Cancel',
+        style: 'destructive',
+        onPress: async () => {
+          setActionLoading('cancel-sub');
+          try {
+            const token = await getToken();
+            if (!token) return;
+
+            await axios.post(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/cancel-subscription`, {}, {
+              headers: { Authorization: `Bearer ${token}` }
+            });
+
+            Alert.alert('Success', 'Subscription cancelled');
+            addLocalAuditEvent('Subscription cancelled');
+            handleSearchUser();
+          } catch (error) {
+            Alert.alert('Error', 'Failed to cancel subscription');
+          } finally {
+            setActionLoading(null);
+          }
+        }
+      }
+    ]);
+  };
+
+  // Soft delete user
+  const handleSoftDelete = async () => {
+    if (!loadedUser) return;
+
+    Alert.alert('Soft Delete', 'This will deactivate the user account. Continue?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete (soft)',
+        style: 'destructive',
+        onPress: async () => {
+          setActionLoading('soft-delete');
+          try {
+            const token = await getToken();
+            if (!token) return;
+
+            await axios.post(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/soft-delete`, {}, {
+              headers: { Authorization: `Bearer ${token}` }
+            });
+
+            Alert.alert('Success', 'User soft deleted');
+            addLocalAuditEvent('User soft deleted');
+            handleClearUser();
+          } catch (error) {
+            Alert.alert('Error', 'Failed to soft delete user');
+          } finally {
+            setActionLoading(null);
+          }
+        }
+      }
+    ]);
+  };
+
+  // Hard delete user
+  const handleHardDelete = async () => {
+    if (!loadedUser) return;
+
+    Alert.alert(
+      'Permanent Delete',
+      'WARNING: This will permanently delete the user and all their data. This cannot be undone!',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'DELETE PERMANENTLY',
+          style: 'destructive',
+          onPress: async () => {
+            setActionLoading('hard-delete');
+            try {
+              const token = await getToken();
+              if (!token) return;
+
+              await axios.delete(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}`, {
+                headers: { Authorization: `Bearer ${token}` }
+              });
+
+              Alert.alert('Success', 'User permanently deleted');
+              handleClearUser();
+            } catch (error) {
+              Alert.alert('Error', 'Failed to delete user');
+            } finally {
+              setActionLoading(null);
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  // Save role/security
+  const handleSaveRoleSecurity = async () => {
+    if (!loadedUser) return;
+
+    setIsSavingSecurity(true);
     try {
       const token = await getToken();
       if (!token) return;
 
-      await axios.post(`${BASE_URL}/api/admin/promotions/clear`, {}, {
+      await axios.put(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/security-flags`, {
+        role: userRole,
+        two_fa_required: twoFARequirement === 'on'
+      }, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
-      Alert.alert('Success', 'Promotion cleared successfully');
-      setActivePromotion(null);
+      Alert.alert('Success', 'Role & security saved');
+      addLocalAuditEvent(`Role changed to ${userRole}`);
     } catch (error) {
-      Alert.alert('Error', 'Failed to clear promotion');
+      Alert.alert('Error', 'Failed to save role/security');
+    } finally {
+      setIsSavingSecurity(false);
+    }
+  };
+
+  // Force logout
+  const handleForceLogout = async () => {
+    if (!loadedUser) return;
+
+    setActionLoading('force-logout');
+    try {
+      const token = await getToken();
+      if (!token) return;
+
+      await axios.post(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/force-logout`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      Alert.alert('Success', 'User sessions terminated');
+      addLocalAuditEvent('Force logout executed');
+    } catch (error) {
+      Alert.alert('Error', 'Failed to force logout');
     } finally {
       setActionLoading(null);
     }
   };
 
-  // Load promotion on mount
-  React.useEffect(() => {
-    loadActivePromotion();
-  }, [loadActivePromotion]);
+  // Force password reset
+  const handleForcePasswordReset = async () => {
+    if (!loadedUser) return;
+
+    setActionLoading('force-password');
+    try {
+      const token = await getToken();
+      if (!token) return;
+
+      await axios.post(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/force-password-reset`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      Alert.alert('Success', 'Password reset email sent');
+      addLocalAuditEvent('Password reset forced');
+    } catch (error) {
+      Alert.alert('Error', 'Failed to force password reset');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // Reset monthly usage
+  const handleResetMonthlyUsage = async () => {
+    if (!loadedUser) return;
+
+    setActionLoading('reset-usage');
+    try {
+      const token = await getToken();
+      if (!token) return;
+
+      await axios.post(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/reset-usage`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      Alert.alert('Success', 'Monthly usage reset');
+      addLocalAuditEvent('Monthly usage reset');
+      handleSearchUser();
+    } catch (error) {
+      Alert.alert('Error', 'Failed to reset usage');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // Grant trial
+  const handleGrantTrial = async () => {
+    if (!loadedUser) return;
+
+    setActionLoading('grant-trial');
+    try {
+      const token = await getToken();
+      if (!token) return;
+
+      await axios.post(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/grant-trial`, 
+        { days: 30 },
+        { headers: { Authorization: `Bearer ${token}` }}
+      );
+
+      Alert.alert('Success', '30-day trial granted');
+      addLocalAuditEvent('Trial granted (30 days)');
+      handleSearchUser();
+    } catch (error) {
+      Alert.alert('Error', 'Failed to grant trial');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // Revoke trial
+  const handleRevokeTrial = async () => {
+    if (!loadedUser) return;
+
+    setActionLoading('revoke-trial');
+    try {
+      const token = await getToken();
+      if (!token) return;
+
+      await axios.post(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/revoke-trial`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      Alert.alert('Success', 'Trial revoked');
+      addLocalAuditEvent('Trial revoked');
+      handleSearchUser();
+    } catch (error) {
+      Alert.alert('Error', 'Failed to revoke trial');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // Record statement event
+  const handleRecordStatementEvent = async () => {
+    if (!loadedUser) return;
+
+    setActionLoading('record-event');
+    try {
+      const token = await getToken();
+      if (!token) return;
+
+      await axios.post(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/record-statement`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      Alert.alert('Success', 'Statement event recorded (+1)');
+      addLocalAuditEvent('Statement event recorded');
+      handleSearchUser();
+      loadStatementEvents(loadedUser.clerk_id);
+    } catch (error) {
+      Alert.alert('Error', 'Failed to record event');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // Toggle support tag
+  const handleToggleSupportTag = (tagKey: string) => {
+    setSupportTags(prev => ({
+      ...prev,
+      [tagKey]: !prev[tagKey]
+    }));
+  };
+
+  // Save support info
+  const handleSaveSupportInfo = async () => {
+    if (!loadedUser) return;
+
+    setIsSavingSupport(true);
+    try {
+      const token = await getToken();
+      if (!token) return;
+
+      // Save tags
+      await axios.post(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/support-info`, {
+        tags: supportTags,
+        notes: supportNotes
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      Alert.alert('Success', 'Support info saved');
+      addLocalAuditEvent('Support info updated');
+    } catch (error) {
+      Alert.alert('Error', 'Failed to save support info');
+    } finally {
+      setIsSavingSupport(false);
+    }
+  };
+
+  // Enter read-only impersonation
+  const handleEnterImpersonation = async () => {
+    if (!loadedUser) return;
+    Alert.alert('Impersonation', 'Read-only impersonation mode would be activated here. (Feature in development)');
+    addLocalAuditEvent('Impersonation started');
+  };
+
+  // Exit impersonation
+  const handleExitImpersonation = async () => {
+    Alert.alert('Info', 'Exiting impersonation mode. (Feature in development)');
+    addLocalAuditEvent('Impersonation ended');
+  };
+
+  // Refresh audit
+  const handleRefreshAudit = () => {
+    if (loadedUser) {
+      loadAuditTrail(loadedUser.clerk_id);
+    }
+  };
+
+  // Clear local audit
+  const handleClearLocalAudit = () => {
+    setAuditEvents([]);
+  };
+
+  // Add local audit event (for prototype/browser storage simulation)
+  const addLocalAuditEvent = (action: string) => {
+    const newEvent = {
+      id: Date.now(),
+      action_type: action,
+      created_at: new Date().toISOString(),
+      admin_name: 'Current Admin'
+    };
+    setAuditEvents(prev => [newEvent, ...prev]);
+  };
+
+  // Format date
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return '—';
+    try {
+      return new Date(dateString).toLocaleString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch {
+      return dateString;
+    }
+  };
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-      {/* User Search Section */}
+      {/* ==================== USER SEARCH ==================== */}
       <View style={styles.card}>
-        <View style={styles.cardHeader}>
-          <Search size={20} color={COLORS.primary} />
-          <Text style={styles.cardTitle}>User Search</Text>
-        </View>
+        <Text style={styles.cardTitle}>User Search</Text>
         <Text style={styles.cardDescription}>
-          Find and manage a user account. In production, enforce RBAC + audit logging server-side.
+          Find and manage a user account (prototype). In production, enforce RBAC + audit logging server-side.
         </Text>
 
         <Text style={styles.label}>Search by email</Text>
         <View style={styles.searchRow}>
           <TextInput
             style={[styles.input, styles.searchInput]}
-            placeholder="user@example.com"
+            placeholder="chipspra@gmail.com"
             value={searchEmail}
             onChangeText={setSearchEmail}
             keyboardType="email-address"
             autoCapitalize="none"
+            placeholderTextColor="#9CA3AF"
           />
           <TouchableOpacity 
             style={[styles.button, styles.primaryButton]} 
@@ -549,171 +696,242 @@ const UserSearchTab: React.FC = () => {
             )}
           </TouchableOpacity>
           <TouchableOpacity 
-            style={[styles.button, styles.secondaryButton]} 
+            style={[styles.button, styles.outlineButton]} 
             onPress={handleClearUser}
           >
-            <Text style={styles.secondaryButtonText}>Clear</Text>
+            <Text style={styles.outlineButtonText}>Clear</Text>
           </TouchableOpacity>
         </View>
-        
-        {loadedUser ? (
-          <View style={styles.userLoadedBadge}>
-            <User size={16} color={COLORS.primary} />
-            <Text style={styles.userLoadedText}>
-              {loadedUser.name || loadedUser.email} loaded
+
+        {/* User Info Display */}
+        {loadedUser && (
+          <View style={styles.userInfoSection}>
+            <View style={styles.userInfoHeader}>
+              <View>
+                <Text style={styles.userEmail}>{loadedUser.email}</Text>
+                <Text style={styles.userMeta}>
+                  Role: {userRole} | Plan: {loadedUser.plan_type || 'free'} | Subscription: {loadedUser.subscription_status || 'none'}
+                </Text>
+              </View>
+              <View style={[styles.statusBadge, loadedUser.is_active !== false ? styles.activeBadge : styles.inactiveBadge]}>
+                <Text style={styles.statusBadgeText}>
+                  {loadedUser.is_active !== false ? 'ACTIVE' : 'INACTIVE'}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.userDates}>
+              <Text style={styles.userDateRow}>Created: {formatDate(loadedUser.created_at)}</Text>
+              <Text style={styles.userDateRow}>Last login: {formatDate(loadedUser.last_login)}</Text>
+              <Text style={styles.userDateRow}>Updated: {formatDate(loadedUser.updated_at)}</Text>
+            </View>
+
+            {/* Admin Notes */}
+            <Text style={styles.label}>Admin notes</Text>
+            <TextInput
+              style={[styles.input, styles.textArea]}
+              placeholder="Internal notes (support context, billing notes, policy flags, etc.)"
+              value={adminNotes}
+              onChangeText={setAdminNotes}
+              multiline
+              numberOfLines={4}
+              placeholderTextColor="#9CA3AF"
+            />
+
+            {/* Action Buttons */}
+            <View style={styles.actionButtonsRow}>
+              <TouchableOpacity 
+                style={[styles.actionButton, styles.underlineButton]} 
+                onPress={handleSaveNotes}
+                disabled={isSavingNotes}
+              >
+                <Text style={styles.underlineButtonText}>
+                  {isSavingNotes ? 'Saving...' : 'Save notes'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.actionButton, styles.underlineButton]} 
+                onPress={handleSuspendUser}
+                disabled={actionLoading === 'suspend'}
+              >
+                <Text style={styles.underlineButtonText}>Suspend</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.actionButton, styles.underlineButton]} 
+                onPress={handleReactivateUser}
+                disabled={actionLoading === 'reactivate'}
+              >
+                <Text style={styles.underlineButtonText}>Reactivate</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.actionButton, styles.underlineButton]} 
+                onPress={handleCancelSubscription}
+                disabled={actionLoading === 'cancel-sub'}
+              >
+                <Text style={styles.underlineButtonText}>Cancel subscription</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.deleteButtonsRow}>
+              <TouchableOpacity 
+                style={[styles.deleteButton, styles.softDeleteButton]} 
+                onPress={handleSoftDelete}
+                disabled={actionLoading === 'soft-delete'}
+              >
+                <Text style={styles.deleteButtonText}>Delete (soft)</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.deleteButton, styles.hardDeleteButton]} 
+                onPress={handleHardDelete}
+                disabled={actionLoading === 'hard-delete'}
+              >
+                <Text style={styles.deleteButtonText}>Delete (hard)</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.prototypeNote}>
+              Actions are <Text style={styles.prototypeHighlight}>prototype-only</Text> and stored in this browser.
             </Text>
           </View>
-        ) : (
-          <Text style={styles.noUserText}>No user loaded.</Text>
         )}
       </View>
 
-      {/* Roles & Security Section */}
+      {/* ==================== ROLES & SECURITY ==================== */}
       <View style={styles.card}>
-        <View style={[styles.cardHeader, !loadedUser && styles.cardHeaderDisabled]}>
-          <Shield size={20} color={loadedUser ? COLORS.primary : COLORS.textSecondary} />
-          <Text style={[styles.cardTitle, !loadedUser && styles.cardTitleDisabled]}>Roles & Security</Text>
-        </View>
+        <Text style={styles.cardTitle}>Roles & Security</Text>
         <Text style={styles.cardDescription}>
           Manage access flags and security controls for the selected user.
         </Text>
 
-        {loadedUser && securityFlags ? (
-          <View style={styles.flagsContainer}>
-            <View style={styles.flagRow}>
-              <Text style={styles.flagLabel}>Admin Access</Text>
-              <Switch
-                value={securityFlags.is_admin || false}
-                onValueChange={(v) => handleUpdateSecurityFlag('isAdmin', v)}
-                disabled={actionLoading === 'flag-isAdmin'}
-              />
+        {loadedUser ? (
+          <View>
+            <View style={styles.pickerRow}>
+              <View style={styles.pickerField}>
+                <Text style={styles.label}>Role</Text>
+                <View style={styles.pickerContainer}>
+                  <Picker
+                    selectedValue={userRole}
+                    onValueChange={setUserRole}
+                    style={styles.picker}
+                  >
+                    <Picker.Item label="standard" value="standard" />
+                    <Picker.Item label="admin" value="admin" />
+                    <Picker.Item label="moderator" value="moderator" />
+                    <Picker.Item label="support" value="support" />
+                  </Picker>
+                  <ChevronDown size={18} color={COLORS.textSecondary} style={styles.pickerIcon} />
+                </View>
+              </View>
+
+              <View style={styles.pickerField}>
+                <Text style={styles.label}>2FA requirement</Text>
+                <View style={styles.pickerContainer}>
+                  <Picker
+                    selectedValue={twoFARequirement}
+                    onValueChange={setTwoFARequirement}
+                    style={styles.picker}
+                  >
+                    <Picker.Item label="off" value="off" />
+                    <Picker.Item label="on" value="on" />
+                  </Picker>
+                  <ChevronDown size={18} color={COLORS.textSecondary} style={styles.pickerIcon} />
+                </View>
+              </View>
             </View>
-            <View style={styles.flagRow}>
-              <Text style={styles.flagLabel}>Beta User</Text>
-              <Switch
-                value={securityFlags.is_beta_user || false}
-                onValueChange={(v) => handleUpdateSecurityFlag('isBetaUser', v)}
-                disabled={actionLoading === 'flag-isBetaUser'}
-              />
+
+            <View style={styles.securityButtonsRow}>
+              <TouchableOpacity 
+                style={[styles.button, styles.primaryButton]} 
+                onPress={handleSaveRoleSecurity}
+                disabled={isSavingSecurity}
+              >
+                <Text style={styles.buttonText}>
+                  {isSavingSecurity ? 'Saving...' : 'Save role/security'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.button, styles.outlineButton]} 
+                onPress={handleForceLogout}
+                disabled={actionLoading === 'force-logout'}
+              >
+                <Text style={styles.outlineButtonText}>Force logout</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.button, styles.outlineButton]} 
+                onPress={handleForcePasswordReset}
+                disabled={actionLoading === 'force-password'}
+              >
+                <Text style={styles.outlineButtonText}>Force password reset</Text>
+              </TouchableOpacity>
             </View>
-            <View style={styles.flagRow}>
-              <Text style={styles.flagLabel}>VIP Status</Text>
-              <Switch
-                value={securityFlags.is_vip || false}
-                onValueChange={(v) => handleUpdateSecurityFlag('isVip', v)}
-                disabled={actionLoading === 'flag-isVip'}
-              />
-            </View>
-            <View style={styles.flagRow}>
-              <Text style={[styles.flagLabel, styles.dangerLabel]}>Suspended</Text>
-              <Switch
-                value={securityFlags.is_suspended || false}
-                onValueChange={(v) => handleUpdateSecurityFlag('isSuspended', v)}
-                trackColor={{ true: COLORS.error }}
-                disabled={actionLoading === 'flag-isSuspended'}
-              />
-            </View>
-            <View style={styles.flagRow}>
-              <Text style={[styles.flagLabel, styles.dangerLabel]}>Fraud Flag</Text>
-              <Switch
-                value={securityFlags.fraud_flag || false}
-                onValueChange={(v) => handleUpdateSecurityFlag('fraudFlag', v)}
-                trackColor={{ true: COLORS.error }}
-                disabled={actionLoading === 'flag-fraudFlag'}
-              />
-            </View>
+
+            <Text style={styles.statusText}>No changes yet.</Text>
           </View>
         ) : (
           <Text style={styles.loadUserPrompt}>Load a user to manage roles and security.</Text>
         )}
       </View>
 
-      {/* Usage & Billing Section */}
+      {/* ==================== USAGE & BILLING ==================== */}
       <View style={styles.card}>
-        <View style={[styles.cardHeader, !loadedUser && styles.cardHeaderDisabled]}>
-          <CreditCard size={20} color={loadedUser ? COLORS.primary : COLORS.textSecondary} />
-          <Text style={[styles.cardTitle, !loadedUser && styles.cardTitleDisabled]}>Usage & Billing</Text>
-        </View>
+        <Text style={styles.cardTitle}>Usage & Billing</Text>
         <Text style={styles.cardDescription}>
-          View usage stats and subscription status. Gift credits or reset trial.
+          Prototype usage visibility. In production, wire to server usage + Stripe subscription status.
         </Text>
 
         {loadedUser ? (
-          <View style={styles.usageContainer}>
-            <View style={styles.usageStats}>
-              <View style={styles.statBox}>
-                <Text style={styles.statValue}>{loadedUser.statements_used || 0}</Text>
-                <Text style={styles.statLabel}>Used</Text>
-              </View>
-              <View style={styles.statBox}>
-                <Text style={styles.statValue}>{loadedUser.statements_limit || 5}</Text>
-                <Text style={styles.statLabel}>Limit</Text>
-              </View>
-              <View style={styles.statBox}>
-                <Text style={styles.statValue}>{loadedUser.plan_type || 'free'}</Text>
-                <Text style={styles.statLabel}>Plan</Text>
-              </View>
+          <View>
+            <View style={styles.usageInfo}>
+              <Text style={styles.usageRow}>Plan: <Text style={styles.usageValue}>{loadedUser.plan_type || 'free'}</Text></Text>
+              <Text style={styles.usageRow}>Plan limit: <Text style={styles.usageValue}>{loadedUser.statements_limit || 5} statements / month</Text></Text>
+              <Text style={styles.usageRow}>Statements used: <Text style={styles.usageValue}>{loadedUser.statements_used || 0}</Text></Text>
+              <Text style={styles.usageRow}>Subscription status: <Text style={styles.usageValue}>{loadedUser.subscription_status || 'none'}</Text></Text>
             </View>
 
-            {/* Gift Credits */}
-            <View style={styles.actionSection}>
-              <Text style={styles.actionLabel}>Gift Credits</Text>
-              <View style={styles.actionRow}>
-                <TextInput
-                  style={[styles.input, styles.smallInput]}
-                  placeholder="Amount"
-                  value={giftAmount}
-                  onChangeText={setGiftAmount}
-                  keyboardType="numeric"
-                />
-                <TextInput
-                  style={[styles.input, styles.flexInput]}
-                  placeholder="Reason (optional)"
-                  value={giftReason}
-                  onChangeText={setGiftReason}
-                />
-                <TouchableOpacity 
-                  style={[styles.button, styles.successButton]} 
-                  onPress={handleGiftCredits}
-                  disabled={actionLoading === 'gift-credits'}
-                >
-                  {actionLoading === 'gift-credits' ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <>
-                      <Gift size={16} color="#fff" />
-                      <Text style={styles.buttonText}>Gift</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-              </View>
+            <View style={styles.usageButtonsRow}>
+              <TouchableOpacity 
+                style={[styles.button, styles.outlineButton, styles.smallButton]} 
+                onPress={handleResetMonthlyUsage}
+                disabled={actionLoading === 'reset-usage'}
+              >
+                <Text style={styles.outlineButtonText}>Reset monthly usage</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.button, styles.outlineButton, styles.smallButton]} 
+                onPress={handleGrantTrial}
+                disabled={actionLoading === 'grant-trial'}
+              >
+                <Text style={styles.outlineButtonText}>Grant trial (30)</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.button, styles.outlineButton, styles.smallButton]} 
+                onPress={handleRevokeTrial}
+                disabled={actionLoading === 'revoke-trial'}
+              >
+                <Text style={styles.outlineButtonText}>Revoke trial</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.button, styles.primaryButton, styles.smallButton]} 
+                onPress={handleRecordStatementEvent}
+                disabled={actionLoading === 'record-event'}
+              >
+                <Text style={styles.buttonText}>Record statement event (+1)</Text>
+              </TouchableOpacity>
             </View>
 
-            {/* Reset Trial */}
-            <View style={styles.actionSection}>
-              <Text style={styles.actionLabel}>Reset Trial</Text>
-              <View style={styles.actionRow}>
-                <TextInput
-                  style={[styles.input, styles.flexInput]}
-                  placeholder="Reason (optional)"
-                  value={resetReason}
-                  onChangeText={setResetReason}
-                />
-                <TouchableOpacity 
-                  style={[styles.button, styles.warningButton]} 
-                  onPress={handleResetTrial}
-                  disabled={actionLoading === 'reset-trial'}
-                >
-                  {actionLoading === 'reset-trial' ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <>
-                      <RefreshCcw size={16} color="#fff" />
-                      <Text style={styles.buttonText}>Reset</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-              </View>
+            <View style={styles.eventsSection}>
+              <Text style={styles.eventsTitle}>Last 10 statement generations (prototype)</Text>
+              {isLoadingEvents ? (
+                <ActivityIndicator size="small" color={COLORS.primary} />
+              ) : statementEvents.length > 0 ? (
+                statementEvents.map((event, idx) => (
+                  <Text key={idx} style={styles.eventItem}>
+                    • {formatDate(event.created_at)} - Statement generated
+                  </Text>
+                ))
+              ) : (
+                <Text style={styles.noEventsText}>No statement events recorded.</Text>
+              )}
             </View>
           </View>
         ) : (
@@ -721,370 +939,112 @@ const UserSearchTab: React.FC = () => {
         )}
       </View>
 
-      {/* Support Workflow Section */}
+      {/* ==================== SUPPORT WORKFLOW ==================== */}
       <View style={styles.card}>
-        <View style={[styles.cardHeader, !loadedUser && styles.cardHeaderDisabled]}>
-          <MessageSquare size={20} color={loadedUser ? COLORS.primary : COLORS.textSecondary} />
-          <Text style={[styles.cardTitle, !loadedUser && styles.cardTitleDisabled]}>Support Workflow</Text>
-        </View>
+        <Text style={styles.cardTitle}>Support Workflow</Text>
         <Text style={styles.cardDescription}>
           Tags and support notes help your team handle billing issues, beta users, fraud checks, etc.
         </Text>
 
         {loadedUser ? (
-          <View style={styles.supportContainer}>
-            {/* Current Tags */}
-            <View style={styles.tagsSection}>
-              <Text style={styles.sectionLabel}>Current Tags</Text>
-              <View style={styles.tagsList}>
-                {userTags.length > 0 ? userTags.map((tag) => (
-                  <View key={tag.id} style={[styles.tagBadge, { backgroundColor: tag.tag_color }]}>
-                    <Text style={styles.tagText}>{tag.tag_name}</Text>
-                    <TouchableOpacity onPress={() => handleRemoveTag(tag.id)}>
-                      <X size={14} color="#fff" />
-                    </TouchableOpacity>
-                  </View>
-                )) : (
-                  <Text style={styles.noTagsText}>No tags assigned</Text>
-                )}
-              </View>
-            </View>
-
-            {/* Add Tags */}
-            <View style={styles.addTagsSection}>
-              <Text style={styles.sectionLabel}>Add Tag</Text>
-              <View style={styles.availableTags}>
-                {SUPPORT_TAGS.map((tag) => (
-                  <TouchableOpacity
-                    key={tag.name}
-                    style={[styles.addTagButton, { borderColor: tag.color }]}
-                    onPress={() => handleAddTag(tag.name, tag.color)}
-                    disabled={actionLoading === `tag-${tag.name}`}
-                  >
-                    <Text style={[styles.addTagText, { color: tag.color }]}>+ {tag.name}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-
-            {/* Notes */}
-            <View style={styles.notesSection}>
-              <Text style={styles.sectionLabel}>Admin Notes ({userNotes.length})</Text>
-              <View style={styles.addNoteRow}>
-                <TextInput
-                  style={[styles.input, styles.noteInput]}
-                  placeholder="Add a note..."
-                  value={newNote}
-                  onChangeText={setNewNote}
-                  multiline
-                />
+          <View>
+            {/* Tag Checkboxes */}
+            <View style={styles.tagsCheckboxRow}>
+              {SUPPORT_TAG_OPTIONS.map(tag => (
                 <TouchableOpacity 
-                  style={[styles.button, styles.primaryButton]} 
-                  onPress={handleAddNote}
-                  disabled={actionLoading === 'add-note' || !newNote.trim()}
+                  key={tag.key}
+                  style={styles.checkboxItem}
+                  onPress={() => handleToggleSupportTag(tag.key)}
                 >
-                  <Text style={styles.buttonText}>Add</Text>
+                  <View style={[styles.checkbox, supportTags[tag.key] && styles.checkboxChecked]}>
+                    {supportTags[tag.key] && <Check size={12} color="#fff" />}
+                  </View>
+                  <Text style={styles.checkboxLabel}>{tag.label}</Text>
                 </TouchableOpacity>
-              </View>
-              {userNotes.slice(0, 3).map((note, idx) => (
-                <View key={note.id || idx} style={styles.noteItem}>
-                  <Text style={styles.noteText}>{note.note}</Text>
-                  <Text style={styles.noteDate}>
-                    {new Date(note.created_at).toLocaleDateString()} by {note.admin_name || 'Admin'}
-                  </Text>
-                </View>
               ))}
             </View>
+
+            {/* Support Notes */}
+            <Text style={styles.label}>Support notes</Text>
+            <TextInput
+              style={[styles.input, styles.textArea]}
+              placeholder="Support context, timeline, billing notes, escalation reasons..."
+              value={supportNotes}
+              onChangeText={setSupportNotes}
+              multiline
+              numberOfLines={4}
+              placeholderTextColor="#9CA3AF"
+            />
+
+            <View style={styles.supportButtonsRow}>
+              <TouchableOpacity 
+                style={[styles.button, styles.primaryButton]} 
+                onPress={handleSaveSupportInfo}
+                disabled={isSavingSupport}
+              >
+                <Text style={styles.buttonText}>
+                  {isSavingSupport ? 'Saving...' : 'Save support info'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.button, styles.outlineButton]} 
+                onPress={handleEnterImpersonation}
+              >
+                <Text style={styles.outlineButtonText}>Enter read-only impersonation</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.button, styles.outlineButton]} 
+                onPress={handleExitImpersonation}
+              >
+                <Text style={styles.outlineButtonText}>Exit impersonation</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.statusText}>No changes yet.</Text>
           </View>
         ) : (
           <Text style={styles.loadUserPrompt}>Load a user to manage support workflow.</Text>
         )}
       </View>
 
-      {/* Audit Trail Section */}
+      {/* ==================== AUDIT TRAIL ==================== */}
       <View style={styles.card}>
-        <View style={[styles.cardHeader, !loadedUser && styles.cardHeaderDisabled]}>
-          <History size={20} color={loadedUser ? COLORS.primary : COLORS.textSecondary} />
-          <Text style={[styles.cardTitle, !loadedUser && styles.cardTitleDisabled]}>Audit Trail</Text>
-        </View>
+        <Text style={styles.cardTitle}>Audit Trail</Text>
         <Text style={styles.cardDescription}>
-          Dedicated admin audit events for accountability.
+          Dedicated admin audit events for accountability. (Prototype stored in browser.)
         </Text>
 
-        {loadedUser ? (
-          <View style={styles.auditContainer}>
-            {auditTrail.length > 0 ? auditTrail.slice(0, 5).map((event, idx) => (
+        <View style={styles.auditButtonsRow}>
+          <TouchableOpacity 
+            style={[styles.button, styles.outlineButton]} 
+            onPress={handleRefreshAudit}
+          >
+            <RefreshCcw size={16} color={COLORS.textPrimary} />
+            <Text style={styles.outlineButtonText}>Refresh</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.button, styles.dangerOutlineButton]} 
+            onPress={handleClearLocalAudit}
+          >
+            <Text style={styles.dangerOutlineButtonText}>Clear audit (local)</Text>
+          </TouchableOpacity>
+        </View>
+
+        {isLoadingAudit ? (
+          <ActivityIndicator size="small" color={COLORS.primary} />
+        ) : auditEvents.length > 0 ? (
+          <View style={styles.auditList}>
+            {auditEvents.slice(0, 10).map((event, idx) => (
               <View key={event.id || idx} style={styles.auditItem}>
-                <View style={styles.auditHeader}>
-                  <Text style={styles.auditAction}>{event.action_type}</Text>
-                  <Text style={styles.auditDate}>
-                    {new Date(event.created_at).toLocaleString()}
-                  </Text>
-                </View>
-                <Text style={styles.auditBy}>By: {event.admin_name || event.admin_clerk_id}</Text>
+                <Text style={styles.auditAction}>{event.action_type}</Text>
+                <Text style={styles.auditDate}>{formatDate(event.created_at)}</Text>
               </View>
-            )) : (
-              <Text style={styles.noAuditText}>No audit events yet.</Text>
-            )}
+            ))}
           </View>
         ) : (
-          <Text style={styles.loadUserPrompt}>Load a user to view their audit trail.</Text>
+          <Text style={styles.noAuditText}>No audit events recorded.</Text>
         )}
       </View>
-
-      {/* Admin Utilities Section */}
-      <View style={[styles.card, styles.utilitiesCard]}>
-        <View style={styles.cardHeader}>
-          <Settings size={20} color={COLORS.primary} />
-          <Text style={styles.cardTitle}>Admin Utilities</Text>
-        </View>
-        <Text style={styles.cardDescription}>
-          Global tools for managing statement limits and promotions.
-        </Text>
-
-        {/* User Statement Overrides */}
-        <View style={styles.utilitySection}>
-          <Text style={styles.utilityTitle}>User statement overrides</Text>
-          <Text style={styles.utilityDescription}>
-            Configure extra free statements or reset the monthly counter for a specific user (by email).
-          </Text>
-
-          <Text style={styles.label}>User email</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="user@example.com"
-            value={overrideEmail}
-            onChangeText={(text) => {
-              setOverrideEmail(text);
-              setCurrentOverride(null);
-            }}
-            onBlur={handleCheckOverride}
-            keyboardType="email-address"
-            autoCapitalize="none"
-          />
-
-          <Text style={styles.label}>Free statement allowance for this user</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="e.g., 30 (for a trial)"
-            value={overrideAllowance}
-            onChangeText={setOverrideAllowance}
-            keyboardType="numeric"
-          />
-
-          <View style={styles.utilityButtonRow}>
-            <TouchableOpacity 
-              style={[styles.button, styles.primaryButton, styles.utilityButton]} 
-              onPress={handleSaveOverride}
-              disabled={actionLoading === 'save-override'}
-            >
-              {actionLoading === 'save-override' ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Text style={styles.buttonText}>Save / update override</Text>
-              )}
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={[styles.button, styles.secondaryButton, styles.utilityButton]} 
-              onPress={handleClearOverride}
-              disabled={actionLoading === 'clear-override'}
-            >
-              <Text style={styles.secondaryButtonText}>Clear override for user</Text>
-            </TouchableOpacity>
-          </View>
-
-          <Text style={styles.statusText}>
-            {currentOverride 
-              ? `Override active: ${currentOverride.statement_allowance} statements`
-              : 'No user override saved yet.'
-            }
-          </Text>
-        </View>
-
-        <View style={styles.separator} />
-
-        {/* Sign-up Promotion */}
-        <View style={styles.utilitySection}>
-          <Text style={styles.utilityTitle}>Sign-up promotion</Text>
-          <Text style={styles.utilityDescription}>
-            Define a promotion so that new signups between two dates receive extra free statements.
-          </Text>
-
-          <View style={styles.promoRow}>
-            <View style={styles.promoField}>
-              <Text style={styles.label}>Start date</Text>
-              <TouchableOpacity 
-                style={styles.datePickerButton}
-                onPress={() => {
-                  setDatePickerTarget('start');
-                  setShowDatePicker(true);
-                }}
-              >
-                <Calendar size={18} color={COLORS.primary} />
-                <Text style={[styles.datePickerText, !promoStartDate && styles.datePickerPlaceholder]}>
-                  {promoStartDate || 'Select date'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-            <View style={styles.promoField}>
-              <Text style={styles.label}>End date</Text>
-              <TouchableOpacity 
-                style={styles.datePickerButton}
-                onPress={() => {
-                  setDatePickerTarget('end');
-                  setShowDatePicker(true);
-                }}
-              >
-                <Calendar size={18} color={COLORS.primary} />
-                <Text style={[styles.datePickerText, !promoEndDate && styles.datePickerPlaceholder]}>
-                  {promoEndDate || 'Select date'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-            <View style={styles.promoField}>
-              <Text style={styles.label}>Free statements</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="e.g., 30 or 50"
-                value={promoStatements}
-                onChangeText={setPromoStatements}
-                keyboardType="numeric"
-              />
-            </View>
-          </View>
-
-          <View style={styles.utilityButtonRow}>
-            <TouchableOpacity 
-              style={[styles.button, styles.primaryButton, styles.utilityButton]} 
-              onPress={handleSavePromotion}
-              disabled={actionLoading === 'save-promo'}
-            >
-              {actionLoading === 'save-promo' ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Text style={styles.buttonText}>Save promotion</Text>
-              )}
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={[styles.button, styles.secondaryButton, styles.utilityButton]} 
-              onPress={handleClearPromotion}
-              disabled={actionLoading === 'clear-promo'}
-            >
-              <Text style={styles.secondaryButtonText}>Clear promotion</Text>
-            </TouchableOpacity>
-          </View>
-
-          <Text style={styles.statusText}>
-            {activePromotion 
-              ? `Active: ${activePromotion.free_statements} statements (${activePromotion.start_date} to ${activePromotion.end_date})`
-              : 'No active promotion configured.'
-            }
-          </Text>
-        </View>
-      </View>
-
-      {/* Date Picker Modal */}
-      <Modal
-        visible={showDatePicker}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setShowDatePicker(false)}
-      >
-        <TouchableOpacity 
-          style={styles.datePickerOverlay}
-          activeOpacity={1}
-          onPress={() => setShowDatePicker(false)}
-        >
-          <View style={styles.datePickerModal} onStartShouldSetResponder={() => true}>
-            <Text style={styles.datePickerTitle}>
-              Select {datePickerTarget === 'start' ? 'Start' : 'End'} Date
-            </Text>
-            
-            {/* Month/Year Navigation */}
-            <View style={styles.datePickerNav}>
-              <TouchableOpacity 
-                onPress={() => {
-                  const newDate = new Date(datePickerMonth);
-                  newDate.setMonth(newDate.getMonth() - 1);
-                  setDatePickerMonth(newDate);
-                }}
-              >
-                <ChevronLeft size={24} color={COLORS.primary} />
-              </TouchableOpacity>
-              <Text style={styles.datePickerMonthYear}>
-                {datePickerMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}
-              </Text>
-              <TouchableOpacity 
-                onPress={() => {
-                  const newDate = new Date(datePickerMonth);
-                  newDate.setMonth(newDate.getMonth() + 1);
-                  setDatePickerMonth(newDate);
-                }}
-              >
-                <ChevronRight size={24} color={COLORS.primary} />
-              </TouchableOpacity>
-            </View>
-
-            {/* Day Headers */}
-            <View style={styles.datePickerDayHeaders}>
-              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
-                <Text key={day} style={styles.datePickerDayHeader}>{day}</Text>
-              ))}
-            </View>
-
-            {/* Calendar Grid */}
-            <View style={styles.datePickerGrid}>
-              {(() => {
-                const year = datePickerMonth.getFullYear();
-                const month = datePickerMonth.getMonth();
-                const firstDay = new Date(year, month, 1).getDay();
-                const daysInMonth = new Date(year, month + 1, 0).getDate();
-                const days = [];
-                
-                // Empty cells for days before month starts
-                for (let i = 0; i < firstDay; i++) {
-                  days.push(<View key={`empty-${i}`} style={styles.datePickerDay} />);
-                }
-                
-                // Days of the month
-                for (let day = 1; day <= daysInMonth; day++) {
-                  const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                  const isSelected = (datePickerTarget === 'start' && promoStartDate === dateStr) || 
-                                     (datePickerTarget === 'end' && promoEndDate === dateStr);
-                  
-                  days.push(
-                    <TouchableOpacity
-                      key={day}
-                      style={[styles.datePickerDay, isSelected && styles.datePickerDaySelected]}
-                      onPress={() => {
-                        if (datePickerTarget === 'start') {
-                          setPromoStartDate(dateStr);
-                        } else {
-                          setPromoEndDate(dateStr);
-                        }
-                        setShowDatePicker(false);
-                      }}
-                    >
-                      <Text style={[styles.datePickerDayText, isSelected && styles.datePickerDayTextSelected]}>
-                        {day}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                }
-                
-                return days;
-              })()}
-            </View>
-
-            <TouchableOpacity 
-              style={styles.datePickerCloseButton}
-              onPress={() => setShowDatePicker(false)}
-            >
-              <Text style={styles.datePickerCloseText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
-      </Modal>
     </ScrollView>
   );
 };
@@ -1108,440 +1068,342 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.06,
     shadowRadius: 6,
     elevation: 2,
-    borderLeftWidth: 4,
-    borderLeftColor: COLORS.primary,
-  },
-  utilitiesCard: {
-    borderLeftColor: '#6366F1',
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 8,
-  },
-  cardHeaderDisabled: {
-    opacity: 0.5,
   },
   cardTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '700',
-    color: COLORS.textPrimary,
-  },
-  cardTitleDisabled: {
-    color: COLORS.textSecondary,
+    color: '#1E3A5F',
+    marginBottom: 8,
   },
   cardDescription: {
     fontSize: 13,
-    color: COLORS.textSecondary,
+    color: '#6B7280',
     marginBottom: 16,
     lineHeight: 18,
   },
   label: {
     fontSize: 13,
-    fontWeight: '500',
-    color: COLORS.textSecondary,
+    color: '#6B7280',
     marginBottom: 6,
     marginTop: 8,
   },
   input: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#F9FAFB',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: '#E5E7EB',
     borderRadius: 8,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 15,
-    color: COLORS.textPrimary,
+    color: '#1F2937',
+  },
+  textArea: {
+    minHeight: 80,
+    textAlignVertical: 'top',
   },
   searchRow: {
     flexDirection: 'row',
     gap: 10,
     alignItems: 'center',
+    flexWrap: 'wrap',
   },
   searchInput: {
     flex: 1,
+    minWidth: 200,
   },
   button: {
-    paddingHorizontal: 18,
+    paddingHorizontal: 16,
     paddingVertical: 12,
     borderRadius: 8,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 6,
   },
   primaryButton: {
-    backgroundColor: COLORS.primary,
+    backgroundColor: '#1E3A5F',
   },
-  secondaryButton: {
-    backgroundColor: '#F1F5F9',
+  outlineButton: {
+    backgroundColor: '#fff',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: '#E5E7EB',
   },
-  successButton: {
-    backgroundColor: '#10B981',
-  },
-  warningButton: {
-    backgroundColor: '#F59E0B',
+  dangerOutlineButton: {
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
   },
   buttonText: {
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '600',
   },
-  secondaryButtonText: {
-    color: COLORS.textPrimary,
+  outlineButtonText: {
+    color: '#374151',
     fontSize: 14,
     fontWeight: '500',
   },
-  userLoadedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#EEF2FF',
+  dangerOutlineButtonText: {
+    color: '#DC2626',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  smallButton: {
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    marginTop: 12,
-    alignSelf: 'flex-start',
+    paddingVertical: 10,
   },
-  userLoadedText: {
-    fontSize: 14,
-    color: COLORS.primary,
-    fontWeight: '500',
+  userInfoSection: {
+    marginTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+    paddingTop: 16,
   },
-  noUserText: {
+  userInfoHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  userEmail: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  userMeta: {
     fontSize: 13,
-    color: COLORS.textSecondary,
+    color: '#6B7280',
+    marginTop: 4,
+  },
+  statusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
+  activeBadge: {
+    backgroundColor: '#DCFCE7',
+  },
+  inactiveBadge: {
+    backgroundColor: '#FEE2E2',
+  },
+  statusBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#166534',
+  },
+  userDates: {
+    marginBottom: 16,
+  },
+  userDateRow: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginBottom: 2,
+  },
+  actionButtonsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 16,
+  },
+  actionButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  underlineButton: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  underlineButtonText: {
+    fontSize: 13,
+    color: '#374151',
+    fontWeight: '500',
+    textDecorationLine: 'underline',
+  },
+  deleteButtonsRow: {
+    flexDirection: 'row',
+    gap: 12,
     marginTop: 12,
+  },
+  deleteButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  softDeleteButton: {
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+  },
+  hardDeleteButton: {
+    backgroundColor: '#FEE2E2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+  },
+  deleteButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#DC2626',
+    textDecorationLine: 'underline',
+  },
+  prototypeNote: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    marginTop: 12,
+  },
+  prototypeHighlight: {
+    color: '#3B82F6',
   },
   loadUserPrompt: {
     fontSize: 14,
-    color: COLORS.textSecondary,
+    color: '#9CA3AF',
     fontStyle: 'italic',
     textAlign: 'center',
     paddingVertical: 20,
   },
-  flagsContainer: {
-    gap: 12,
-  },
-  flagRow: {
+  pickerRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-  },
-  flagLabel: {
-    fontSize: 15,
-    color: COLORS.textPrimary,
-  },
-  dangerLabel: {
-    color: COLORS.error,
-  },
-  usageContainer: {
     gap: 16,
-  },
-  usageStats: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    backgroundColor: '#F8FAFC',
-    borderRadius: 10,
-    padding: 16,
-  },
-  statBox: {
-    alignItems: 'center',
-  },
-  statValue: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: COLORS.primary,
-  },
-  statLabel: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    marginTop: 4,
-  },
-  actionSection: {
-    marginTop: 8,
-  },
-  actionLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.textPrimary,
-    marginBottom: 8,
-  },
-  actionRow: {
-    flexDirection: 'row',
-    gap: 8,
-    alignItems: 'center',
-  },
-  smallInput: {
-    width: 80,
-  },
-  flexInput: {
-    flex: 1,
-  },
-  supportContainer: {
-    gap: 16,
-  },
-  tagsSection: {},
-  sectionLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.textPrimary,
-    marginBottom: 10,
-  },
-  tagsList: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  tagBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-  },
-  tagText: {
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  noTagsText: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    fontStyle: 'italic',
-  },
-  addTagsSection: {},
-  availableTags: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  addTagButton: {
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-  },
-  addTagText: {
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  notesSection: {},
-  addNoteRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 12,
-  },
-  noteInput: {
-    flex: 1,
-    minHeight: 60,
-    textAlignVertical: 'top',
-  },
-  noteItem: {
-    backgroundColor: '#FFFBEB',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 8,
-    borderLeftWidth: 3,
-    borderLeftColor: '#F59E0B',
-  },
-  noteText: {
-    fontSize: 14,
-    color: COLORS.textPrimary,
-    marginBottom: 4,
-  },
-  noteDate: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-  },
-  auditContainer: {
-    gap: 8,
-  },
-  auditItem: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 8,
-    padding: 12,
-  },
-  auditHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 4,
-  },
-  auditAction: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.primary,
-  },
-  auditDate: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-  },
-  auditBy: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
-  },
-  noAuditText: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    fontStyle: 'italic',
-    textAlign: 'center',
-    paddingVertical: 12,
-  },
-  utilitySection: {
-    marginBottom: 20,
-  },
-  utilityTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: COLORS.textPrimary,
-    marginBottom: 6,
-  },
-  utilityDescription: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    marginBottom: 16,
-    lineHeight: 18,
-  },
-  utilityButtonRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 12,
     flexWrap: 'wrap',
   },
-  utilityButton: {
+  pickerField: {
     flex: 1,
     minWidth: 150,
-    justifyContent: 'center',
+  },
+  pickerContainer: {
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 8,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  picker: {
+    height: 48,
+    color: '#1F2937',
+  },
+  pickerIcon: {
+    position: 'absolute',
+    right: 12,
+    top: 15,
+    pointerEvents: 'none',
+  },
+  securityButtonsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginTop: 16,
   },
   statusText: {
     fontSize: 13,
-    color: COLORS.textSecondary,
-    marginTop: 10,
+    color: '#9CA3AF',
+    marginTop: 12,
     fontStyle: 'italic',
   },
-  separator: {
-    height: 1,
-    backgroundColor: '#E2E8F0',
-    marginVertical: 20,
-  },
-  promoRow: {
-    flexDirection: 'row',
-    gap: 12,
-    flexWrap: 'wrap',
-  },
-  promoField: {
-    flex: 1,
-    minWidth: 120,
-  },
-  datePickerButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
+  usageInfo: {
+    backgroundColor: '#F9FAFB',
     borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  datePickerText: {
-    fontSize: 15,
-    color: COLORS.textPrimary,
-    flex: 1,
-  },
-  datePickerPlaceholder: {
-    color: COLORS.textSecondary,
-  },
-  datePickerOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  datePickerModal: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 20,
-    width: '100%',
-    maxWidth: 360,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
-    elevation: 5,
-  },
-  datePickerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
-    textAlign: 'center',
+    padding: 14,
     marginBottom: 16,
   },
-  datePickerNav: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
+  usageRow: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 4,
   },
-  datePickerMonthYear: {
-    fontSize: 16,
+  usageValue: {
     fontWeight: '600',
-    color: COLORS.textPrimary,
+    color: '#1F2937',
   },
-  datePickerDayHeaders: {
+  usageButtonsRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 16,
+  },
+  eventsSection: {
+    marginTop: 8,
+  },
+  eventsTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
     marginBottom: 8,
   },
-  datePickerDayHeader: {
-    flex: 1,
-    textAlign: 'center',
-    fontSize: 12,
-    fontWeight: '600',
-    color: COLORS.textSecondary,
+  eventItem: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginBottom: 4,
   },
-  datePickerGrid: {
+  noEventsText: {
+    fontSize: 13,
+    color: '#9CA3AF',
+    fontStyle: 'italic',
+  },
+  tagsCheckboxRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    gap: 16,
+    marginBottom: 16,
   },
-  datePickerDay: {
-    width: '14.28%',
-    aspectRatio: 1,
+  checkboxItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  checkbox: {
+    width: 18,
+    height: 18,
+    borderWidth: 2,
+    borderColor: '#D1D5DB',
+    borderRadius: 4,
+    alignItems: 'center',
     justifyContent: 'center',
-    alignItems: 'center',
   },
-  datePickerDaySelected: {
-    backgroundColor: COLORS.primary,
-    borderRadius: 20,
+  checkboxChecked: {
+    backgroundColor: '#1E3A5F',
+    borderColor: '#1E3A5F',
   },
-  datePickerDayText: {
+  checkboxLabel: {
     fontSize: 14,
-    color: COLORS.textPrimary,
+    color: '#374151',
   },
-  datePickerDayTextSelected: {
-    color: '#fff',
-    fontWeight: '700',
-  },
-  datePickerCloseButton: {
+  supportButtonsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
     marginTop: 16,
-    paddingVertical: 12,
-    alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: '#E2E8F0',
   },
-  datePickerCloseText: {
-    fontSize: 15,
-    color: COLORS.textSecondary,
+  auditButtonsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 16,
+  },
+  auditList: {
+    gap: 8,
+  },
+  auditItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    backgroundColor: '#F9FAFB',
+    padding: 10,
+    borderRadius: 6,
+  },
+  auditAction: {
+    fontSize: 14,
+    color: '#374151',
     fontWeight: '500',
+  },
+  auditDate: {
+    fontSize: 12,
+    color: '#9CA3AF',
+  },
+  noAuditText: {
+    fontSize: 13,
+    color: '#9CA3AF',
+    fontStyle: 'italic',
   },
 });
 
 export default UserSearchTab;
-

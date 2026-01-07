@@ -33,7 +33,20 @@ const {
   addUserSupportTag,
   removeUserSupportTag,
   // Audit trail
-  getUserAuditTrail
+  getUserAuditTrail,
+  // Extended user management
+  suspendUser,
+  reactivateUser,
+  cancelSubscription,
+  softDeleteUser,
+  forceLogout,
+  forcePasswordReset,
+  resetUsage,
+  grantTrial,
+  revokeTrial,
+  recordStatementEvent,
+  getStatementEvents,
+  saveSupportInfo
 } = require('../controllers/adminController');
 const knowledgeRoutes = require('./knowledgeRoutes'); // Import knowledge base routes
 const sopController = require('../controllers/sopController');
@@ -95,6 +108,20 @@ router.delete('/users/:userId/tags/:tagId', removeUserSupportTag);
 
 // User audit trail
 router.get('/users/:userId/audit-trail', getUserAuditTrail);
+
+// Extended user management actions
+router.post('/users/:userId/suspend', suspendUser);
+router.post('/users/:userId/reactivate', reactivateUser);
+router.post('/users/:userId/cancel-subscription', cancelSubscription);
+router.post('/users/:userId/soft-delete', softDeleteUser);
+router.post('/users/:userId/force-logout', forceLogout);
+router.post('/users/:userId/force-password-reset', forcePasswordReset);
+router.post('/users/:userId/reset-usage', resetUsage);
+router.post('/users/:userId/grant-trial', grantTrial);
+router.post('/users/:userId/revoke-trial', revokeTrial);
+router.post('/users/:userId/record-statement', recordStatementEvent);
+router.get('/users/:userId/statement-events', getStatementEvents);
+router.post('/users/:userId/support-info', saveSupportInfo);
 
 // SOP Management Routes (Admin only)
 router.post('/sop/upload', sopController.uploadSopDocument);

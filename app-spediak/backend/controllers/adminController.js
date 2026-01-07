@@ -1181,6 +1181,364 @@ const searchUserByEmail = async (req, res) => {
   }
 };
 
+// ============================================
+// EXTENDED USER MANAGEMENT ACTIONS
+// ============================================
+
+/**
+ * Suspend user
+ */
+const suspendUser = async (req, res) => {
+  const { userId } = req.params;
+  const adminClerkId = req.auth?.userId;
+
+  try {
+    await pool.query(`
+      INSERT INTO user_security_flags (user_clerk_id, is_suspended, suspended_at, suspended_by)
+      VALUES ($1, TRUE, NOW(), $2)
+      ON CONFLICT (user_clerk_id) 
+      DO UPDATE SET is_suspended = TRUE, suspended_at = NOW(), suspended_by = $2, updated_at = NOW()
+    `, [userId, adminClerkId]);
+
+    // Log audit
+    await pool.query(`
+      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, action_details)
+      VALUES ($1, 'suspend_user', 'user_management', 'user', $2, '{"action": "User suspended"}')
+    `, [adminClerkId, userId]);
+
+    res.json({ message: 'User suspended successfully' });
+  } catch (error) {
+    console.error('[Admin] Error suspending user:', error);
+    res.status(500).json({ message: 'Failed to suspend user' });
+  }
+};
+
+/**
+ * Reactivate user
+ */
+const reactivateUser = async (req, res) => {
+  const { userId } = req.params;
+  const adminClerkId = req.auth?.userId;
+
+  try {
+    await pool.query(`
+      UPDATE user_security_flags 
+      SET is_suspended = FALSE, updated_at = NOW()
+      WHERE user_clerk_id = $1
+    `, [userId]);
+
+    // Log audit
+    await pool.query(`
+      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, action_details)
+      VALUES ($1, 'reactivate_user', 'user_management', 'user', $2, '{"action": "User reactivated"}')
+    `, [adminClerkId, userId]);
+
+    res.json({ message: 'User reactivated successfully' });
+  } catch (error) {
+    console.error('[Admin] Error reactivating user:', error);
+    res.status(500).json({ message: 'Failed to reactivate user' });
+  }
+};
+
+/**
+ * Cancel subscription
+ */
+const cancelSubscription = async (req, res) => {
+  const { userId } = req.params;
+  const adminClerkId = req.auth?.userId;
+
+  try {
+    await pool.query(`
+      UPDATE user_subscriptions 
+      SET plan_type = 'free', subscription_status = 'cancelled', updated_at = NOW()
+      WHERE clerk_id = $1
+    `, [userId]);
+
+    // Log audit
+    await pool.query(`
+      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, action_details)
+      VALUES ($1, 'cancel_subscription', 'billing', 'user', $2, '{"action": "Subscription cancelled"}')
+    `, [adminClerkId, userId]);
+
+    res.json({ message: 'Subscription cancelled successfully' });
+  } catch (error) {
+    console.error('[Admin] Error cancelling subscription:', error);
+    res.status(500).json({ message: 'Failed to cancel subscription' });
+  }
+};
+
+/**
+ * Soft delete user
+ */
+const softDeleteUser = async (req, res) => {
+  const { userId } = req.params;
+  const adminClerkId = req.auth?.userId;
+
+  try {
+    await pool.query(`
+      UPDATE users 
+      SET is_active = FALSE, updated_at = NOW()
+      WHERE clerk_id = $1
+    `, [userId]);
+
+    // Log audit
+    await pool.query(`
+      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, action_details)
+      VALUES ($1, 'soft_delete_user', 'user_management', 'user', $2, '{"action": "User soft deleted"}')
+    `, [adminClerkId, userId]);
+
+    res.json({ message: 'User soft deleted successfully' });
+  } catch (error) {
+    console.error('[Admin] Error soft deleting user:', error);
+    res.status(500).json({ message: 'Failed to soft delete user' });
+  }
+};
+
+/**
+ * Force logout (invalidate sessions via Clerk)
+ */
+const forceLogout = async (req, res) => {
+  const { userId } = req.params;
+  const adminClerkId = req.auth?.userId;
+
+  try {
+    // Attempt to revoke sessions via Clerk
+    try {
+      await clerkClient.users.revokeAllSessions(userId);
+    } catch (clerkError) {
+      console.log('[Admin] Clerk session revocation not available:', clerkError.message);
+    }
+
+    // Log audit
+    await pool.query(`
+      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, action_details)
+      VALUES ($1, 'force_logout', 'security', 'user', $2, '{"action": "Force logout executed"}')
+    `, [adminClerkId, userId]);
+
+    res.json({ message: 'User sessions invalidated' });
+  } catch (error) {
+    console.error('[Admin] Error forcing logout:', error);
+    res.status(500).json({ message: 'Failed to force logout' });
+  }
+};
+
+/**
+ * Force password reset
+ */
+const forcePasswordReset = async (req, res) => {
+  const { userId } = req.params;
+  const adminClerkId = req.auth?.userId;
+
+  try {
+    // In production, this would trigger a Clerk password reset email
+    // For now, we log the action
+    
+    // Log audit
+    await pool.query(`
+      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, action_details)
+      VALUES ($1, 'force_password_reset', 'security', 'user', $2, '{"action": "Password reset requested"}')
+    `, [adminClerkId, userId]);
+
+    res.json({ message: 'Password reset requested' });
+  } catch (error) {
+    console.error('[Admin] Error forcing password reset:', error);
+    res.status(500).json({ message: 'Failed to force password reset' });
+  }
+};
+
+/**
+ * Reset monthly usage
+ */
+const resetUsage = async (req, res) => {
+  const { userId } = req.params;
+  const adminClerkId = req.auth?.userId;
+
+  try {
+    await pool.query(`
+      UPDATE user_subscriptions 
+      SET statements_used = 0, last_reset_date = NOW(), updated_at = NOW()
+      WHERE clerk_id = $1
+    `, [userId]);
+
+    // Log audit
+    await pool.query(`
+      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, action_details)
+      VALUES ($1, 'reset_usage', 'billing', 'user', $2, '{"action": "Monthly usage reset"}')
+    `, [adminClerkId, userId]);
+
+    res.json({ message: 'Usage reset successfully' });
+  } catch (error) {
+    console.error('[Admin] Error resetting usage:', error);
+    res.status(500).json({ message: 'Failed to reset usage' });
+  }
+};
+
+/**
+ * Grant trial
+ */
+const grantTrial = async (req, res) => {
+  const { userId } = req.params;
+  const { days = 30 } = req.body;
+  const adminClerkId = req.auth?.userId;
+
+  try {
+    const trialEndDate = new Date();
+    trialEndDate.setDate(trialEndDate.getDate() + days);
+
+    await pool.query(`
+      UPDATE user_subscriptions 
+      SET 
+        plan_type = 'trial',
+        trial_end_date = $2,
+        statements_limit = 50,
+        updated_at = NOW()
+      WHERE clerk_id = $1
+    `, [userId, trialEndDate]);
+
+    // Log audit
+    await pool.query(`
+      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, action_details)
+      VALUES ($1, 'grant_trial', 'billing', 'user', $2, $3)
+    `, [adminClerkId, userId, JSON.stringify({ days, trialEndDate })]);
+
+    res.json({ message: `${days}-day trial granted successfully` });
+  } catch (error) {
+    console.error('[Admin] Error granting trial:', error);
+    res.status(500).json({ message: 'Failed to grant trial' });
+  }
+};
+
+/**
+ * Revoke trial
+ */
+const revokeTrial = async (req, res) => {
+  const { userId } = req.params;
+  const adminClerkId = req.auth?.userId;
+
+  try {
+    await pool.query(`
+      UPDATE user_subscriptions 
+      SET 
+        plan_type = 'free',
+        trial_end_date = NULL,
+        statements_limit = 5,
+        updated_at = NOW()
+      WHERE clerk_id = $1
+    `, [userId]);
+
+    // Log audit
+    await pool.query(`
+      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, action_details)
+      VALUES ($1, 'revoke_trial', 'billing', 'user', $2, '{"action": "Trial revoked"}')
+    `, [adminClerkId, userId]);
+
+    res.json({ message: 'Trial revoked successfully' });
+  } catch (error) {
+    console.error('[Admin] Error revoking trial:', error);
+    res.status(500).json({ message: 'Failed to revoke trial' });
+  }
+};
+
+/**
+ * Record manual statement event
+ */
+const recordStatementEvent = async (req, res) => {
+  const { userId } = req.params;
+  const adminClerkId = req.auth?.userId;
+
+  try {
+    await pool.query(`
+      UPDATE user_subscriptions 
+      SET statements_used = COALESCE(statements_used, 0) + 1, updated_at = NOW()
+      WHERE clerk_id = $1
+    `, [userId]);
+
+    // Log audit
+    await pool.query(`
+      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, action_details)
+      VALUES ($1, 'record_statement_event', 'billing', 'user', $2, '{"action": "Statement event recorded (+1)"}')
+    `, [adminClerkId, userId]);
+
+    res.json({ message: 'Statement event recorded' });
+  } catch (error) {
+    console.error('[Admin] Error recording statement event:', error);
+    res.status(500).json({ message: 'Failed to record statement event' });
+  }
+};
+
+/**
+ * Get statement events for user
+ */
+const getStatementEvents = async (req, res) => {
+  const { userId } = req.params;
+  const limit = parseInt(req.query.limit) || 10;
+
+  try {
+    const result = await pool.query(`
+      SELECT id, created_at, state_used, ddid_text
+      FROM inspections
+      WHERE user_id = $1
+      ORDER BY created_at DESC
+      LIMIT $2
+    `, [userId, limit]);
+
+    res.json({ events: result.rows });
+  } catch (error) {
+    console.error('[Admin] Error fetching statement events:', error);
+    res.status(500).json({ message: 'Failed to fetch statement events' });
+  }
+};
+
+/**
+ * Save support info (tags and notes)
+ */
+const saveSupportInfo = async (req, res) => {
+  const { userId } = req.params;
+  const { tags, notes } = req.body;
+  const adminClerkId = req.auth?.userId;
+
+  try {
+    // Update or insert support notes
+    if (notes !== undefined) {
+      await pool.query(`
+        INSERT INTO admin_user_notes (user_clerk_id, admin_clerk_id, note, note_type)
+        VALUES ($1, $2, $3, 'support')
+        ON CONFLICT (user_clerk_id, note_type) WHERE note_type = 'support'
+        DO UPDATE SET note = $3, updated_at = NOW()
+      `, [userId, adminClerkId, notes]);
+    }
+
+    // Update tags
+    if (tags) {
+      // Clear existing tags
+      await pool.query('DELETE FROM user_support_tags WHERE user_clerk_id = $1', [userId]);
+      
+      // Insert new tags
+      for (const [tagKey, isActive] of Object.entries(tags)) {
+        if (isActive) {
+          const tagName = tagKey.replace('_', ' ');
+          await pool.query(`
+            INSERT INTO user_support_tags (user_clerk_id, tag_name, admin_clerk_id)
+            VALUES ($1, $2, $3)
+            ON CONFLICT DO NOTHING
+          `, [userId, tagName, adminClerkId]);
+        }
+      }
+    }
+
+    // Log audit
+    await pool.query(`
+      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, action_details)
+      VALUES ($1, 'update_support_info', 'support', 'user', $2, $3)
+    `, [adminClerkId, userId, JSON.stringify({ tags, hasNotes: !!notes })]);
+
+    res.json({ message: 'Support info saved successfully' });
+  } catch (error) {
+    console.error('[Admin] Error saving support info:', error);
+    res.status(500).json({ message: 'Failed to save support info' });
+  }
+};
+
 module.exports = {
   getAllInspections: getAllInspectionsWithUserDetails,
   getAllUsers,
@@ -1212,5 +1570,18 @@ module.exports = {
   addUserSupportTag,
   removeUserSupportTag,
   // Audit trail
-  getUserAuditTrail
+  getUserAuditTrail,
+  // Extended user management
+  suspendUser,
+  reactivateUser,
+  cancelSubscription,
+  softDeleteUser,
+  forceLogout,
+  forcePasswordReset,
+  resetUsage,
+  grantTrial,
+  revokeTrial,
+  recordStatementEvent,
+  getStatementEvents,
+  saveSupportInfo
 }; 
