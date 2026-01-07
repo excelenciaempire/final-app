@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useGlobalState } from '../context/GlobalStateContext';
 import { useAuth, useUser } from '@clerk/clerk-expo';
@@ -24,64 +24,68 @@ const SopAlignmentCard: React.FC = () => {
   const { getToken } = useAuth();
   const { user } = useUser();
   const navigation = useNavigation<any>();
-  const [activeSops, setActiveSops] = useState<ActiveSop | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [activeSops, setActiveSops] = useState<ActiveSop>({ stateSop: null, orgSop: null });
+  const [isLoading, setIsLoading] = useState(false);
+  const hasFetchedRef = useRef(false);
+  const lastStateRef = useRef<string | null>(null);
 
   const organization = user?.unsafeMetadata?.organization as string || null;
 
-  const fetchActiveSops = useCallback(async () => {
-    if (!selectedState) {
-      setIsLoading(false);
-      setActiveSops({ stateSop: null, orgSop: null });
+  useEffect(() => {
+    // Only fetch if state changed or hasn't been fetched
+    if (lastStateRef.current === selectedState && hasFetchedRef.current) {
       return;
     }
 
-    try {
-      setIsLoading(true);
-      setError(null);
-      const token = await getToken();
-      
-      if (!token) {
-        setIsLoading(false);
+    const fetchActiveSops = async () => {
+      if (!selectedState) {
         setActiveSops({ stateSop: null, orgSop: null });
         return;
       }
 
-      const params: any = { state: selectedState };
-      if (organization) {
-        params.organization = organization;
+      try {
+        setIsLoading(true);
+        const token = await getToken();
+        
+        if (!token) {
+          setActiveSops({ stateSop: null, orgSop: null });
+          setIsLoading(false);
+          return;
+        }
+
+        const params: any = { state: selectedState };
+        if (organization) {
+          params.organization = organization;
+        }
+
+        const response = await axios.get(`${BASE_URL}/api/sop/active`, {
+          headers: { Authorization: `Bearer ${token}` },
+          params,
+          timeout: 5000
+        });
+
+        setActiveSops({
+          stateSop: response.data.stateSop ? {
+            documentName: response.data.stateSop.documentName,
+            fileUrl: response.data.stateSop.fileUrl
+          } : null,
+          orgSop: response.data.orgSop ? {
+            documentName: response.data.orgSop.documentName,
+            fileUrl: response.data.orgSop.fileUrl
+          } : null
+        });
+      } catch (err: any) {
+        // Silently handle errors
+        setActiveSops({ stateSop: null, orgSop: null });
+      } finally {
+        setIsLoading(false);
+        hasFetchedRef.current = true;
+        lastStateRef.current = selectedState;
       }
+    };
 
-      const response = await axios.get(`${BASE_URL}/api/sop/active`, {
-        headers: { Authorization: `Bearer ${token}` },
-        params,
-        timeout: 5000
-      });
-
-      setActiveSops({
-        stateSop: response.data.stateSop ? {
-          documentName: response.data.stateSop.documentName,
-          fileUrl: response.data.stateSop.fileUrl
-        } : null,
-        orgSop: response.data.orgSop ? {
-          documentName: response.data.orgSop.documentName,
-          fileUrl: response.data.orgSop.fileUrl
-        } : null
-      });
-      setError(null);
-    } catch (err: any) {
-      // Silently handle - no console error spam
-      setActiveSops({ stateSop: null, orgSop: null });
-      setError(null); // Don't show error to user
-    } finally {
-      setIsLoading(false);
-    }
-  }, [selectedState, organization, getToken]);
-
-  useEffect(() => {
     fetchActiveSops();
-  }, [fetchActiveSops]);
+  }, [selectedState, organization]); // Remove getToken from dependencies
 
   const handleConfigureClick = () => {
     navigation.navigate('SOP');
@@ -97,10 +101,6 @@ const SopAlignmentCard: React.FC = () => {
         <ActivityIndicator size="small" color={COLORS.primary} />
       </View>
     );
-  }
-
-  if (error) {
-    return null; // Gracefully hide on error
   }
 
   const hasStateSop = activeSops?.stateSop !== null;
@@ -137,7 +137,7 @@ const SopAlignmentCard: React.FC = () => {
       ) : (
         <View style={styles.noSopContainer}>
           <Text style={styles.noSopText}>
-            No active SOPs configured for {selectedState}
+            No active SOPs configured for {selectedState || 'your state'}
           </Text>
         </View>
       )}
@@ -157,8 +157,8 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
     elevation: 3,
   },
   header: {
@@ -195,9 +195,11 @@ const styles = StyleSheet.create({
   },
   noSopContainer: {
     padding: 12,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#F8FAFC',
     borderRadius: 8,
     marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
   },
   noSopText: {
     fontSize: 14,

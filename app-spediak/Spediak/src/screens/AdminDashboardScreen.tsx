@@ -208,9 +208,8 @@ const AllInspections: React.FC = () => {
 
 // --- All Users Component ---
 const AllUsers: React.FC = () => {
-    // States and hooks from original component...
     const [users, setUsers] = useState<UserData[]>([]);
-    const [isLoading, setIsLoading] = useState<boolean>(false);
+    const [isLoading, setIsLoading] = useState<boolean>(true);
     const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
@@ -218,36 +217,58 @@ const AllUsers: React.FC = () => {
     const [totalPages, setTotalPages] = useState(1);
     const [totalUsersCount, setTotalUsersCount] = useState<number>(0);
     const [isLoadingMore, setIsLoadingMore] = useState(false);
+    const [hasFetched, setHasFetched] = useState(false);
     const { getToken } = useAuth();
     const debouncedSearchQuery = useDebounce(searchQuery, 500);
 
-    // Fetch users function from original component...
-    const fetchUsers = useCallback(async (page = 1, search = debouncedSearchQuery, refreshing = false) => {
+    const fetchUsers = useCallback(async (page = 1, search = '', refreshing = false) => {
         if (!refreshing && page === 1) setIsLoading(true);
         if (page > 1) setIsLoadingMore(true);
         setError(null);
+        
         try {
             const token = await getToken();
+            if (!token) {
+                setError("Authentication required. Please try again.");
+                setIsLoading(false);
+                return;
+            }
+            
             const response = await axios.get<PaginatedResponse<UserData>>(`${BASE_URL}/api/admin/all-users`, {
                 headers: { Authorization: `Bearer ${token}` },
-                params: { page, limit: 15, search }
+                params: { page, limit: 15, search },
+                timeout: 10000
             });
+            
             const { users: fetchedUsers = [], totalPages: fetchedTotalPages, page: fetchedPage, totalCount } = response.data;
             setUsers(prev => (page === 1 ? fetchedUsers : [...prev, ...fetchedUsers]));
-            setTotalPages(fetchedTotalPages);
-            setCurrentPage(fetchedPage);
+            setTotalPages(fetchedTotalPages || 1);
+            setCurrentPage(fetchedPage || 1);
             if (totalCount !== undefined) setTotalUsersCount(totalCount);
+            setHasFetched(true);
         } catch (err: any) {
-            setError(err.response?.data?.message || "Failed to fetch user data.");
+            console.error('Error fetching users:', err);
+            const errorMessage = err.code === 'ECONNABORTED' 
+                ? "Request timed out. Please try again."
+                : err.response?.data?.message || "Failed to fetch user data.";
+            setError(errorMessage);
         } finally {
             setIsLoading(false);
             setIsLoadingMore(false);
             if (refreshing) setIsRefreshing(false);
         }
-    }, [getToken, debouncedSearchQuery]);
+    }, [getToken]);
 
     useEffect(() => {
-        fetchUsers(1);
+        if (!hasFetched) {
+            fetchUsers(1, debouncedSearchQuery);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (hasFetched) {
+            fetchUsers(1, debouncedSearchQuery);
+        }
     }, [debouncedSearchQuery]);
 
     const handleRefresh = useCallback(() => {
@@ -311,11 +332,20 @@ const AllUsers: React.FC = () => {
         </View>
     );
 
-    if (isLoading && currentPage === 1) return <ActivityIndicator size="large" style={styles.loader} />;
-    if (error) return <Text style={styles.errorText}>{error}</Text>;
+    if (isLoading && currentPage === 1) return <ActivityIndicator size="large" style={styles.loader} color={COLORS.primary} />;
+    if (error) {
+        return (
+            <View style={styles.errorContainer}>
+                <Text style={styles.errorText}>{error}</Text>
+                <TouchableOpacity style={styles.retryButton} onPress={() => fetchUsers(1, debouncedSearchQuery)}>
+                    <Text style={styles.retryButtonText}>Retry</Text>
+                </TouchableOpacity>
+            </View>
+        );
+    }
     
     return (
-        <View style={{ flex: 1 }}>
+        <View style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
             <View style={styles.userControlsContainer}>
                 <Text style={styles.totalCountText}>Total: {totalUsersCount}</Text>
                 <View style={styles.searchWrapperUsers}>
@@ -739,7 +769,10 @@ const AdminDashboardScreen = () => {
 // --- Styles ---
 const styles = StyleSheet.create({
     loader: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    errorText: { color: 'red', textAlign: 'center', margin: 20 },
+    errorText: { color: '#DC2626', textAlign: 'center', fontSize: 14 },
+    errorContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
+    retryButton: { backgroundColor: COLORS.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 8, marginTop: 16 },
+    retryButtonText: { color: '#fff', fontWeight: '600', fontSize: 14 },
     // All Inspections & All Users Styles...
     cardContainer: { backgroundColor: '#fff', borderRadius: 8, marginVertical: 8, padding: 16 },
     cardHeaderInfo: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },

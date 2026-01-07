@@ -1,13 +1,10 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, Image, Button, TextInput, TouchableOpacity, Alert, ActivityIndicator, ScrollView, Platform, SafeAreaView } from 'react-native';
+import { View, Text, StyleSheet, Image, TextInput, TouchableOpacity, Alert, ActivityIndicator, ScrollView, Platform, SafeAreaView, useWindowDimensions } from 'react-native';
 import { useUser, useAuth, useClerk, isClerkAPIResponseError } from '@clerk/clerk-expo';
 import { Picker } from '@react-native-picker/picker';
 import * as ImagePicker from 'expo-image-picker';
-import { Pencil, X, Camera, LogOut } from 'lucide-react-native';
 import { COLORS } from '../styles/colors';
-import { Check, Edit2, Upload } from 'lucide-react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { Check, Edit2, User, Phone, Building, MapPin, Award, Mail, ChevronDown } from 'lucide-react-native';
 
 // Define the states available for selection
 const availableStates = [
@@ -75,7 +72,7 @@ const ProfileSettingsScreen: React.FC = () => {
     const { isLoaded, isSignedIn, user } = useUser();
     const { signOut, getToken } = useAuth();
     const clerk = useClerk();
-    const [isEditing, setIsEditing] = useState<boolean>(false);
+    const { width } = useWindowDimensions();
 
     // State for editable fields
     const [firstName, setFirstName] = useState<string>('');
@@ -85,11 +82,9 @@ const ProfileSettingsScreen: React.FC = () => {
     const [organization, setOrganization] = useState<string>('None');
     const [phoneNumber, setPhoneNumber] = useState<string>('');
     const [companyName, setCompanyName] = useState<string>('');
-    const [profileImageUri, setProfileImageUri] = useState<string | null>(null); // Local URI for display/upload
-    const [profileImageBase64, setProfileImageBase64] = useState<string | null>(null); // Store base64
-    const [initialImageUri, setInitialImageUri] = useState<string | null>(null); // To track if image changed
-    const [newImageUri, setNewImageUri] = useState<string | null>(null); // URI of newly selected image
-    const [newImageBlob, setNewImageBlob] = useState<Blob | null>(null); // Blob for upload
+    const [profileImageUri, setProfileImageUri] = useState<string | null>(null);
+    const [newImageUri, setNewImageUri] = useState<string | null>(null);
+    const [newImageBlob, setNewImageBlob] = useState<Blob | null>(null);
     const [isSavingProfile, setIsSavingProfile] = useState<boolean>(false);
 
     const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -103,10 +98,8 @@ const ProfileSettingsScreen: React.FC = () => {
     const [emailChangeError, setEmailChangeError] = useState<string | null>(null);
     const [emailChangeSuccess, setEmailChangeSuccess] = useState<string | null>(null);
 
-    const [isClientMounted, setIsClientMounted] = useState(false); // New state for client mount
-
+    const [isClientMounted, setIsClientMounted] = useState(false);
     const { user: clerkUser, isLoaded: clerkIsLoaded } = useUser();
-
     const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5000';
 
     // Load profile from backend
@@ -131,43 +124,37 @@ const ProfileSettingsScreen: React.FC = () => {
         }
     };
 
-    // Initialize form fields (just use user data, no auto-edit)
+    // Initialize form fields
     useEffect(() => {
-        setIsClientMounted(true); // Set client mounted state
+        setIsClientMounted(true);
         if (clerkUser) {
             setFirstName(clerkUser.firstName || '');
             setLastName(clerkUser.lastName || '');
-            // Load state from unsafeMetadata as fallback, but prefer backend
             setSelectedState(clerkUser.unsafeMetadata?.inspectionState as string || null);
-            if (!newImageUri) { // Only set from clerkUser if no new image is staged
+            if (!newImageUri) {
                 setProfileImageUri(clerkUser.imageUrl || null);
-                setInitialImageUri(clerkUser.imageUrl || null);
             }
-            setProfileImageBase64(null); // Ensure base64 is cleared on load/mode switch
-            // Load profile from backend
             loadProfile();
         }
-    }, [clerkUser]); // Removed isEditing dependency, should fetch on clerkUser change primarily
+    }, [clerkUser]);
 
-    // --- Updated Image Picker Logic ---
     const pickImage = async () => {
         const permissions = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (!permissions.granted) {
             Alert.alert('Permission required', 'Media Library permission is needed to select an image.');
-                return;
-            }
+            return;
+        }
 
-                                let result = await ImagePicker.launchImageLibraryAsync({
-                                    mediaTypes: ImagePicker.MediaTypeOptions.Images,
-                                    allowsEditing: true,
-                                    aspect: [1, 1],
-                                    quality: 0.7,
+        let result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.7,
         });
 
         if (!result.canceled && result.assets && result.assets.length > 0) {
             const asset = result.assets[0];
             setNewImageUri(asset.uri);
-            // Fetch the blob data needed for Clerk upload
             try {
                 const response = await fetch(asset.uri);
                 const blob = await response.blob();
@@ -181,54 +168,39 @@ const ProfileSettingsScreen: React.FC = () => {
         }
     };
 
-    // --- Updated Save Changes Logic ---
     const handleSaveChanges = async () => {
         if (!clerkUser) return;
 
-        // Keep validation, but message is less critical now
         if (!firstName || !lastName || !selectedState) {
             setError("Please ensure First Name, Last Name, and State are provided.");
             return;
         }
 
-        setIsLoading(true); 
+        setIsLoading(true);
         setIsSavingProfile(true);
         setError(null);
-        setSuccessMessage(null); 
-        setEmailChangeError(null);
-        setEmailChangeSuccess(null);
-        let imageUpdateSuccess = true; 
+        setSuccessMessage(null);
 
         try {
-            // --- Step 1: Handle Profile Image Update ---
+            // Handle Profile Image Update
             if (newImageBlob) {
-                console.log("Profile image changed, attempting update with blob...");
-                await clerkUser.setProfileImage({
-                    file: newImageBlob,
-                });
-                console.log("Profile image updated successfully on Clerk (using blob).");
-                setInitialImageUri(newImageUri);
+                await clerkUser.setProfileImage({ file: newImageBlob });
                 setNewImageUri(null);
                 setNewImageBlob(null);
             }
 
-            // --- Step 2: Handle Clerk Updates (name, state in metadata) ---
-            if (imageUpdateSuccess) {
-                const updates: any = {};
-
-                if (firstName !== clerkUser.firstName) updates.firstName = firstName;
-                if (lastName !== clerkUser.lastName) updates.lastName = lastName;
-                if (selectedState !== clerkUser.unsafeMetadata?.inspectionState) {
-                    updates.unsafeMetadata = { ...clerkUser.unsafeMetadata, inspectionState: selectedState };
-                }
-
-                if (Object.keys(updates).length > 0) {
-                    console.log("Updating user profile metadata/name with:", updates);
-                    await clerkUser.update(updates);
-                }
+            // Handle Clerk Updates
+            const updates: any = {};
+            if (firstName !== clerkUser.firstName) updates.firstName = firstName;
+            if (lastName !== clerkUser.lastName) updates.lastName = lastName;
+            if (selectedState !== clerkUser.unsafeMetadata?.inspectionState) {
+                updates.unsafeMetadata = { ...clerkUser.unsafeMetadata, inspectionState: selectedState };
+            }
+            if (Object.keys(updates).length > 0) {
+                await clerkUser.update(updates);
             }
 
-            // --- Step 3: Save to Backend (profile with all new fields) ---
+            // Save to Backend
             const token = await getToken();
             const backendResponse = await fetch(`${API_URL}/api/user/profile`, {
                 method: 'PUT',
@@ -251,38 +223,26 @@ const ProfileSettingsScreen: React.FC = () => {
                 throw new Error(errorData.message || 'Failed to save profile to backend');
             }
 
-            setIsEditing(false);
             setSuccessMessage('Profile updated successfully!');
             Alert.alert("Success", "Profile updated successfully!");
 
         } catch (err: any) {
             console.error("Error saving profile:", err);
-            const errMessage = err.errors?.[0]?.longMessage || err.errors?.[0]?.message || err.message || "Failed to save profile details.";
-            setError(errMessage); 
+            setError(err.errors?.[0]?.longMessage || err.errors?.[0]?.message || err.message || "Failed to save profile details.");
         } finally {
             setIsLoading(false);
             setIsSavingProfile(false);
         }
     };
 
-    // Function to initiate email change
     const handleInitiateEmailChange = async () => {
         if (!clerkUser) return;
-        
         const trimmedEmail = newEmail.trim();
-        console.log("Attempting to initiate email change for:", trimmedEmail);
-
-        // Add more detailed logging before the regex test
-        console.log(`Validating email: '${trimmedEmail}', Length: ${trimmedEmail.length}, Regex test result: ${/^\S+@\S+\.\S+$/.test(trimmedEmail)}`);
-
-        if (!trimmedEmail || !/^\S+@\S+\.\S+$/.test(trimmedEmail)) { 
+        if (!trimmedEmail || !/^\S+@\S+\.\S+$/.test(trimmedEmail)) {
             setEmailChangeError("Please enter a valid new email address.");
-            console.log("Email validation failed for:", trimmedEmail); 
             return;
         }
-        
-        setError(null);
-        setSuccessMessage(null);
+
         setEmailChangeError(null);
         setEmailChangeSuccess(null);
         setIsLoading(true);
@@ -291,26 +251,16 @@ const ProfileSettingsScreen: React.FC = () => {
             const createdEmailAddress = await clerkUser.createEmailAddress({ email: trimmedEmail });
             await createdEmailAddress.prepareVerification({ strategy: 'email_code' });
             setIsVerifyingEmail(true);
-            setEmailChangeSuccess(`A verification code has been sent to ${trimmedEmail}. Please enter it below.`);
-        } catch (err: unknown) { // Use unknown for better type safety in catch
-            console.error("Error initiating email change:", JSON.stringify(err, null, 2));
+            setEmailChangeSuccess(`A verification code has been sent to ${trimmedEmail}.`);
+        } catch (err: unknown) {
+            console.error("Error initiating email change:", err);
             if (isClerkAPIResponseError(err)) {
-                const reverificationError = err.errors.find(e => e.code === 'session_reverification_required');
-                if (reverificationError) {
-                    const userFriendlyMessage = "This action requires enhanced security. Please sign out and sign back in to continue. If the issue persists after signing back in, please contact support.";
-                    setEmailChangeError(userFriendlyMessage);
-                    Alert.alert(
-                        "Additional Verification Needed",
-                        userFriendlyMessage
-                    );
-                } else {
-                    const firstError = err.errors[0];
-                    setEmailChangeError(firstError?.longMessage || firstError?.message || "An error occurred. Please try again.");
-                }
+                const firstError = err.errors[0];
+                setEmailChangeError(firstError?.longMessage || firstError?.message || "An error occurred.");
             } else if (err instanceof Error) {
-                 setEmailChangeError(err.message || "An unexpected error occurred. Please try again.");
+                setEmailChangeError(err.message || "An unexpected error occurred.");
             } else {
-                setEmailChangeError("An unexpected error occurred. Please try again.");
+                setEmailChangeError("An unexpected error occurred.");
             }
             setIsVerifyingEmail(false);
         } finally {
@@ -318,19 +268,15 @@ const ProfileSettingsScreen: React.FC = () => {
         }
     };
 
-    // Function to attempt email verification
     const handleAttemptEmailVerification = async () => {
-        if (!clerkUser || !newEmail.trim()) return; 
+        if (!clerkUser || !newEmail.trim()) return;
         if (!verificationCode.trim()) {
             setEmailChangeError("Please enter the verification code.");
             return;
         }
-        
-        setError(null);
-        setSuccessMessage(null);
+
         setEmailChangeError(null);
-        setEmailChangeSuccess(null);
-        setIsLoading(true); // General loading for this operation
+        setIsLoading(true);
 
         try {
             const emailAddressToVerify = clerkUser.emailAddresses.find(
@@ -338,7 +284,7 @@ const ProfileSettingsScreen: React.FC = () => {
             );
 
             if (!emailAddressToVerify) {
-                setEmailChangeError("Could not find the email address to verify. Please try initiating the change again.");
+                setEmailChangeError("Could not find the email address to verify.");
                 setIsVerifyingEmail(false);
                 setIsLoading(false);
                 return;
@@ -347,14 +293,12 @@ const ProfileSettingsScreen: React.FC = () => {
             const verifiedEmailAddress = await emailAddressToVerify.attemptVerification({ code: verificationCode });
 
             if (verifiedEmailAddress.verification.status === 'verified') {
-                const backendUrl = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000'; 
-                const token = await getToken(); // Get token using useAuth
-
-                const response = await fetch(`${backendUrl}/api/user/set-primary-email`, {
+                const token = await getToken();
+                const response = await fetch(`${API_URL}/api/user/set-primary-email`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}` // Use the obtained token
+                        'Authorization': `Bearer ${token}`
                     },
                     body: JSON.stringify({ newEmailAddressId: verifiedEmailAddress.id }),
                 });
@@ -364,62 +308,57 @@ const ProfileSettingsScreen: React.FC = () => {
                     throw new Error(errorData.message || 'Failed to set new email as primary.');
                 }
 
-                setEmailChangeSuccess('Email address changed and verified successfully! It is now your primary email.');
+                setEmailChangeSuccess('Email address changed successfully!');
                 setIsVerifyingEmail(false);
                 setNewEmail('');
                 setVerificationCode('');
                 await clerkUser.reload();
             } else {
-                setEmailChangeError("Verification failed. Please check the code and try again.");
+                setEmailChangeError("Verification failed. Please check the code.");
             }
         } catch (err: any) {
-            console.error("Error verifying email:", JSON.stringify(err, null, 2));
-            const errMsg = err.errors?.[0]?.longMessage || err.errors?.[0]?.message || (err.message || "Verification failed. Please try again.");
-            setEmailChangeError(errMsg);
+            console.error("Error verifying email:", err);
+            setEmailChangeError(err.errors?.[0]?.message || err.message || "Verification failed.");
         } finally {
-            setIsLoading(false); // Clear general loading
+            setIsLoading(false);
         }
-    };
-
-    // Step 52: Log Out Logic
-    const handleLogout = async () => {
-        setIsLoading(true);
-        try {
-            await signOut();
-            // Navigation should automatically handle redirecting to login screen via RootLayout/ClerkProvider
-        } catch (err: any) {
-            console.error("Error signing out: ", err);
-            Alert.alert("Logout Error", err.errors?.[0]?.message || "An unexpected error occurred during logout.");
-            setIsLoading(false); // Only stop loading if sign out failed
-        }
-        // No finally block, as successful signout unmounts the component
     };
 
     if (!isClientMounted || !clerkIsLoaded) {
-        return <ActivityIndicator style={styles.loader} size="large" color="#003366" />;
+        return (
+            <View style={styles.loaderContainer}>
+                <ActivityIndicator size="large" color={COLORS.primary} />
+            </View>
+        );
     }
 
     if (!isSignedIn || !clerkUser) {
-        return <View style={styles.safeArea}><Text>Please sign in to view your profile.</Text></View>;
+        return (
+            <View style={styles.safeArea}>
+                <Text>Please sign in to view your profile.</Text>
+            </View>
+        );
     }
 
     return (
         <SafeAreaView style={styles.safeArea}>
-            <ScrollView 
-                style={styles.safeArea}
+            <ScrollView
+                style={styles.scrollView}
                 contentContainerStyle={styles.scrollContentContainer}
                 keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
             >
+                {/* Profile Image */}
                 <TouchableOpacity onPress={pickImage} style={styles.profileImageContainer} disabled={isLoading}>
                     <Image
-                    source={{ uri: newImageUri || profileImageUri || 'https://dummyimage.com/150x150/ccc/000.png&text=Profile' }} 
-                    style={styles.avatar}
+                        source={{ uri: newImageUri || profileImageUri || 'https://dummyimage.com/150x150/ccc/000.png&text=Profile' }}
+                        style={styles.avatar}
                     />
-                <View style={styles.editIconOverlay}> 
-                    <Edit2 size={16} color={COLORS.white} />
+                    <View style={styles.editIconOverlay}>
+                        <Edit2 size={14} color="#fff" />
                     </View>
                 </TouchableOpacity>
-                {/* Display Username */}
+
                 {clerkUser.username && (
                     <Text style={styles.usernameText}>@{clerkUser.username}</Text>
                 )}
@@ -427,68 +366,67 @@ const ProfileSettingsScreen: React.FC = () => {
                 <Text style={styles.title}>Edit Profile</Text>
                 <Text style={styles.description}>Update your details below.</Text>
 
-                <View style={styles.inputContainer}>
-                    <Ionicons name="person-outline" size={20} color={COLORS.darkText} style={styles.inputIcon} />
+                {/* First Name */}
+                <View style={styles.inputWrapper}>
+                    <User size={18} color={COLORS.primary} style={styles.inputIcon} />
                     <TextInput
                         placeholder="First Name"
                         value={firstName}
                         onChangeText={setFirstName}
                         style={styles.input}
-                        placeholderTextColor={COLORS.darkText}
-                        editable={!isLoading} // Disable if any loading
+                        placeholderTextColor="#999"
+                        editable={!isLoading}
                     />
                 </View>
-                <View style={styles.inputContainer}>
-                    <Ionicons name="person-outline" size={20} color={COLORS.darkText} style={styles.inputIcon} />
+
+                {/* Last Name */}
+                <View style={styles.inputWrapper}>
+                    <User size={18} color={COLORS.primary} style={styles.inputIcon} />
                     <TextInput
                         placeholder="Last Name"
                         value={lastName}
-                        onChangeText={(text) => {
-                            setLastName(text);
-                            setError(null);
-                            setSuccessMessage(null);
-                        }}
+                        onChangeText={setLastName}
                         style={styles.input}
-                        placeholderTextColor={COLORS.darkText}
-                        editable={!isLoading} // Disable if any loading
+                        placeholderTextColor="#999"
+                        editable={!isLoading}
                     />
                 </View>
-                
+
                 {/* Phone Number */}
-                <View style={styles.inputContainer}>
-                    <Ionicons name="call-outline" size={20} color={COLORS.darkText} style={styles.inputIcon} />
+                <View style={styles.inputWrapper}>
+                    <Phone size={18} color={COLORS.primary} style={styles.inputIcon} />
                     <TextInput
                         placeholder="Phone Number"
                         value={phoneNumber}
                         onChangeText={setPhoneNumber}
                         style={styles.input}
-                        placeholderTextColor={COLORS.darkText}
+                        placeholderTextColor="#999"
                         keyboardType="phone-pad"
                         editable={!isLoading}
                     />
                 </View>
 
                 {/* Company Name */}
-                <View style={styles.inputContainer}>
-                    <Ionicons name="business-outline" size={20} color={COLORS.darkText} style={styles.inputIcon} />
+                <View style={styles.inputWrapper}>
+                    <Building size={18} color={COLORS.primary} style={styles.inputIcon} />
                     <TextInput
                         placeholder="Company Name (Optional)"
                         value={companyName}
                         onChangeText={setCompanyName}
                         style={styles.input}
-                        placeholderTextColor={COLORS.darkText}
+                        placeholderTextColor="#999"
                         editable={!isLoading}
                     />
                 </View>
 
                 {/* Primary State */}
                 <Text style={styles.fieldLabel}>Primary State</Text>
-                <View style={styles.inputContainer}> 
-                    <Ionicons name="map-outline" size={20} color={COLORS.darkText} style={styles.inputIcon} />
+                <View style={styles.pickerWrapper}>
+                    <MapPin size={18} color={COLORS.primary} style={styles.inputIcon} />
                     <Picker
                         selectedValue={selectedState}
                         onValueChange={(itemValue) => setSelectedState(itemValue)}
-                        style={styles.input}
+                        style={styles.picker}
                         dropdownIconColor={COLORS.primary}
                         enabled={!isLoading}
                     >
@@ -527,9 +465,9 @@ const ProfileSettingsScreen: React.FC = () => {
                                         <Picker.Item key={state.value} label={state.label} value={state.value} />
                                     ))}
                                 {secondaryStates[index] && (
-                                    <Picker.Item 
-                                        label={availableStates.find(s => s.value === secondaryStates[index])?.label || secondaryStates[index]} 
-                                        value={secondaryStates[index]} 
+                                    <Picker.Item
+                                        label={availableStates.find(s => s.value === secondaryStates[index])?.label || secondaryStates[index]}
+                                        value={secondaryStates[index]}
                                     />
                                 )}
                             </Picker>
@@ -539,12 +477,12 @@ const ProfileSettingsScreen: React.FC = () => {
 
                 {/* Organization */}
                 <Text style={styles.fieldLabel}>Professional Organization</Text>
-                <View style={styles.inputContainer}> 
-                    <Ionicons name="ribbon-outline" size={20} color={COLORS.darkText} style={styles.inputIcon} />
+                <View style={styles.pickerWrapper}>
+                    <Award size={18} color={COLORS.primary} style={styles.inputIcon} />
                     <Picker
                         selectedValue={organization}
                         onValueChange={(itemValue) => setOrganization(itemValue)}
-                        style={styles.input}
+                        style={styles.picker}
                         dropdownIconColor={COLORS.primary}
                         enabled={!isLoading}
                     >
@@ -554,94 +492,100 @@ const ProfileSettingsScreen: React.FC = () => {
                     </Picker>
                 </View>
 
-                {/* Moved Save Changes Button and general messages UP */}
+                {/* Save Button */}
                 <TouchableOpacity
-                    style={[styles.button, isLoading && styles.buttonDisabled, {marginTop: 20}] } 
+                    style={[styles.saveButton, isLoading && styles.buttonDisabled]}
                     onPress={handleSaveChanges}
-                    disabled={isLoading} // Simply disable if isLoading is true
+                    disabled={isLoading}
                 >
-                    {isLoading && !isVerifyingEmail ? ( // Show spinner if general save, not email verify
-                        <ActivityIndicator color={COLORS.white} />
+                    {isLoading && !isVerifyingEmail ? (
+                        <ActivityIndicator color="#fff" />
                     ) : (
-                        <><Check size={20} color={COLORS.white} style={{marginRight: 8}} /><Text style={styles.buttonText}>Save Profile Changes</Text></> 
+                        <>
+                            <Check size={20} color="#fff" style={{ marginRight: 8 }} />
+                            <Text style={styles.saveButtonText}>Save Profile Changes</Text>
+                        </>
                     )}
                 </TouchableOpacity>
 
                 {error && <Text style={styles.errorText}>{error}</Text>}
-                {successMessage && !emailChangeSuccess && !emailChangeError && <Text style={styles.successText}>{successMessage}</Text>}
+                {successMessage && <Text style={styles.successText}>{successMessage}</Text>}
 
-                {/* --- Change Email Section --- */}
+                {/* Change Email Section */}
+                <View style={styles.divider} />
                 <Text style={styles.sectionTitle}>Change Email</Text>
 
                 {!isVerifyingEmail ? (
                     <>
                         <Text style={styles.inputLabel}>New Email Address</Text>
-                        <View style={styles.inputContainer}>
-                            <MaterialCommunityIcons name="email-outline" size={20} color="#666" style={styles.icon} />
+                        <View style={styles.inputWrapper}>
+                            <Mail size={18} color={COLORS.primary} style={styles.inputIcon} />
                             <TextInput
                                 value={newEmail}
                                 onChangeText={(text) => {
                                     setNewEmail(text);
-                                    setEmailChangeError(null); 
-                                    // setEmailChangeSuccess(null); // Keep success message until next action
+                                    setEmailChangeError(null);
                                 }}
                                 placeholder="Enter new email"
                                 style={styles.input}
                                 keyboardType="email-address"
                                 autoCapitalize="none"
-                                editable={!isLoading} // Disable if any loading
+                                editable={!isLoading}
                             />
                         </View>
-                        {/* Display success message here if it exists */}
-                        {emailChangeSuccess && <Text style={styles.successText}>{emailChangeSuccess}</Text>} 
-                        {/* Display error message here if it exists (and no success message) */}
-                        {emailChangeError && !isVerifyingEmail && !emailChangeSuccess && <Text style={styles.errorText}>{emailChangeError}</Text>}
-                        <TouchableOpacity style={[styles.button, isLoading && styles.buttonDisabled]} onPress={handleInitiateEmailChange} disabled={isLoading}>
-                            <Text style={styles.buttonText}>{isLoading && isVerifyingEmail === false ? 'Sending...' : 'Send Verification Code'}</Text> 
+                        {emailChangeSuccess && <Text style={styles.successText}>{emailChangeSuccess}</Text>}
+                        {emailChangeError && <Text style={styles.errorText}>{emailChangeError}</Text>}
+                        <TouchableOpacity
+                            style={[styles.secondaryButton, isLoading && styles.buttonDisabled]}
+                            onPress={handleInitiateEmailChange}
+                            disabled={isLoading}
+                        >
+                            <Text style={styles.secondaryButtonText}>
+                                {isLoading ? 'Sending...' : 'Send Verification Code'}
+                            </Text>
                         </TouchableOpacity>
                     </>
                 ) : (
                     <>
                         <Text style={styles.inputLabel}>Verification Code</Text>
-                        <View style={styles.inputContainer}>
-                            <MaterialCommunityIcons name="numeric" size={20} color="#666" style={styles.icon} />
+                        <View style={styles.inputWrapper}>
                             <TextInput
                                 value={verificationCode}
                                 onChangeText={(text) => {
                                     setVerificationCode(text);
-                                    setEmailChangeError(null); 
+                                    setEmailChangeError(null);
                                 }}
                                 placeholder="Enter verification code"
                                 style={styles.input}
                                 keyboardType="number-pad"
-                                editable={!isLoading} // Disable if any loading
+                                editable={!isLoading}
                             />
                         </View>
-                        {/* THIS ERROR IS FINE HERE AS IT PERTAINS TO THE CURRENT VERIFICATION ATTEMPT */}
-                        {emailChangeError && isVerifyingEmail && <Text style={styles.errorText}>{emailChangeError}</Text>}
-                        {/* SUCCESS MESSAGE DURING VERIFICATION IS NO LONGER THE PRIMARY ONE */}
-                        {/* {emailChangeSuccess && <Text style={styles.successText}>{emailChangeSuccess}</Text>} */}
-                        <TouchableOpacity style={[styles.button, isLoading && styles.buttonDisabled]} onPress={handleAttemptEmailVerification} disabled={isLoading}>
-                            <Text style={styles.buttonText}>{isLoading && isVerifyingEmail === true ? 'Verifying...' : 'Verify and Update Email'}</Text>
+                        {emailChangeError && <Text style={styles.errorText}>{emailChangeError}</Text>}
+                        <TouchableOpacity
+                            style={[styles.saveButton, isLoading && styles.buttonDisabled]}
+                            onPress={handleAttemptEmailVerification}
+                            disabled={isLoading}
+                        >
+                            <Text style={styles.saveButtonText}>
+                                {isLoading ? 'Verifying...' : 'Verify and Update Email'}
+                            </Text>
                         </TouchableOpacity>
-                        <TouchableOpacity 
-                            style={[styles.button, styles.cancelButton, isLoading && styles.buttonDisabled]} 
+                        <TouchableOpacity
+                            style={[styles.cancelButton, isLoading && styles.buttonDisabled]}
                             onPress={() => {
                                 setIsVerifyingEmail(false);
                                 setNewEmail('');
                                 setVerificationCode('');
                                 setEmailChangeError(null);
                                 setEmailChangeSuccess(null);
-                                setError(null); 
-                                setSuccessMessage(null); 
                             }}
-                            disabled={isLoading} 
+                            disabled={isLoading}
                         >
-                            <Text style={styles.buttonText}>Cancel</Text>
+                            <Text style={styles.cancelButtonText}>Cancel</Text>
                         </TouchableOpacity>
                     </>
                 )}
-                {/* End of Change Email Section */}
             </ScrollView>
         </SafeAreaView>
     );
@@ -650,153 +594,213 @@ const ProfileSettingsScreen: React.FC = () => {
 const styles = StyleSheet.create({
     safeArea: {
         flex: 1,
-        backgroundColor: COLORS.white,
+        backgroundColor: '#F8FAFC',
+    },
+    scrollView: {
+        flex: 1,
     },
     scrollContentContainer: {
         flexGrow: 1,
         paddingHorizontal: 20,
-        paddingBottom: 30,
-        paddingTop: 30,
+        paddingBottom: 40,
+        paddingTop: 20,
         width: '100%',
         maxWidth: 500,
         alignSelf: 'center',
     },
-    loader: {
+    loaderContainer: {
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
+        backgroundColor: '#F8FAFC',
     },
     title: {
         fontSize: 24,
-        fontWeight: 'bold',
-        color: COLORS.darkText,
+        fontWeight: '700',
+        color: COLORS.textPrimary,
         textAlign: 'center',
-        marginBottom: 10,
+        marginBottom: 6,
     },
     description: {
-        fontSize: 16,
-        color: COLORS.darkText,
+        fontSize: 14,
+        color: COLORS.textSecondary,
         textAlign: 'center',
-        marginBottom: 30,
+        marginBottom: 24,
     },
     profileImageContainer: {
-        marginBottom: 30,
+        marginBottom: 16,
         position: 'relative',
         alignSelf: 'center',
     },
     avatar: {
-        width: 120,
-        height: 120,
-        borderRadius: 60,
+        width: 100,
+        height: 100,
+        borderRadius: 50,
         borderWidth: 3,
-        borderColor: COLORS.primary, 
+        borderColor: COLORS.primary,
+        backgroundColor: '#E2E8F0',
     },
     editIconOverlay: {
         position: 'absolute',
-        bottom: 5,
-        right: 5,
+        bottom: 4,
+        right: 4,
         backgroundColor: COLORS.primary,
         padding: 6,
-        borderRadius: 15,
+        borderRadius: 12,
+        borderWidth: 2,
+        borderColor: '#fff',
     },
-    inputContainer: {
+    usernameText: {
+        fontSize: 14,
+        fontWeight: '500',
+        color: COLORS.textSecondary,
+        textAlign: 'center',
+        marginBottom: 16,
+    },
+    inputWrapper: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#f0f0f0',
-        borderRadius: 8,
-        paddingHorizontal: 10,
-        marginBottom: 15,
+        backgroundColor: '#fff',
+        borderRadius: 10,
+        paddingHorizontal: 14,
+        marginBottom: 12,
         borderWidth: 1,
-        borderColor: '#ddd',
+        borderColor: '#E2E8F0',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.03,
+        shadowRadius: 2,
+        elevation: 1,
     },
     inputIcon: {
         marginRight: 10,
     },
     input: {
         flex: 1,
-        paddingVertical: Platform.OS === 'ios' ? 15 : 12,
-        fontSize: 16,
-        color: '#333',
+        paddingVertical: Platform.OS === 'ios' ? 14 : 12,
+        fontSize: 15,
+        color: COLORS.textPrimary,
     },
-    button: {
-        backgroundColor: '#003366',
-        paddingVertical: 15,
-        borderRadius: 8,
+    pickerWrapper: {
+        flexDirection: 'row',
         alignItems: 'center',
-        marginBottom: 10,
+        backgroundColor: '#fff',
+        borderRadius: 10,
+        paddingLeft: 14,
+        marginBottom: 12,
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+        overflow: 'hidden',
     },
-    buttonDisabled: {
-        backgroundColor: '#a0a0a0',
-    },
-    buttonText: {
-        color: '#ffffff',
-        fontSize: 16,
-        fontWeight: 'bold',
-    },
-    errorText: {
-        color: 'red',
-        marginBottom: 10,
-        textAlign: 'center',
-    },
-    successText: {
-        color: 'green',
-        marginBottom: 10,
-        textAlign: 'center',
-    },
-    sectionTitle: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        color: '#333',
-        marginTop: 20,
-        marginBottom: 15,
-    },
-    cancelButton: {
-        backgroundColor: '#888',
-        marginTop: 5,
-    },
-    inputLabel: {
-        fontSize: 14,
-        fontWeight: '600',
-        color: '#444',
-        marginBottom: 8,
-        marginLeft: 2,
-    },
-    icon: {
-        marginRight: 10,
-    },
-    usernameText: { // Style for the username
-        fontSize: 16,
-        fontWeight: '600',
-        color: '#888888',
-        textAlign: 'center',
-        marginBottom: 20,
+    picker: {
+        flex: 1,
+        height: 50,
+        color: COLORS.textPrimary,
     },
     fieldLabel: {
         fontSize: 14,
         fontWeight: '600',
-        color: COLORS.darkText,
+        color: COLORS.textPrimary,
         marginBottom: 8,
-        marginTop: 10,
+        marginTop: 8,
     },
     fieldHint: {
         fontSize: 12,
-        color: '#888',
-        marginBottom: 8,
+        color: COLORS.textSecondary,
+        marginBottom: 10,
     },
     secondaryStatesContainer: {
-        marginBottom: 15,
+        marginBottom: 12,
     },
     secondaryStatePickerWrapper: {
-        backgroundColor: '#f0f0f0',
-        borderRadius: 8,
+        backgroundColor: '#fff',
+        borderRadius: 10,
         marginBottom: 8,
         borderWidth: 1,
-        borderColor: '#ddd',
+        borderColor: '#E2E8F0',
+        overflow: 'hidden',
     },
     secondaryStatePicker: {
         height: 50,
-        color: '#333',
+        color: COLORS.textPrimary,
     },
-}); 
+    saveButton: {
+        flexDirection: 'row',
+        backgroundColor: COLORS.primary,
+        paddingVertical: 16,
+        borderRadius: 10,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginTop: 16,
+        shadowColor: COLORS.primary,
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.2,
+        shadowRadius: 5,
+        elevation: 3,
+    },
+    saveButtonText: {
+        color: '#fff',
+        fontSize: 16,
+        fontWeight: '700',
+    },
+    buttonDisabled: {
+        opacity: 0.6,
+    },
+    secondaryButton: {
+        backgroundColor: '#fff',
+        paddingVertical: 14,
+        borderRadius: 10,
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: COLORS.primary,
+        marginTop: 8,
+    },
+    secondaryButtonText: {
+        color: COLORS.primary,
+        fontSize: 15,
+        fontWeight: '600',
+    },
+    cancelButton: {
+        backgroundColor: '#F1F5F9',
+        paddingVertical: 14,
+        borderRadius: 10,
+        alignItems: 'center',
+        marginTop: 8,
+    },
+    cancelButtonText: {
+        color: COLORS.textSecondary,
+        fontSize: 15,
+        fontWeight: '600',
+    },
+    errorText: {
+        color: '#DC2626',
+        fontSize: 13,
+        marginTop: 8,
+        textAlign: 'center',
+    },
+    successText: {
+        color: '#059669',
+        fontSize: 13,
+        marginTop: 8,
+        textAlign: 'center',
+    },
+    divider: {
+        height: 1,
+        backgroundColor: '#E2E8F0',
+        marginVertical: 24,
+    },
+    sectionTitle: {
+        fontSize: 18,
+        fontWeight: '700',
+        color: COLORS.textPrimary,
+        marginBottom: 16,
+    },
+    inputLabel: {
+        fontSize: 13,
+        fontWeight: '500',
+        color: COLORS.textSecondary,
+        marginBottom: 6,
+    },
+});
 
-export default ProfileSettingsScreen; 
+export default ProfileSettingsScreen;
