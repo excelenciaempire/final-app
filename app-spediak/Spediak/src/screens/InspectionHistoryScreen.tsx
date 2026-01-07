@@ -62,25 +62,32 @@ const InspectionCard = React.memo(({
     onDownloadImage: (url: string, id: string) => void;
 }) => {
     const displayDate = item.created_at ? new Date(item.created_at).toLocaleString() : 'Date not available';
-    const optimizedImageUrl = getOptimizedImageUrl(item.image_url, 80, 80);
-    const fullImageUrl = getOptimizedImageUrl(item.image_url, 400, 300);
+    const optimizedImageUrl = getOptimizedImageUrl(item.image_url, 100, 100);
+    const fullImageUrl = getOptimizedImageUrl(item.image_url, 600, 400);
+
+    // Get truncated description for preview
+    const truncatedDescription = item.description 
+        ? (item.description.length > 100 ? item.description.substring(0, 100) + '...' : item.description)
+        : 'No description';
 
     return (
         <View style={[styles.itemContainer, isExpanded && styles.itemContainerExpanded]}>
             {/* Header Row - Always visible */}
             <TouchableOpacity style={styles.cardHeader} onPress={onToggleExpand} activeOpacity={0.7}>
-                {optimizedImageUrl ? (
-                    <Image source={{ uri: optimizedImageUrl }} style={styles.itemImage} />
-                ) : (
-                    <View style={styles.itemImagePlaceholder}>
-                        <Text style={styles.itemImagePlaceholderText}>No Image</Text>
-                    </View>
-                )}
+                <View style={styles.imageWrapper}>
+                    {optimizedImageUrl ? (
+                        <Image source={{ uri: optimizedImageUrl }} style={styles.itemImage} />
+                    ) : (
+                        <View style={styles.itemImagePlaceholder}>
+                            <Text style={styles.itemImagePlaceholderText}>No Image</Text>
+                        </View>
+                    )}
+                </View>
                 <View style={styles.itemContent}>
-                    <Text style={styles.itemDescription} numberOfLines={isExpanded ? undefined : 2} ellipsizeMode="tail">
-                        <Text style={styles.boldText}>Description:</Text> {item.description || 'N/A'}
+                    <Text style={styles.itemDescriptionPreview} numberOfLines={2}>
+                        {truncatedDescription}
                     </Text>
-                    <Text style={styles.itemDate}><Text style={styles.boldText}>Date:</Text> {displayDate}</Text>
+                    <Text style={styles.itemDate}>{displayDate}</Text>
                 </View>
                 <View style={styles.expandIndicator}>
                     <Text style={styles.expandIndicatorText}>{isExpanded ? '▲' : '▼'}</Text>
@@ -92,15 +99,19 @@ const InspectionCard = React.memo(({
                 <View style={styles.expandedContent}>
                     {/* Full Image */}
                     {fullImageUrl && (
-                        <Image source={{ uri: fullImageUrl }} style={styles.expandedImage} resizeMode="contain" />
+                        <View style={styles.expandedImageContainer}>
+                            <Image source={{ uri: fullImageUrl }} style={styles.expandedImage} resizeMode="contain" />
+                        </View>
                     )}
 
                     {/* Statement Section */}
                     <View style={styles.statementSection}>
                         <Text style={styles.statementLabel}>Statement:</Text>
-                        <View style={styles.statementBox}>
-                            <Markdown style={markdownStyles}>{item.ddid || 'No statement available.'}</Markdown>
-                        </View>
+                        <ScrollView style={styles.statementScrollView} nestedScrollEnabled={true}>
+                            <View style={styles.statementBox}>
+                                <Text style={styles.statementText}>{item.ddid || 'No statement available.'}</Text>
+                            </View>
+                        </ScrollView>
                     </View>
 
                     {/* Action Buttons */}
@@ -483,38 +494,42 @@ export default function InspectionHistoryScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#f8f9fa',
+        backgroundColor: '#f5f5f5',
     },
     headerTitle: {
         fontSize: 24,
-        fontWeight: 'bold',
-        color: '#333',
+        fontWeight: '700',
+        color: COLORS.textPrimary,
         paddingHorizontal: 20,
         paddingTop: Platform.OS === 'ios' ? 10 : 20,
-        paddingBottom: 10,
-        // Match sidebar header style maybe?
-        // color: COLORS.primary, 
-        // backgroundColor: 'white',
-        // borderBottomColor: '#eee',
-        // borderBottomWidth: 1,
+        paddingBottom: 15,
+        backgroundColor: '#fff',
+        borderBottomWidth: 1,
+        borderBottomColor: '#eee',
     },
     searchContainer: {
         flexDirection: 'row',
         alignItems: 'center',
         backgroundColor: '#ffffff',
-        borderRadius: 8,
-        marginHorizontal: 20,
-        marginBottom: 15,
-        paddingHorizontal: 10,
+        borderRadius: 12,
+        marginHorizontal: 16,
+        marginTop: 16,
+        marginBottom: 16,
+        paddingHorizontal: 14,
         borderWidth: 1,
-        borderColor: '#ced4da',
+        borderColor: '#e0e0e0',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 2,
+        elevation: 1,
     },
     searchIcon: {
-        marginRight: 8,
+        marginRight: 10,
     },
     searchInput: {
         flex: 1,
-        height: 45, // Increased height
+        height: 48,
         fontSize: 16,
         color: '#333',
     },
@@ -524,53 +539,62 @@ const styles = StyleSheet.create({
     },
     itemContainer: {
         backgroundColor: COLORS.white,
-        padding: 15,
-        borderRadius: 8,
-        marginBottom: 15,
+        borderRadius: 12,
+        marginBottom: 12,
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05, // Softer shadow
-        shadowRadius: 2,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.08,
+        shadowRadius: 4,
         elevation: 2,
-        flexDirection: 'row', // Align image and content side-by-side
+        overflow: 'hidden',
+    },
+    imageWrapper: {
+        marginRight: 12,
     },
     itemImage: {
-        width: 80, // Fixed width for image
-        height: 80, // Fixed height for image
-        borderRadius: 6,
-        marginRight: 15,
+        width: 70,
+        height: 70,
+        borderRadius: 8,
+        backgroundColor: '#f0f0f0',
     },
     itemImagePlaceholder: {
-        width: 80,
-        height: 80,
-        borderRadius: 6,
-        marginRight: 15,
-        backgroundColor: COLORS.secondary,
+        width: 70,
+        height: 70,
+        borderRadius: 8,
+        backgroundColor: '#f0f0f0',
         justifyContent: 'center',
         alignItems: 'center',
     },
     itemImagePlaceholderText: {
-        fontSize: 12,
-        color: COLORS.textMuted,
+        fontSize: 10,
+        color: COLORS.textSecondary,
+        textAlign: 'center',
     },
     itemContent: {
-        flex: 1, // Allow content to take remaining space
-        justifyContent: 'center', // Vertically center content if needed
-        marginRight: 5, // Add some space before the delete icon if it were inline
+        flex: 1,
+        justifyContent: 'center',
+        paddingRight: 8,
     },
     itemDescription: {
         fontSize: 14,
-        marginBottom: 5, // Space between description and date
-        color: COLORS.darkText, // Use darkText for better readability
+        marginBottom: 6,
+        color: COLORS.textPrimary,
+        lineHeight: 20,
+    },
+    itemDescriptionPreview: {
+        fontSize: 14,
+        color: COLORS.textPrimary,
+        marginBottom: 6,
+        lineHeight: 20,
     },
     boldText: {
-        fontWeight: 'bold',
-        color: COLORS.primary, // Make bold text primary color for emphasis
+        fontWeight: '600',
+        color: COLORS.primary,
     },
     itemDate: {
         fontSize: 12,
-        color: COLORS.textSeco, // Use textSeco for date
-        marginBottom: 10, // Add space before action buttons
+        color: COLORS.textSecondary,
+        fontWeight: '500',
     },
     actionsContainer: {
         flexDirection: 'row',
@@ -726,58 +750,80 @@ const styles = StyleSheet.create({
     cardHeader: {
         flexDirection: 'row',
         alignItems: 'center',
+        padding: 14,
     },
     expandIndicator: {
-        padding: 8,
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: '#f0f4f8',
         justifyContent: 'center',
         alignItems: 'center',
     },
     expandIndicatorText: {
-        fontSize: 14,
+        fontSize: 12,
         color: COLORS.primary,
-        fontWeight: '600',
+        fontWeight: '700',
     },
     expandedContent: {
-        marginTop: 16,
-        paddingTop: 16,
+        paddingHorizontal: 14,
+        paddingBottom: 14,
+        paddingTop: 0,
         borderTopWidth: 1,
         borderTopColor: '#eee',
     },
+    expandedImageContainer: {
+        marginTop: 14,
+        backgroundColor: '#f5f5f5',
+        borderRadius: 10,
+        overflow: 'hidden',
+        alignItems: 'center',
+    },
     expandedImage: {
         width: '100%',
-        height: 200,
-        borderRadius: 8,
-        marginBottom: 16,
-        backgroundColor: '#f0f0f0',
+        height: 220,
+        borderRadius: 10,
     },
     statementSection: {
-        marginBottom: 16,
+        marginTop: 14,
+        marginBottom: 14,
     },
     statementLabel: {
-        fontSize: 14,
-        fontWeight: '600',
+        fontSize: 13,
+        fontWeight: '700',
         color: COLORS.primary,
         marginBottom: 8,
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+    },
+    statementScrollView: {
+        maxHeight: 180,
     },
     statementBox: {
-        backgroundColor: '#f9f9f9',
-        borderRadius: 8,
-        padding: 12,
-        maxHeight: 200,
+        backgroundColor: '#f8f9fa',
+        borderRadius: 10,
+        padding: 14,
+        borderWidth: 1,
+        borderColor: '#eee',
+    },
+    statementText: {
+        fontSize: 14,
+        color: COLORS.textPrimary,
+        lineHeight: 22,
     },
     expandedActions: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        gap: 8,
+        gap: 10,
     },
     expandedActionBtn: {
         flex: 1,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        paddingVertical: 10,
-        paddingHorizontal: 12,
-        borderRadius: 6,
+        paddingVertical: 12,
+        paddingHorizontal: 14,
+        borderRadius: 8,
         gap: 6,
     },
     expandedActionBtnText: {

@@ -300,29 +300,41 @@ const getActiveSops = async (req, res) => {
     let stateSop = null;
     let orgSop = null;
 
-    // Get state SOP
-    const stateResult = await pool.query(`
-      SELECT sa.*, sd.document_name, sd.document_type, sd.file_url, sd.created_at as doc_created_at
-      FROM sop_assignments sa
-      JOIN sop_documents sd ON sa.document_id = sd.id
-      WHERE sa.assignment_type = 'state' AND sa.assignment_value = $1
-    `, [state]);
+    try {
+      // Get state SOP - using LEFT JOIN to be more resilient
+      const stateResult = await pool.query(`
+        SELECT sa.id, sa.document_id, sa.assignment_type, sa.assignment_value, sa.created_at,
+               sd.document_name, sd.document_type, sd.file_url
+        FROM sop_assignments sa
+        LEFT JOIN sop_documents sd ON sa.document_id = sd.id
+        WHERE sa.assignment_type = 'state' AND sa.assignment_value = $1
+        LIMIT 1
+      `, [state]);
 
-    if (stateResult.rows.length > 0) {
-      stateSop = stateResult.rows[0];
+      if (stateResult.rows.length > 0) {
+        stateSop = stateResult.rows[0];
+      }
+    } catch (stateErr) {
+      console.log('Note: State SOP query failed (table may be empty or structure differs):', stateErr.message);
     }
 
     // Get organization SOP if provided
     if (organization && organization !== 'None') {
-      const orgResult = await pool.query(`
-        SELECT sa.*, sd.document_name, sd.document_type, sd.file_url, sd.created_at as doc_created_at
-        FROM sop_assignments sa
-        JOIN sop_documents sd ON sa.document_id = sd.id
-        WHERE sa.assignment_type = 'organization' AND sa.assignment_value = $1
-      `, [organization]);
+      try {
+        const orgResult = await pool.query(`
+          SELECT sa.id, sa.document_id, sa.assignment_type, sa.assignment_value, sa.created_at,
+                 sd.document_name, sd.document_type, sd.file_url
+          FROM sop_assignments sa
+          LEFT JOIN sop_documents sd ON sa.document_id = sd.id
+          WHERE sa.assignment_type = 'organization' AND sa.assignment_value = $1
+          LIMIT 1
+        `, [organization]);
 
-      if (orgResult.rows.length > 0) {
-        orgSop = orgResult.rows[0];
+        if (orgResult.rows.length > 0) {
+          orgSop = orgResult.rows[0];
+        }
+      } catch (orgErr) {
+        console.log('Note: Org SOP query failed (table may be empty or structure differs):', orgErr.message);
       }
     }
 
@@ -332,7 +344,7 @@ const getActiveSops = async (req, res) => {
       stateSop: stateSop ? {
         id: stateSop.id,
         documentId: stateSop.document_id,
-        documentName: stateSop.document_name,
+        documentName: stateSop.document_name || 'Unknown Document',
         documentType: stateSop.document_type,
         fileUrl: stateSop.file_url,
         assignedAt: stateSop.created_at
@@ -340,7 +352,7 @@ const getActiveSops = async (req, res) => {
       orgSop: orgSop ? {
         id: orgSop.id,
         documentId: orgSop.document_id,
-        documentName: orgSop.document_name,
+        documentName: orgSop.document_name || 'Unknown Document',
         documentType: orgSop.document_type,
         fileUrl: orgSop.file_url,
         assignedAt: orgSop.created_at
@@ -349,7 +361,14 @@ const getActiveSops = async (req, res) => {
 
   } catch (error) {
     console.error('Error fetching active SOPs:', error);
-    res.status(500).json({ message: 'Failed to fetch active SOPs', error: error.message });
+    // Return empty result instead of 500 error so frontend can handle gracefully
+    res.json({
+      state: req.query.state,
+      organization: req.query.organization || null,
+      stateSop: null,
+      orgSop: null,
+      warning: 'Could not load SOP data'
+    });
   }
 };
 

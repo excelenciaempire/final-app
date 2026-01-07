@@ -1,18 +1,23 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Platform, useWindowDimensions } from 'react-native';
 import { useSubscription } from '../context/SubscriptionContext';
 import { useNavigation } from '@react-navigation/native';
 import { COLORS } from '../styles/colors';
-import { TrendingUp, AlertCircle } from 'lucide-react-native';
+import { TrendingUp, AlertCircle, Zap } from 'lucide-react-native';
 
 const StatementUsageCard: React.FC = () => {
   const { subscription, isLoading } = useSubscription();
   const navigation = useNavigation<any>();
+  const { width } = useWindowDimensions();
+  const isLargeScreen = width > 600;
 
   if (isLoading) {
     return (
-      <View style={styles.card}>
-        <ActivityIndicator size="small" color={COLORS.primary} />
+      <View style={[styles.card, isLargeScreen && styles.cardLarge]}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+          <Text style={styles.loadingText}>Loading usage...</Text>
+        </View>
       </View>
     );
   }
@@ -32,14 +37,18 @@ const StatementUsageCard: React.FC = () => {
   };
 
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, isLargeScreen && styles.cardLarge]}>
+      {/* Header */}
       <View style={styles.header}>
         <View style={styles.titleRow}>
-          <TrendingUp size={20} color={COLORS.primary} />
-          <Text style={styles.title}>Statement Usage</Text>
+          <View style={styles.iconContainer}>
+            <TrendingUp size={24} color="#FFFFFF" />
+          </View>
+          <Text style={[styles.title, isLargeScreen && styles.titleLarge]}>Statement Usage</Text>
         </View>
         {isFreePlan && (
           <TouchableOpacity style={styles.upgradeButton} onPress={handleUpgrade}>
+            <Zap size={16} color="#FFFFFF" />
             <Text style={styles.upgradeButtonText}>Upgrade</Text>
           </TouchableOpacity>
         )}
@@ -47,52 +56,79 @@ const StatementUsageCard: React.FC = () => {
 
       {isFreePlan ? (
         <>
-          <View style={styles.usageContainer}>
-            <Text style={styles.usageText}>
-              {statements_used} / {statements_limit} used
-            </Text>
-            <Text style={styles.remainingText}>
-              {statements_remaining} statement{statements_remaining !== 1 ? 's' : ''} remaining
-            </Text>
+          {/* Usage Stats */}
+          <View style={[styles.statsContainer, isLargeScreen && styles.statsContainerLarge]}>
+            <View style={styles.statBox}>
+              <Text style={[styles.statNumber, isLargeScreen && styles.statNumberLarge]}>
+                {statements_used}
+              </Text>
+              <Text style={styles.statLabel}>Used</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statBox}>
+              <Text style={[styles.statNumber, styles.statNumberRemaining, isLargeScreen && styles.statNumberLarge]}>
+                {statements_remaining}
+              </Text>
+              <Text style={styles.statLabel}>Remaining</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statBox}>
+              <Text style={[styles.statNumber, styles.statNumberTotal, isLargeScreen && styles.statNumberLarge]}>
+                {statements_limit}
+              </Text>
+              <Text style={styles.statLabel}>Total</Text>
+            </View>
           </View>
 
-          <View style={styles.progressBarContainer}>
-            <View 
-              style={[
-                styles.progressBarFill, 
-                { 
-                  width: `${Math.min(usagePercentage, 100)}%`,
-                  backgroundColor: isLimitReached ? COLORS.error : isLowUsage ? '#FFA500' : COLORS.primary
-                }
-              ]} 
-            />
+          {/* Progress Bar */}
+          <View style={styles.progressSection}>
+            <View style={styles.progressBarContainer}>
+              <View 
+                style={[
+                  styles.progressBarFill, 
+                  { 
+                    width: `${Math.min(usagePercentage, 100)}%`,
+                    backgroundColor: isLimitReached ? COLORS.error : isLowUsage ? '#FFA500' : COLORS.primary
+                  }
+                ]} 
+              />
+            </View>
+            <Text style={styles.progressText}>{Math.round(usagePercentage)}% used</Text>
           </View>
 
+          {/* Warnings */}
           {isLowUsage && (
             <View style={styles.warningContainer}>
-              <AlertCircle size={16} color="#FFA500" />
+              <AlertCircle size={18} color="#FFA500" />
               <Text style={styles.warningText}>
-                Only {statements_remaining} statement{statements_remaining !== 1 ? 's' : ''} left
+                Only {statements_remaining} statement{statements_remaining !== 1 ? 's' : ''} left this period
               </Text>
             </View>
           )}
 
           {isLimitReached && (
             <View style={styles.limitReachedContainer}>
-              <AlertCircle size={16} color={COLORS.error} />
-              <Text style={styles.limitReachedText}>
-                Free plan limit reached. Upgrade to Pro for unlimited statements.
-              </Text>
+              <AlertCircle size={18} color={COLORS.error} />
+              <View style={styles.limitReachedContent}>
+                <Text style={styles.limitReachedText}>Free plan limit reached</Text>
+                <TouchableOpacity onPress={handleUpgrade}>
+                  <Text style={styles.upgradeLink}>Upgrade to Pro for unlimited →</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           )}
         </>
       ) : (
         <View style={styles.unlimitedContainer}>
-          <Text style={styles.unlimitedText}>
-            ✨ Unlimited Statements
+          <View style={styles.unlimitedBadge}>
+            <Zap size={20} color="#FFFFFF" />
+            <Text style={styles.unlimitedBadgeText}>UNLIMITED</Text>
+          </View>
+          <Text style={[styles.unlimitedText, isLargeScreen && styles.unlimitedTextLarge]}>
+            Generate unlimited statements
           </Text>
           <Text style={styles.planBadge}>
-            {plan_type === 'pro' ? 'Pro Plan' : 'Platinum Plan'} Active
+            {plan_type === 'pro' ? '⭐ Pro Plan' : '👑 Platinum Plan'} Active
           </Text>
         </View>
       )}
@@ -103,112 +139,213 @@ const StatementUsageCard: React.FC = () => {
 const styles = StyleSheet.create({
   card: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: 16,
+    padding: 20,
     marginBottom: 16,
+    width: '100%',
+    maxWidth: 500,
+    alignSelf: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 5,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.05)',
+  },
+  cardLarge: {
+    padding: 24,
+  },
+  loadingContainer: {
+    padding: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: COLORS.textSecondary,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 20,
   },
   titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 12,
+  },
+  iconContainer: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 10,
+    padding: 8,
   },
   title: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 20,
+    fontWeight: '700',
     color: COLORS.textPrimary,
+  },
+  titleLarge: {
+    fontSize: 24,
   },
   upgradeButton: {
     backgroundColor: COLORS.primary,
     paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
+    paddingVertical: 10,
+    borderRadius: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
   },
   upgradeButtonText: {
     color: '#FFFFFF',
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
   },
-  usageContainer: {
-    marginBottom: 12,
+  statsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    backgroundColor: '#F8F9FA',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
   },
-  usageText: {
-    fontSize: 16,
-    fontWeight: '600',
+  statsContainerLarge: {
+    padding: 20,
+  },
+  statBox: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  statDivider: {
+    width: 1,
+    height: 40,
+    backgroundColor: '#E0E0E0',
+  },
+  statNumber: {
+    fontSize: 28,
+    fontWeight: '800',
     color: COLORS.textPrimary,
     marginBottom: 4,
   },
-  remainingText: {
-    fontSize: 14,
+  statNumberLarge: {
+    fontSize: 36,
+  },
+  statNumberRemaining: {
+    color: COLORS.primary,
+  },
+  statNumberTotal: {
     color: COLORS.textSecondary,
   },
+  statLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  progressSection: {
+    marginBottom: 16,
+  },
   progressBarContainer: {
-    height: 8,
-    backgroundColor: '#E0E0E0',
-    borderRadius: 4,
+    height: 12,
+    backgroundColor: '#E8E8E8',
+    borderRadius: 6,
     overflow: 'hidden',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   progressBarFill: {
     height: '100%',
-    borderRadius: 4,
+    borderRadius: 6,
+  },
+  progressText: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    textAlign: 'right',
+    fontWeight: '500',
   },
   warningContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    padding: 12,
-    backgroundColor: '#FFF3E0',
-    borderRadius: 8,
-    borderLeftWidth: 3,
+    gap: 10,
+    padding: 14,
+    backgroundColor: '#FFF8E1',
+    borderRadius: 10,
+    borderLeftWidth: 4,
     borderLeftColor: '#FFA500',
   },
   warningText: {
     fontSize: 14,
-    color: '#F57C00',
-    fontWeight: '500',
+    color: '#E65100',
+    fontWeight: '600',
     flex: 1,
   },
   limitReachedContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    padding: 12,
+    alignItems: 'flex-start',
+    gap: 10,
+    padding: 14,
     backgroundColor: '#FFEBEE',
-    borderRadius: 8,
-    borderLeftWidth: 3,
+    borderRadius: 10,
+    borderLeftWidth: 4,
     borderLeftColor: COLORS.error,
+  },
+  limitReachedContent: {
+    flex: 1,
   },
   limitReachedText: {
     fontSize: 14,
     color: COLORS.error,
-    fontWeight: '500',
-    flex: 1,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  upgradeLink: {
+    fontSize: 13,
+    color: COLORS.primary,
+    fontWeight: '700',
   },
   unlimitedContainer: {
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 16,
+  },
+  unlimitedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginBottom: 12,
+  },
+  unlimitedBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 1,
   },
   unlimitedText: {
     fontSize: 18,
     fontWeight: '600',
-    color: COLORS.primary,
+    color: COLORS.textPrimary,
     marginBottom: 8,
+    textAlign: 'center',
+  },
+  unlimitedTextLarge: {
+    fontSize: 20,
   },
   planBadge: {
     fontSize: 14,
     color: COLORS.textSecondary,
-    fontWeight: '500',
+    fontWeight: '600',
   },
 });
 

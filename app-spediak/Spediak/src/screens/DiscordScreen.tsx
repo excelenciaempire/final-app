@@ -21,15 +21,18 @@ const DiscordScreen: React.FC = () => {
     try {
       setIsLoading(true);
       setError(null);
+      
       const token = await getToken();
       
       if (!token) {
+        setError('Authentication required. Please log in again.');
         setIsLoading(false);
         return;
       }
 
       const response = await axios.get(`${BASE_URL}/api/discord/status`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 10000 // 10 second timeout
       });
 
       setIsConnected(response.data.connected);
@@ -40,7 +43,15 @@ const DiscordScreen: React.FC = () => {
       }
     } catch (err: any) {
       console.error('Error checking Discord connection:', err);
-      setError(err.response?.data?.message || err.message);
+      if (err.code === 'ECONNABORTED') {
+        setError('Request timed out. Please check your connection and try again.');
+      } else if (err.response?.status === 401) {
+        setError('Authentication expired. Please log out and log in again.');
+      } else {
+        setError(err.response?.data?.message || 'Failed to check connection status');
+      }
+      // Set connected to false on error so UI is usable
+      setIsConnected(false);
     } finally {
       setIsLoading(false);
     }

@@ -86,6 +86,7 @@ async function runMigrations() {
       'user_profiles',
       'user_subscriptions',
       'sop_documents',
+      'sop_assignments',
       'sop_state_assignments',
       'sop_org_assignments',
       'sop_history',
