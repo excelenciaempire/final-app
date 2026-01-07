@@ -29,17 +29,26 @@ const LastStatementCard: React.FC = () => {
         return;
       }
 
-      const response = await axios.get(`${BASE_URL}/api/inspection-history`, {
+      const response = await axios.get(`${BASE_URL}/api/inspections`, {
         headers: { Authorization: `Bearer ${token}` },
         params: { limit: 1 },
         timeout: 8000
       });
 
-      if (response.data.history && response.data.history.length > 0) {
-        setLastStatement(response.data.history[0]);
+      // Handle both possible response structures
+      const inspections = response.data.inspections || response.data.history || response.data || [];
+      if (Array.isArray(inspections) && inspections.length > 0) {
+        const inspection = inspections[0];
+        setLastStatement({
+          id: inspection.id,
+          ddid_text: inspection.ddid || inspection.ddid_text || '',
+          state_used: inspection.state || inspection.state_used || '',
+          created_at: inspection.created_at || ''
+        });
       }
     } catch (err: any) {
-      console.log('Error fetching last statement:', err.message);
+      // Silently fail - this is not critical
+      console.log('No statements found or error:', err.message);
     } finally {
       setIsLoading(false);
     }
