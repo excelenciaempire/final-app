@@ -108,12 +108,96 @@ async function syncClerkUsers() {
 
         try {
           const result = await client.query(query, values);
-          if (result.rows[0]?.xmax === '0') {
+          const wasInserted = result.rows[0]?.xmax === '0';
+          
+          if (wasInserted) {
             insertedCount++;
-             console.log(` -> INSERTED user ${clerk_id}`);
+            console.log(` -> INSERTED user ${clerk_id}`);
+            
+            // For new users, create profile and subscription
+            const organization = user.unsafeMetadata?.organization || null;
+            const companyName = user.unsafeMetadata?.companyName || null;
+            
+            // Create user profile
+            await client.query(`
+              INSERT INTO user_profiles (clerk_id, primary_state, secondary_states, organization, company_name)
+              VALUES ($1, $2, $3, $4, $5)
+              ON CONFLICT (clerk_id) DO NOTHING
+            `, [clerk_id, userState || 'NC', [], organization, companyName]);
+            console.log(` -> Created user_profiles for ${clerk_id}`);
+            
+            // Create user subscription (check for active promo)
+            let bonusStatements = 0;
+            let promoId = null;
+            
+            try {
+              const promoResult = await client.query(`
+                SELECT id, free_statements, promo_name
+                FROM signup_promotions 
+                WHERE is_active = TRUE 
+                AND start_date <= CURRENT_DATE 
+                AND end_date >= CURRENT_DATE
+                ORDER BY created_at DESC
+                LIMIT 1
+              `);
+              
+              if (promoResult.rows.length > 0) {
+                bonusStatements = promoResult.rows[0].free_statements || 0;
+                promoId = promoResult.rows[0].id;
+                console.log(` -> Active promotion found: ${promoResult.rows[0].promo_name} (+${bonusStatements} statements)`);
+              }
+            } catch (promoErr) {
+              console.warn(` -> Error checking promotions:`, promoErr.message);
+            }
+            
+            const baseLimit = 5;
+            const totalLimit = baseLimit + bonusStatements;
+            
+            await client.query(`
+              INSERT INTO user_subscriptions (clerk_id, plan_type, statements_used, statements_limit, last_reset_date, subscription_status)
+              VALUES ($1, $2, $3, $4, NOW(), $5)
+              ON CONFLICT (clerk_id) DO NOTHING
+            `, [clerk_id, 'free', 0, totalLimit, 'active']);
+            console.log(` -> Created user_subscriptions for ${clerk_id} (limit: ${totalLimit})`);
+            
+            // Update promo info if applicable
+            if (promoId) {
+              await client.query(`
+                UPDATE users SET signup_promo_id = $1, promo_statements_granted = $2
+                WHERE clerk_id = $3
+              `, [promoId, bonusStatements, clerk_id]);
+            }
+            
+            // Create default security flags
+            await client.query(`
+              INSERT INTO user_security_flags (user_clerk_id, is_admin, is_beta_user, is_vip, is_suspended, fraud_flag)
+              VALUES ($1, FALSE, FALSE, FALSE, FALSE, FALSE)
+              ON CONFLICT (user_clerk_id) DO NOTHING
+            `, [clerk_id]);
+            console.log(` -> Created user_security_flags for ${clerk_id}`);
+            
           } else {
             updatedCount++;
-             console.log(` -> UPDATED user ${clerk_id}`);
+            console.log(` -> UPDATED user ${clerk_id}`);
+            
+            // Ensure profile and subscription exist for existing users
+            await client.query(`
+              INSERT INTO user_profiles (clerk_id, primary_state, secondary_states, organization, company_name)
+              VALUES ($1, $2, $3, $4, $5)
+              ON CONFLICT (clerk_id) DO NOTHING
+            `, [clerk_id, userState || 'NC', [], null, null]);
+            
+            await client.query(`
+              INSERT INTO user_subscriptions (clerk_id, plan_type, statements_used, statements_limit, last_reset_date, subscription_status)
+              VALUES ($1, $2, $3, $4, NOW(), $5)
+              ON CONFLICT (clerk_id) DO NOTHING
+            `, [clerk_id, 'free', 0, 5, 'active']);
+            
+            await client.query(`
+              INSERT INTO user_security_flags (user_clerk_id, is_admin, is_beta_user, is_vip, is_suspended, fraud_flag)
+              VALUES ($1, FALSE, FALSE, FALSE, FALSE, FALSE)
+              ON CONFLICT (user_clerk_id) DO NOTHING
+            `, [clerk_id]);
           }
         } catch (dbErr) {
           console.error(`Error upserting user ${clerk_id}:`, dbErr);

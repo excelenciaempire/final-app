@@ -2,6 +2,7 @@ const pool = require('../db');
 
 /**
  * Get user profile and subscription data
+ * Creates all necessary records if they don't exist (for users who bypassed webhook)
  */
 const getUserProfile = async (req, res) => {
   try {
@@ -12,38 +13,100 @@ const getUserProfile = async (req, res) => {
     }
 
     // Get user profile
-    const profileResult = await pool.query(
+    let profileResult = await pool.query(
       'SELECT * FROM user_profiles WHERE clerk_id = $1',
       [clerkId]
     );
 
     // Get user subscription
-    const subscriptionResult = await pool.query(
+    let subscriptionResult = await pool.query(
       'SELECT * FROM user_subscriptions WHERE clerk_id = $1',
       [clerkId]
     );
 
+    // Auto-create profile if it doesn't exist
     if (profileResult.rows.length === 0) {
-      // Create default profile if it doesn't exist
+      console.log(`[UserController] Creating missing profile for user ${clerkId}`);
       await pool.query(`
         INSERT INTO user_profiles (clerk_id, primary_state, secondary_states, organization, company_name)
         VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (clerk_id) DO NOTHING
       `, [clerkId, 'NC', [], null, null]);
 
-      const newProfile = await pool.query(
+      profileResult = await pool.query(
         'SELECT * FROM user_profiles WHERE clerk_id = $1',
         [clerkId]
       );
-
-      return res.json({
-        profile: newProfile.rows[0],
-        subscription: subscriptionResult.rows[0] || null
-      });
     }
+
+    // Auto-create subscription if it doesn't exist
+    if (subscriptionResult.rows.length === 0) {
+      console.log(`[UserController] Creating missing subscription for user ${clerkId}`);
+      
+      // Check for active promotions
+      let bonusStatements = 0;
+      let promoId = null;
+      
+      try {
+        const promoResult = await pool.query(`
+          SELECT id, free_statements, promo_name
+          FROM signup_promotions 
+          WHERE is_active = TRUE 
+          AND start_date <= CURRENT_DATE 
+          AND end_date >= CURRENT_DATE
+          ORDER BY created_at DESC
+          LIMIT 1
+        `);
+        
+        if (promoResult.rows.length > 0) {
+          bonusStatements = promoResult.rows[0].free_statements || 0;
+          promoId = promoResult.rows[0].id;
+          console.log(`[UserController] Active promotion: ${promoResult.rows[0].promo_name} (+${bonusStatements})`);
+        }
+      } catch (promoErr) {
+        console.warn(`[UserController] Error checking promotions:`, promoErr.message);
+      }
+      
+      const baseLimit = 5;
+      const totalLimit = baseLimit + bonusStatements;
+      
+      await pool.query(`
+        INSERT INTO user_subscriptions (clerk_id, plan_type, statements_used, statements_limit, last_reset_date, subscription_status)
+        VALUES ($1, $2, $3, $4, NOW(), $5)
+        ON CONFLICT (clerk_id) DO NOTHING
+      `, [clerkId, 'free', 0, totalLimit, 'active']);
+      
+      // Link promo if applicable
+      if (promoId) {
+        await pool.query(`
+          UPDATE users SET signup_promo_id = $1, promo_statements_granted = $2
+          WHERE clerk_id = $3
+        `, [promoId, bonusStatements, clerkId]);
+      }
+
+      subscriptionResult = await pool.query(
+        'SELECT * FROM user_subscriptions WHERE clerk_id = $1',
+        [clerkId]
+      );
+    }
+
+    // Auto-create security flags if they don't exist
+    await pool.query(`
+      INSERT INTO user_security_flags (user_clerk_id, is_admin, is_beta_user, is_vip, is_suspended, fraud_flag)
+      VALUES ($1, FALSE, FALSE, FALSE, FALSE, FALSE)
+      ON CONFLICT (user_clerk_id) DO NOTHING
+    `, [clerkId]);
+
+    // Get security flags
+    const securityResult = await pool.query(
+      'SELECT * FROM user_security_flags WHERE user_clerk_id = $1',
+      [clerkId]
+    );
 
     res.json({
       profile: profileResult.rows[0],
-      subscription: subscriptionResult.rows[0] || null
+      subscription: subscriptionResult.rows[0] || null,
+      securityFlags: securityResult.rows[0] || null
     });
 
   } catch (error) {
@@ -127,6 +190,7 @@ const updateProfile = async (req, res) => {
 
 /**
  * Get user subscription status with usage limits
+ * Includes promo checking and auto-creation for users who bypassed webhook
  */
 const getSubscriptionStatus = async (req, res) => {
   try {
@@ -136,30 +200,70 @@ const getSubscriptionStatus = async (req, res) => {
       return res.status(401).json({ message: 'Unauthorized' });
     }
 
-    const result = await pool.query(
+    let result = await pool.query(
       'SELECT * FROM user_subscriptions WHERE clerk_id = $1',
       [clerkId]
     );
 
     if (result.rows.length === 0) {
-      // Create default free subscription
+      console.log(`[UserController] Creating missing subscription for user ${clerkId}`);
+      
+      // Check for active promotions
+      let bonusStatements = 0;
+      let promoId = null;
+      
+      try {
+        const promoResult = await pool.query(`
+          SELECT id, free_statements, promo_name
+          FROM signup_promotions 
+          WHERE is_active = TRUE 
+          AND start_date <= CURRENT_DATE 
+          AND end_date >= CURRENT_DATE
+          ORDER BY created_at DESC
+          LIMIT 1
+        `);
+        
+        if (promoResult.rows.length > 0) {
+          bonusStatements = promoResult.rows[0].free_statements || 0;
+          promoId = promoResult.rows[0].id;
+          console.log(`[UserController] Active promotion: ${promoResult.rows[0].promo_name} (+${bonusStatements})`);
+        }
+      } catch (promoErr) {
+        console.warn(`[UserController] Error checking promotions:`, promoErr.message);
+      }
+      
+      const baseLimit = 5;
+      const totalLimit = baseLimit + bonusStatements;
+
+      // Create subscription with promo if applicable
       const newSub = await pool.query(`
         INSERT INTO user_subscriptions (
           clerk_id, 
           plan_type, 
           statements_used, 
           statements_limit, 
-          last_reset_date
-        ) VALUES ($1, $2, $3, $4, NOW())
+          last_reset_date,
+          subscription_status
+        ) VALUES ($1, $2, $3, $4, NOW(), $5)
         RETURNING *
-      `, [clerkId, 'free', 0, 5]);
+      `, [clerkId, 'free', 0, totalLimit, 'active']);
+      
+      // Link promo if applicable
+      if (promoId) {
+        await pool.query(`
+          UPDATE users SET signup_promo_id = $1, promo_statements_granted = $2
+          WHERE clerk_id = $3
+        `, [promoId, bonusStatements, clerkId]);
+      }
 
       const subscription = newSub.rows[0];
       return res.json({
         ...subscription,
         statements_remaining: subscription.statements_limit - subscription.statements_used,
         is_unlimited: false,
-        can_generate: subscription.statements_used < subscription.statements_limit
+        can_generate: subscription.statements_used < subscription.statements_limit,
+        promo_applied: promoId ? true : false,
+        bonus_statements: bonusStatements
       });
     }
 
@@ -184,7 +288,15 @@ const getSubscriptionStatus = async (req, res) => {
       }
     }
 
-    const isUnlimited = subscription.plan_type !== 'free';
+    // Check if user is suspended
+    const securityResult = await pool.query(
+      'SELECT is_suspended FROM user_security_flags WHERE user_clerk_id = $1',
+      [clerkId]
+    );
+    
+    const isSuspended = securityResult.rows.length > 0 && securityResult.rows[0].is_suspended;
+
+    const isUnlimited = subscription.plan_type !== 'free' && subscription.plan_type !== 'trial';
     const statementsRemaining = isUnlimited 
       ? -1 
       : subscription.statements_limit - subscription.statements_used;
@@ -193,7 +305,8 @@ const getSubscriptionStatus = async (req, res) => {
       ...subscription,
       statements_remaining: statementsRemaining,
       is_unlimited: isUnlimited,
-      can_generate: isUnlimited || subscription.statements_used < subscription.statements_limit
+      can_generate: !isSuspended && (isUnlimited || subscription.statements_used < subscription.statements_limit),
+      is_suspended: isSuspended
     });
 
   } catch (error) {

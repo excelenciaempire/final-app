@@ -124,13 +124,69 @@ const handleClerkWebhook = async (req, res) => {
         `, [clerk_id_created, userStateCreated || 'NC', [], organizationCreated, companyNameCreated]);
         console.log(`[Webhook] user.created: Created user_profiles for ${clerk_id_created}`);
         
-        // Create user_subscriptions entry
+        // Check for active sign-up promotions
+        let bonusStatements = 0;
+        let promoId = null;
+        try {
+          const promoResult = await pool.query(`
+            SELECT id, free_statements, promo_name
+            FROM signup_promotions 
+            WHERE is_active = TRUE 
+            AND start_date <= CURRENT_DATE 
+            AND end_date >= CURRENT_DATE
+            ORDER BY created_at DESC
+            LIMIT 1
+          `);
+          
+          if (promoResult.rows.length > 0) {
+            bonusStatements = promoResult.rows[0].free_statements || 0;
+            promoId = promoResult.rows[0].id;
+            console.log(`[Webhook] user.created: Active promotion found - "${promoResult.rows[0].promo_name}" grants ${bonusStatements} bonus statements`);
+          }
+        } catch (promoErr) {
+          console.warn(`[Webhook] user.created: Error checking promotions:`, promoErr.message);
+        }
+
+        // Create user_subscriptions entry with promotion bonus
+        const baseLimit = 5;
+        const totalLimit = baseLimit + bonusStatements;
+        
         await pool.query(`
-          INSERT INTO user_subscriptions (clerk_id, plan_type, statements_used, statements_limit, last_reset_date)
-          VALUES ($1, $2, $3, $4, NOW())
+          INSERT INTO user_subscriptions (clerk_id, plan_type, statements_used, statements_limit, last_reset_date, subscription_status)
+          VALUES ($1, $2, $3, $4, NOW(), $5)
           ON CONFLICT (clerk_id) DO NOTHING
-        `, [clerk_id_created, 'free', 0, 5]);
-        console.log(`[Webhook] user.created: Created user_subscriptions for ${clerk_id_created}`);
+        `, [clerk_id_created, 'free', 0, totalLimit, 'active']);
+        console.log(`[Webhook] user.created: Created user_subscriptions for ${clerk_id_created} (limit: ${totalLimit}${bonusStatements > 0 ? ` including ${bonusStatements} promo bonus` : ''})`);
+        
+        // Update user record with promo info if applicable
+        if (promoId) {
+          await pool.query(`
+            UPDATE users SET signup_promo_id = $1, promo_statements_granted = $2
+            WHERE clerk_id = $3
+          `, [promoId, bonusStatements, clerk_id_created]);
+          console.log(`[Webhook] user.created: Linked user ${clerk_id_created} to promotion ${promoId}`);
+        }
+        
+        // Create default user_security_flags entry
+        await pool.query(`
+          INSERT INTO user_security_flags (user_clerk_id, is_admin, is_beta_user, is_vip, is_suspended, fraud_flag)
+          VALUES ($1, FALSE, FALSE, FALSE, FALSE, FALSE)
+          ON CONFLICT (user_clerk_id) DO NOTHING
+        `, [clerk_id_created]);
+        console.log(`[Webhook] user.created: Created user_security_flags for ${clerk_id_created}`);
+        
+        // Log user creation to audit log
+        await pool.query(`
+          INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, action_details)
+          VALUES ($1, $2, $3, $4, $5, $6)
+        `, ['system', 'user_created', 'user_management', 'user', clerk_id_created, JSON.stringify({
+          email: primaryEmailCreated,
+          name: fullNameCreated,
+          state: userStateCreated,
+          promotion_applied: promoId ? true : false,
+          bonus_statements: bonusStatements
+        })]);
+        console.log(`[Webhook] user.created: Logged creation event for ${clerk_id_created}`);
       } catch (insertErr) {
         if (insertErr.code === '23505') { // Unique constraint violation (e.g., clerk_id or email already exists)
           console.warn(`[Webhook] user.created: INSERT failed for ${clerk_id_created} due to unique constraint (likely already exists). Attempting UPDATE as a fallback.`);
