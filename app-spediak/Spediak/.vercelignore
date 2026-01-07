@@ -1,0 +1,21 @@
+# Vercel ignore - force clean builds
+.expo/
+.expo-shared/
+node_modules/
+npm-debug.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+web-build/
+dist/
+
+# Logs
+logs
+*.log
+
+# OS
+.DS_Store
+

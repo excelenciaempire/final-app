@@ -5,10 +5,12 @@ import * as SecureStore from "expo-secure-store";
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { StyleSheet, Text, View, Platform, ScrollView } from 'react-native';
-import AuthNavigator from "./src/navigation/AuthNavigator"; // Revert path
-import RootNavigator from "./src/navigation/RootNavigator"; // Import RootNavigator
+import AuthNavigator from "./src/navigation/AuthNavigator";
+import RootNavigator from "./src/navigation/RootNavigator";
 import { GlobalStateProvider } from "./src/context/GlobalStateContext";
 import { SubscriptionProvider } from "./src/context/SubscriptionContext";
+
+// Version: 2.0.1 - Force rebuild
 
 // Error Boundary Component
 class ErrorBoundary extends React.Component<
