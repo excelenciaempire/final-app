@@ -57,4 +57,77 @@ const uploadImageController = async (req, res) => {
   }
 };
 
-module.exports = { uploadImageController }; 
+/**
+ * Upload ad image with optional cropping
+ */
+const uploadAdImage = async (req, res) => {
+  console.log('[uploadController.js] uploadAdImage called');
+
+  if (!req.auth || !req.auth.userId) {
+    return res.status(401).json({ message: 'User not authenticated' });
+  }
+
+  const { image, crop, originalSize } = req.body;
+
+  if (!image) {
+    return res.status(400).json({ message: 'Missing image data' });
+  }
+
+  try {
+    console.log('[CloudinaryUpload] Uploading ad image...');
+    
+    // Build transformation options for cropping
+    let transformations = [];
+    
+    if (crop && originalSize && originalSize.width && originalSize.height) {
+      // Calculate crop coordinates as percentages (Cloudinary uses absolute pixel values)
+      const cropX = Math.round(crop.x);
+      const cropY = Math.round(crop.y);
+      const cropWidth = Math.round(crop.width);
+      const cropHeight = Math.round(crop.height);
+      
+      transformations.push({
+        crop: 'crop',
+        x: cropX,
+        y: cropY,
+        width: cropWidth,
+        height: cropHeight
+      });
+      
+      // Resize to final ad dimensions (500x120)
+      transformations.push({
+        width: 500,
+        height: 120,
+        crop: 'fill'
+      });
+    } else {
+      // If no crop data, just resize to ad dimensions
+      transformations.push({
+        width: 500,
+        height: 120,
+        crop: 'fill',
+        gravity: 'center'
+      });
+    }
+
+    // Upload to Cloudinary with transformations
+    const uploadResponse = await cloudinary.uploader.upload(image, {
+      resource_type: 'image',
+      folder: 'spediak_ads',
+      transformation: transformations
+    });
+
+    console.log('[CloudinaryUpload] Ad image upload successful. URL:', uploadResponse.secure_url);
+    
+    return res.status(200).json({ 
+      url: uploadResponse.secure_url,
+      public_id: uploadResponse.public_id
+    });
+
+  } catch (error) {
+    console.error('[CloudinaryUpload] Error uploading ad image:', error);
+    return res.status(500).json({ message: 'Failed to upload image', details: error.message });
+  }
+};
+
+module.exports = { uploadImageController, uploadAdImage }; 

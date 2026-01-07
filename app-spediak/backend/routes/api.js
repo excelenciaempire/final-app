@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { uploadImageController, uploadAudio } = require('../controllers/uploadController');
+const { uploadImageController, uploadAdImage } = require('../controllers/uploadController');
 const { requireAuth } = require('../middleware/clerkAuth');
 const { generatePreDescription } = require('../controllers/preDescriptionController');
 const { generateDdid, generateStatementDirect } = require('../controllers/ddidController');
@@ -16,6 +16,9 @@ router.use(requireAuth);
 
 // Route to handle image uploads
 router.post('/upload-image', uploadImageController);
+
+// Route to handle ad image uploads with cropping
+router.post('/upload/ad-image', uploadAdImage);
 
 // Route to handle audio uploads and transcription
 router.post('/transcribe', transcribeAudio);
