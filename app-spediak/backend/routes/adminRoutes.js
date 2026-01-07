@@ -14,7 +14,26 @@ const {
   addUserNote,
   getGiftHistory,
   getTrialResetHistory,
-  getUserDetails
+  getUserDetails,
+  searchUserByEmail,
+  // User overrides
+  getUserOverride,
+  saveUserOverride,
+  clearUserOverride,
+  // Promotions
+  getActivePromotion,
+  getAllPromotions,
+  savePromotion,
+  clearPromotion,
+  // Security flags
+  getUserSecurityFlags,
+  updateUserSecurityFlags,
+  // Support tags
+  getUserSupportTags,
+  addUserSupportTag,
+  removeUserSupportTag,
+  // Audit trail
+  getUserAuditTrail
 } = require('../controllers/adminController');
 const knowledgeRoutes = require('./knowledgeRoutes'); // Import knowledge base routes
 const sopController = require('../controllers/sopController');
@@ -50,6 +69,32 @@ router.post('/users/:userId/notes', addUserNote);
 // Admin history logs
 router.get('/gift-history', getGiftHistory);
 router.get('/trial-reset-history', getTrialResetHistory);
+
+// User search by email
+router.get('/search-user', searchUserByEmail);
+
+// User statement overrides
+router.get('/user-override', getUserOverride);
+router.post('/user-override', saveUserOverride);
+router.post('/user-override/clear', clearUserOverride);
+
+// Sign-up promotions
+router.get('/promotions', getAllPromotions);
+router.get('/promotions/active', getActivePromotion);
+router.post('/promotions', savePromotion);
+router.post('/promotions/clear', clearPromotion);
+
+// User security flags
+router.get('/users/:userId/security-flags', getUserSecurityFlags);
+router.put('/users/:userId/security-flags', updateUserSecurityFlags);
+
+// User support tags
+router.get('/users/:userId/tags', getUserSupportTags);
+router.post('/users/:userId/tags', addUserSupportTag);
+router.delete('/users/:userId/tags/:tagId', removeUserSupportTag);
+
+// User audit trail
+router.get('/users/:userId/audit-trail', getUserAuditTrail);
 
 // SOP Management Routes (Admin only)
 router.post('/sop/upload', sopController.uploadSopDocument);

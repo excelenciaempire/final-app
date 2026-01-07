@@ -92,7 +92,11 @@ async function runMigrations() {
       'sop_history',
       'admin_gifted_credits',
       'admin_user_notes',
-      'admin_trial_resets'
+      'admin_trial_resets',
+      'admin_user_overrides',
+      'signup_promotions',
+      'user_support_tags',
+      'user_security_flags'
     ];
     
     const existingTables = tablesResult.rows.map(r => r.table_name);

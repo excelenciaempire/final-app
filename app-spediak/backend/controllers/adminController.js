@@ -626,17 +626,591 @@ const getUserDetails = async (req, res) => {
   }
 };
 
+// ============================================
+// USER STATEMENT OVERRIDES
+// ============================================
+
+/**
+ * Get user override by email
+ */
+const getUserOverride = async (req, res) => {
+  const { email } = req.query;
+
+  if (!email) {
+    return res.status(400).json({ message: 'Email is required' });
+  }
+
+  try {
+    const result = await pool.query(
+      'SELECT * FROM admin_user_overrides WHERE user_email = $1 AND is_active = TRUE',
+      [email]
+    );
+
+    res.json({
+      override: result.rows.length > 0 ? result.rows[0] : null
+    });
+
+  } catch (error) {
+    console.error('[Admin] Error fetching user override:', error);
+    res.status(500).json({ message: 'Failed to fetch user override', error: error.message });
+  }
+};
+
+/**
+ * Save or update user statement override
+ */
+const saveUserOverride = async (req, res) => {
+  const { email, statementAllowance, reason } = req.body;
+  const adminClerkId = req.auth?.userId;
+
+  if (!email || statementAllowance === undefined) {
+    return res.status(400).json({ message: 'Email and statement allowance are required' });
+  }
+
+  try {
+    // Find user by email
+    const userResult = await pool.query(
+      'SELECT clerk_id FROM users WHERE email = $1',
+      [email]
+    );
+
+    const userClerkId = userResult.rows.length > 0 ? userResult.rows[0].clerk_id : null;
+
+    // Upsert the override
+    const result = await pool.query(`
+      INSERT INTO admin_user_overrides (user_clerk_id, user_email, statement_allowance, override_reason, created_by)
+      VALUES ($1, $2, $3, $4, $5)
+      ON CONFLICT (user_email) 
+      DO UPDATE SET 
+        statement_allowance = $3,
+        override_reason = $4,
+        is_active = TRUE,
+        updated_at = NOW()
+      RETURNING *
+    `, [userClerkId, email, statementAllowance, reason || null, adminClerkId]);
+
+    // If user exists, also update their subscription limit
+    if (userClerkId) {
+      await pool.query(`
+        UPDATE user_subscriptions 
+        SET statements_limit = $1, updated_at = NOW()
+        WHERE clerk_id = $2
+      `, [statementAllowance, userClerkId]);
+    }
+
+    // Log to audit
+    await pool.query(`
+      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, action_details)
+      VALUES ($1, $2, $3, $4, $5, $6)
+    `, [adminClerkId, 'save_override', 'user_management', 'user', userClerkId || email, JSON.stringify({ email, statementAllowance, reason })]);
+
+    res.json({
+      message: 'Override saved successfully',
+      override: result.rows[0]
+    });
+
+  } catch (error) {
+    console.error('[Admin] Error saving user override:', error);
+    res.status(500).json({ message: 'Failed to save user override', error: error.message });
+  }
+};
+
+/**
+ * Clear user statement override
+ */
+const clearUserOverride = async (req, res) => {
+  const { email } = req.body;
+  const adminClerkId = req.auth?.userId;
+
+  if (!email) {
+    return res.status(400).json({ message: 'Email is required' });
+  }
+
+  try {
+    const result = await pool.query(`
+      UPDATE admin_user_overrides 
+      SET is_active = FALSE, updated_at = NOW()
+      WHERE user_email = $1
+      RETURNING *
+    `, [email]);
+
+    // Log to audit
+    await pool.query(`
+      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, action_details)
+      VALUES ($1, $2, $3, $4, $5)
+    `, [adminClerkId, 'clear_override', 'user_management', 'user', JSON.stringify({ email })]);
+
+    res.json({
+      message: 'Override cleared successfully',
+      cleared: result.rowCount > 0
+    });
+
+  } catch (error) {
+    console.error('[Admin] Error clearing user override:', error);
+    res.status(500).json({ message: 'Failed to clear user override', error: error.message });
+  }
+};
+
+// ============================================
+// SIGN-UP PROMOTIONS
+// ============================================
+
+/**
+ * Get active sign-up promotion
+ */
+const getActivePromotion = async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT * FROM signup_promotions 
+      WHERE is_active = TRUE 
+      AND start_date <= CURRENT_DATE 
+      AND end_date >= CURRENT_DATE
+      ORDER BY created_at DESC
+      LIMIT 1
+    `);
+
+    res.json({
+      promotion: result.rows.length > 0 ? result.rows[0] : null
+    });
+
+  } catch (error) {
+    console.error('[Admin] Error fetching active promotion:', error);
+    res.status(500).json({ message: 'Failed to fetch active promotion', error: error.message });
+  }
+};
+
+/**
+ * Get all promotions
+ */
+const getAllPromotions = async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT 
+        p.*,
+        u.email as created_by_email,
+        u.name as created_by_name,
+        (SELECT COUNT(*) FROM users WHERE signup_promo_id = p.id) as users_enrolled
+      FROM signup_promotions p
+      LEFT JOIN users u ON p.created_by = u.clerk_id
+      ORDER BY p.created_at DESC
+    `);
+
+    res.json({
+      promotions: result.rows
+    });
+
+  } catch (error) {
+    console.error('[Admin] Error fetching promotions:', error);
+    res.status(500).json({ message: 'Failed to fetch promotions', error: error.message });
+  }
+};
+
+/**
+ * Save sign-up promotion
+ */
+const savePromotion = async (req, res) => {
+  const { promoName, startDate, endDate, freeStatements } = req.body;
+  const adminClerkId = req.auth?.userId;
+
+  if (!startDate || !endDate || !freeStatements) {
+    return res.status(400).json({ message: 'Start date, end date, and free statements are required' });
+  }
+
+  if (new Date(endDate) < new Date(startDate)) {
+    return res.status(400).json({ message: 'End date must be after start date' });
+  }
+
+  try {
+    const result = await pool.query(`
+      INSERT INTO signup_promotions (promo_name, start_date, end_date, free_statements, created_by, is_active)
+      VALUES ($1, $2, $3, $4, $5, TRUE)
+      RETURNING *
+    `, [promoName || `Promo ${new Date().toISOString().split('T')[0]}`, startDate, endDate, freeStatements, adminClerkId]);
+
+    // Log to audit
+    await pool.query(`
+      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, action_details)
+      VALUES ($1, $2, $3, $4, $5, $6)
+    `, [adminClerkId, 'create_promotion', 'promotions', 'promotion', result.rows[0].id, JSON.stringify({ promoName, startDate, endDate, freeStatements })]);
+
+    res.json({
+      message: 'Promotion saved successfully',
+      promotion: result.rows[0]
+    });
+
+  } catch (error) {
+    console.error('[Admin] Error saving promotion:', error);
+    res.status(500).json({ message: 'Failed to save promotion', error: error.message });
+  }
+};
+
+/**
+ * Clear/deactivate promotion
+ */
+const clearPromotion = async (req, res) => {
+  const { promoId } = req.body;
+  const adminClerkId = req.auth?.userId;
+
+  try {
+    let result;
+    if (promoId) {
+      // Clear specific promotion
+      result = await pool.query(`
+        UPDATE signup_promotions 
+        SET is_active = FALSE, updated_at = NOW()
+        WHERE id = $1
+        RETURNING *
+      `, [promoId]);
+    } else {
+      // Clear all active promotions
+      result = await pool.query(`
+        UPDATE signup_promotions 
+        SET is_active = FALSE, updated_at = NOW()
+        WHERE is_active = TRUE
+        RETURNING *
+      `);
+    }
+
+    // Log to audit
+    await pool.query(`
+      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, action_details)
+      VALUES ($1, $2, $3, $4, $5)
+    `, [adminClerkId, 'clear_promotion', 'promotions', 'promotion', JSON.stringify({ promoId: promoId || 'all', cleared_count: result.rowCount })]);
+
+    res.json({
+      message: 'Promotion(s) cleared successfully',
+      clearedCount: result.rowCount
+    });
+
+  } catch (error) {
+    console.error('[Admin] Error clearing promotion:', error);
+    res.status(500).json({ message: 'Failed to clear promotion', error: error.message });
+  }
+};
+
+// ============================================
+// USER SECURITY FLAGS & ROLES
+// ============================================
+
+/**
+ * Get user security flags
+ */
+const getUserSecurityFlags = async (req, res) => {
+  const { userId } = req.params;
+
+  if (!userId) {
+    return res.status(400).json({ message: 'User ID is required' });
+  }
+
+  try {
+    const result = await pool.query(
+      'SELECT * FROM user_security_flags WHERE user_clerk_id = $1',
+      [userId]
+    );
+
+    res.json({
+      flags: result.rows.length > 0 ? result.rows[0] : {
+        is_admin: false,
+        is_beta_user: false,
+        is_vip: false,
+        is_suspended: false,
+        fraud_flag: false
+      }
+    });
+
+  } catch (error) {
+    console.error('[Admin] Error fetching security flags:', error);
+    res.status(500).json({ message: 'Failed to fetch security flags', error: error.message });
+  }
+};
+
+/**
+ * Update user security flags
+ */
+const updateUserSecurityFlags = async (req, res) => {
+  const { userId } = req.params;
+  const { isAdmin, isBetaUser, isVip, isSuspended, suspensionReason, fraudFlag, fraudNotes } = req.body;
+  const adminClerkId = req.auth?.userId;
+
+  if (!userId) {
+    return res.status(400).json({ message: 'User ID is required' });
+  }
+
+  try {
+    const result = await pool.query(`
+      INSERT INTO user_security_flags (
+        user_clerk_id, is_admin, is_beta_user, is_vip, is_suspended, 
+        suspension_reason, suspended_at, suspended_by, fraud_flag, fraud_notes
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      ON CONFLICT (user_clerk_id) 
+      DO UPDATE SET 
+        is_admin = $2,
+        is_beta_user = $3,
+        is_vip = $4,
+        is_suspended = $5,
+        suspension_reason = $6,
+        suspended_at = CASE WHEN $5 = TRUE AND user_security_flags.is_suspended = FALSE THEN NOW() ELSE user_security_flags.suspended_at END,
+        suspended_by = CASE WHEN $5 = TRUE THEN $8 ELSE user_security_flags.suspended_by END,
+        fraud_flag = $9,
+        fraud_notes = $10,
+        updated_at = NOW()
+      RETURNING *
+    `, [
+      userId, 
+      isAdmin || false, 
+      isBetaUser || false, 
+      isVip || false, 
+      isSuspended || false, 
+      suspensionReason || null,
+      isSuspended ? new Date() : null,
+      adminClerkId,
+      fraudFlag || false,
+      fraudNotes || null
+    ]);
+
+    // Log to audit
+    await pool.query(`
+      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, action_details)
+      VALUES ($1, $2, $3, $4, $5, $6)
+    `, [adminClerkId, 'update_security_flags', 'security', 'user', userId, JSON.stringify({ isAdmin, isBetaUser, isVip, isSuspended, fraudFlag })]);
+
+    res.json({
+      message: 'Security flags updated successfully',
+      flags: result.rows[0]
+    });
+
+  } catch (error) {
+    console.error('[Admin] Error updating security flags:', error);
+    res.status(500).json({ message: 'Failed to update security flags', error: error.message });
+  }
+};
+
+// ============================================
+// USER SUPPORT TAGS
+// ============================================
+
+/**
+ * Get user support tags
+ */
+const getUserSupportTags = async (req, res) => {
+  const { userId } = req.params;
+
+  if (!userId) {
+    return res.status(400).json({ message: 'User ID is required' });
+  }
+
+  try {
+    const result = await pool.query(`
+      SELECT t.*, u.email as added_by_email
+      FROM user_support_tags t
+      LEFT JOIN users u ON t.added_by = u.clerk_id
+      WHERE t.user_clerk_id = $1
+      ORDER BY t.created_at DESC
+    `, [userId]);
+
+    res.json({
+      tags: result.rows
+    });
+
+  } catch (error) {
+    console.error('[Admin] Error fetching support tags:', error);
+    res.status(500).json({ message: 'Failed to fetch support tags', error: error.message });
+  }
+};
+
+/**
+ * Add support tag to user
+ */
+const addUserSupportTag = async (req, res) => {
+  const { userId } = req.params;
+  const { tagName, tagColor } = req.body;
+  const adminClerkId = req.auth?.userId;
+
+  if (!userId || !tagName) {
+    return res.status(400).json({ message: 'User ID and tag name are required' });
+  }
+
+  try {
+    const result = await pool.query(`
+      INSERT INTO user_support_tags (user_clerk_id, tag_name, tag_color, added_by)
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT (user_clerk_id, tag_name) DO NOTHING
+      RETURNING *
+    `, [userId, tagName, tagColor || '#6366f1', adminClerkId]);
+
+    if (result.rows.length === 0) {
+      return res.status(409).json({ message: 'Tag already exists for this user' });
+    }
+
+    res.json({
+      message: 'Tag added successfully',
+      tag: result.rows[0]
+    });
+
+  } catch (error) {
+    console.error('[Admin] Error adding support tag:', error);
+    res.status(500).json({ message: 'Failed to add support tag', error: error.message });
+  }
+};
+
+/**
+ * Remove support tag from user
+ */
+const removeUserSupportTag = async (req, res) => {
+  const { userId, tagId } = req.params;
+
+  if (!userId || !tagId) {
+    return res.status(400).json({ message: 'User ID and tag ID are required' });
+  }
+
+  try {
+    const result = await pool.query(
+      'DELETE FROM user_support_tags WHERE id = $1 AND user_clerk_id = $2 RETURNING *',
+      [tagId, userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Tag not found' });
+    }
+
+    res.json({
+      message: 'Tag removed successfully'
+    });
+
+  } catch (error) {
+    console.error('[Admin] Error removing support tag:', error);
+    res.status(500).json({ message: 'Failed to remove support tag', error: error.message });
+  }
+};
+
+// ============================================
+// AUDIT TRAIL
+// ============================================
+
+/**
+ * Get user audit trail
+ */
+const getUserAuditTrail = async (req, res) => {
+  const { userId } = req.params;
+  const limit = parseInt(req.query.limit) || 50;
+  const offset = parseInt(req.query.offset) || 0;
+
+  if (!userId) {
+    return res.status(400).json({ message: 'User ID is required' });
+  }
+
+  try {
+    const result = await pool.query(`
+      SELECT 
+        a.*,
+        u.email as admin_email,
+        u.name as admin_name
+      FROM admin_audit_log a
+      LEFT JOIN users u ON a.admin_clerk_id = u.clerk_id
+      WHERE a.target_user_id = $1 OR a.target_id = $1
+      ORDER BY a.created_at DESC
+      LIMIT $2 OFFSET $3
+    `, [userId, limit, offset]);
+
+    const countResult = await pool.query(
+      'SELECT COUNT(*) FROM admin_audit_log WHERE target_user_id = $1 OR target_id = $1',
+      [userId]
+    );
+
+    res.json({
+      events: result.rows,
+      total: parseInt(countResult.rows[0].count),
+      limit,
+      offset
+    });
+
+  } catch (error) {
+    console.error('[Admin] Error fetching audit trail:', error);
+    res.status(500).json({ message: 'Failed to fetch audit trail', error: error.message });
+  }
+};
+
+/**
+ * Search user by email with full details
+ */
+const searchUserByEmail = async (req, res) => {
+  const { email } = req.query;
+
+  if (!email) {
+    return res.status(400).json({ message: 'Email is required' });
+  }
+
+  try {
+    const result = await pool.query(`
+      SELECT 
+        u.*,
+        up.primary_state,
+        up.secondary_states,
+        up.organization,
+        up.company_name,
+        us.plan_type,
+        us.statements_used,
+        us.statements_limit,
+        us.last_reset_date,
+        sf.is_admin,
+        sf.is_beta_user,
+        sf.is_vip,
+        sf.is_suspended,
+        sf.fraud_flag,
+        (SELECT COUNT(*) FROM inspections WHERE user_id = u.clerk_id) as inspection_count,
+        (SELECT COUNT(*) FROM admin_user_notes WHERE user_clerk_id = u.clerk_id) as notes_count
+      FROM users u
+      LEFT JOIN user_profiles up ON u.clerk_id = up.clerk_id
+      LEFT JOIN user_subscriptions us ON u.clerk_id = us.clerk_id
+      LEFT JOIN user_security_flags sf ON u.clerk_id = sf.user_clerk_id
+      WHERE LOWER(u.email) = LOWER($1)
+    `, [email]);
+
+    if (result.rows.length === 0) {
+      return res.json({ user: null });
+    }
+
+    res.json({
+      user: result.rows[0]
+    });
+
+  } catch (error) {
+    console.error('[Admin] Error searching user:', error);
+    res.status(500).json({ message: 'Failed to search user', error: error.message });
+  }
+};
+
 module.exports = {
   getAllInspections: getAllInspectionsWithUserDetails,
   getAllUsers,
   exportUsersCsv,
   deleteUser,
-  // New admin features
+  // User management
   giftCredits,
   resetTrial,
   getUserNotes,
   addUserNote,
   getGiftHistory,
   getTrialResetHistory,
-  getUserDetails
+  getUserDetails,
+  searchUserByEmail,
+  // User overrides
+  getUserOverride,
+  saveUserOverride,
+  clearUserOverride,
+  // Promotions
+  getActivePromotion,
+  getAllPromotions,
+  savePromotion,
+  clearPromotion,
+  // Security flags
+  getUserSecurityFlags,
+  updateUserSecurityFlags,
+  // Support tags
+  getUserSupportTags,
+  addUserSupportTag,
+  removeUserSupportTag,
+  // Audit trail
+  getUserAuditTrail
 }; 
