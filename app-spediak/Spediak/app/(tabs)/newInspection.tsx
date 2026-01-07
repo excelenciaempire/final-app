@@ -209,10 +209,11 @@ export default function NewInspectionScreen() {
     const [isGeneratingFinalDdid, setIsGeneratingFinalDdid] = useState<boolean>(false);
     const [cloudinaryUrl, setCloudinaryUrl] = useState<string | null>(null);
 
-    // --- Use Global State Context for selected state ---
-    const { selectedState, isContentStale, clearStaleFlag } = useGlobalState();
+    // --- Use Global State Context for selected state and organization ---
+    const { selectedState, selectedOrganization, isContentStale, clearStaleFlag } = useGlobalState();
     const { subscription, canGenerateStatement } = useSubscription();
     const userState = selectedState || user?.unsafeMetadata?.inspectionState as string || 'NC';
+    const userOrganization = selectedOrganization || user?.unsafeMetadata?.organization as string || 'None';
     // --- End global state usage ---
 
     // --- Refactored Image Picking Logic ---
@@ -406,15 +407,13 @@ export default function NewInspectionScreen() {
             const token = await getToken();
             if (!token) throw new Error("Authentication token not found.");
 
-            // Get organization from user profile (if available)
-            const organization = user?.unsafeMetadata?.organization as string || 'None';
-
+            console.log(`[handleGenerateStatement] Generating statement for State: ${userState}, Organization: ${userOrganization}`);
             console.log(`[handleGenerateStatement] Calling POST ${BASE_URL}/api/generate-statement`);
             const response = await axios.post(`${BASE_URL}/api/generate-statement`, {
                 imageBase64,
                 notes: initialDescription,
                 userState,
-                organization,
+                organization: userOrganization,
             }, {
                 headers: { Authorization: `Bearer ${token}` },
             });

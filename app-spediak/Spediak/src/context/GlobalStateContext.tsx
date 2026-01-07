@@ -56,9 +56,20 @@ export const US_STATES = [
   { label: 'Wyoming', value: 'WY' },
 ];
 
+// Organizations list
+export const ORGANIZATIONS = [
+  { label: 'None', value: 'None' },
+  { label: 'ASHI (American Society of Home Inspectors)', value: 'ASHI' },
+  { label: 'InterNACHI (International Association of Certified Home Inspectors)', value: 'InterNACHI' },
+  { label: 'NAHI (National Association of Home Inspectors)', value: 'NAHI' },
+  { label: 'Other', value: 'Other' },
+];
+
 interface GlobalStateContextType {
   selectedState: string | null;
   setSelectedState: (state: string) => void;
+  selectedOrganization: string | null;
+  setSelectedOrganization: (org: string) => void;
   isContentStale: boolean;
   markContentAsStale: () => void;
   clearStaleFlag: () => void;
@@ -67,26 +78,36 @@ interface GlobalStateContextType {
 const GlobalStateContext = createContext<GlobalStateContextType | undefined>(undefined);
 
 const STORAGE_KEY = '@spediak_selected_state';
+const ORG_STORAGE_KEY = '@spediak_selected_organization';
 const STALE_FLAG_KEY = '@spediak_content_stale';
 
 export const GlobalStateProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [selectedState, setSelectedStateInternal] = useState<string | null>('NC');
+  const [selectedOrganization, setSelectedOrganizationInternal] = useState<string | null>('None');
   const [isContentStale, setIsContentStale] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // Load persisted state on mount
+  // Load persisted state and organization on mount
   useEffect(() => {
     const loadPersistedState = async () => {
       try {
         if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
-          const saved = localStorage.getItem(STORAGE_KEY);
-          if (saved) {
-            setSelectedStateInternal(saved);
+          const savedState = localStorage.getItem(STORAGE_KEY);
+          const savedOrg = localStorage.getItem(ORG_STORAGE_KEY);
+          if (savedState) {
+            setSelectedStateInternal(savedState);
+          }
+          if (savedOrg) {
+            setSelectedOrganizationInternal(savedOrg);
           }
         } else if (Platform.OS !== 'web') {
-          const saved = await AsyncStorage.getItem(STORAGE_KEY);
-          if (saved) {
-            setSelectedStateInternal(saved);
+          const savedState = await AsyncStorage.getItem(STORAGE_KEY);
+          const savedOrg = await AsyncStorage.getItem(ORG_STORAGE_KEY);
+          if (savedState) {
+            setSelectedStateInternal(savedState);
+          }
+          if (savedOrg) {
+            setSelectedOrganizationInternal(savedOrg);
           }
         }
       } catch (error) {
@@ -116,6 +137,26 @@ export const GlobalStateProvider: React.FC<{ children: ReactNode }> = ({ childre
       }
     } catch (error) {
       console.error('Error persisting state:', error);
+    }
+  };
+
+  const setSelectedOrganization = async (org: string) => {
+    // If organization is changing and we have existing content, mark as stale
+    if (selectedOrganization && selectedOrganization !== org) {
+      markContentAsStale();
+    }
+
+    setSelectedOrganizationInternal(org);
+
+    // Persist to storage
+    try {
+      if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
+        localStorage.setItem(ORG_STORAGE_KEY, org);
+      } else if (Platform.OS !== 'web') {
+        await AsyncStorage.setItem(ORG_STORAGE_KEY, org);
+      }
+    } catch (error) {
+      console.error('Error persisting organization:', error);
     }
   };
 
@@ -151,6 +192,8 @@ export const GlobalStateProvider: React.FC<{ children: ReactNode }> = ({ childre
       value={{
         selectedState,
         setSelectedState,
+        selectedOrganization,
+        setSelectedOrganization,
         isContentStale,
         markContentAsStale,
         clearStaleFlag,
@@ -169,6 +212,8 @@ export const useGlobalState = () => {
     return {
       selectedState: 'NC',
       setSelectedState: () => {},
+      selectedOrganization: 'None',
+      setSelectedOrganization: () => {},
       isContentStale: false,
       markContentAsStale: () => {},
       clearStaleFlag: () => {},

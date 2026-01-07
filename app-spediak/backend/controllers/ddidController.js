@@ -8,55 +8,83 @@ const openai = new OpenAI({
 
 /**
  * Get SOP text context for a given state and organization
+ * 
+ * This function fetches the Standards of Practice (SOP) documents that apply
+ * to the user's current inspection context. It retrieves:
+ * 1. State-level SOP (e.g., North Carolina regulations)
+ * 2. Organization-level SOP (e.g., ASHI or InterNACHI standards)
+ * 
+ * If no SOP is found, returns empty string (doesn't break the process)
  */
 async function getSopContext(state, organization) {
   let sopTexts = [];
   
   try {
-    // Get state SOP text
+    // Step A: Get STATE SOP text (primary authority)
+    console.log(`[SOP Context] Fetching State SOP for: ${state}`);
     const stateResult = await pool.query(`
       SELECT sd.document_name, sd.extracted_text
       FROM sop_assignments sa
       JOIN sop_documents sd ON sa.document_id = sd.id
       WHERE sa.assignment_type = 'state' AND sa.assignment_value = $1
-      AND sd.extracted_text IS NOT NULL
+      AND sd.extracted_text IS NOT NULL AND sd.extracted_text != ''
     `, [state]);
     
     if (stateResult.rows.length > 0 && stateResult.rows[0].extracted_text) {
+      const stateText = stateResult.rows[0].extracted_text;
       sopTexts.push({
-        type: 'State',
+        type: 'STATE',
         name: stateResult.rows[0].document_name,
-        text: stateResult.rows[0].extracted_text.substring(0, 15000) // Limit to 15k chars per SOP
+        text: stateText.substring(0, 15000), // Limit to 15k chars per SOP
+        priority: 1 // Highest priority
       });
+      console.log(`[SOP Context] State SOP loaded: ${stateResult.rows[0].document_name} (${stateText.length} chars)`);
+    } else {
+      console.log(`[SOP Context] No State SOP found for: ${state}`);
     }
     
-    // Get organization SOP text if provided
-    if (organization && organization !== 'None') {
+    // Step B: Get ORGANIZATION SOP text (secondary authority)
+    if (organization && organization !== 'None' && organization !== '') {
+      console.log(`[SOP Context] Fetching Organization SOP for: ${organization}`);
       const orgResult = await pool.query(`
         SELECT sd.document_name, sd.extracted_text
         FROM sop_assignments sa
         JOIN sop_documents sd ON sa.document_id = sd.id
         WHERE sa.assignment_type = 'organization' AND sa.assignment_value = $1
-        AND sd.extracted_text IS NOT NULL
+        AND sd.extracted_text IS NOT NULL AND sd.extracted_text != ''
       `, [organization]);
       
       if (orgResult.rows.length > 0 && orgResult.rows[0].extracted_text) {
+        const orgText = orgResult.rows[0].extracted_text;
         sopTexts.push({
-          type: 'Organization',
+          type: 'ORGANIZATION',
           name: orgResult.rows[0].document_name,
-          text: orgResult.rows[0].extracted_text.substring(0, 15000)
+          text: orgText.substring(0, 15000),
+          priority: 2 // Secondary priority
         });
+        console.log(`[SOP Context] Organization SOP loaded: ${orgResult.rows[0].document_name} (${orgText.length} chars)`);
+      } else {
+        console.log(`[SOP Context] No Organization SOP found for: ${organization}`);
       }
     }
   } catch (error) {
-    console.error('[DDID] Error fetching SOP context:', error);
+    // Don't break the process if SOP fetch fails - just log and continue
+    console.error('[SOP Context] Error fetching SOP context:', error.message);
+    return '';
   }
   
-  if (sopTexts.length === 0) return '';
+  // Return empty string if no SOPs found (process continues with generic mode)
+  if (sopTexts.length === 0) {
+    console.log('[SOP Context] No SOPs loaded - using generic mode');
+    return '';
+  }
+  
+  // Sort by priority (State first, then Organization) and format
+  sopTexts.sort((a, b) => a.priority - b.priority);
   
   return sopTexts.map(sop => 
-    `=== ${sop.type} SOP: ${sop.name} ===\n${sop.text}`
-  ).join('\n\n');
+    `=== ${sop.type} STANDARDS: ${sop.name} ===\n(Priority: ${sop.type === 'STATE' ? 'PRIMARY - Takes precedence in conflicts' : 'SECONDARY - Defer to State if conflict'})\n\n${sop.text}`
+  ).join('\n\n---\n\n');
 }
 
 const generateDdidController = async (req, res) => {
@@ -174,8 +202,16 @@ Generate the DDID statement now.
 };
 
 /**
- * Direct Statement Generation - Combines pre-description and DDID into single call
- * This is the streamlined flow that skips the intermediate pre-description review step
+ * Direct Statement Generation - Streamlined single-call flow
+ * 
+ * Flow:
+ * 1. Context (already known): User's State and Organization from profile/selector
+ * 2. Trigger: User takes photo, adds notes, presses "Analyze Defect"
+ * 3. Internal processing:
+ *    - Step A: Fetch SOPs for State and Organization from database
+ *    - Step B: Apply DDID format (Describe, Determine, Implication, Direction)
+ *    - Step C: Establish hierarchy (State rules > Organization rules if conflict)
+ * 4. Result: Return single professional paragraph immediately
  */
 const generateStatementDirect = async (req, res) => {
   const { imageBase64, notes, userState, organization } = req.body;
@@ -184,6 +220,8 @@ const generateStatementDirect = async (req, res) => {
   if (!imageBase64 || !userState) {
     return res.status(400).json({ message: 'Missing required fields (image, userState).' });
   }
+
+  console.log(`[Generate Statement] Request received - State: ${userState}, Organization: ${organization || 'None'}`);
 
   try {
     // Check subscription limits BEFORE generating
@@ -222,39 +260,73 @@ const generateStatementDirect = async (req, res) => {
       }
     }
 
-    // Fetch the DDID prompt from the database
-    const promptResult = await pool.query("SELECT prompt_content FROM prompts WHERE prompt_name = 'ddid_prompt'");
-    if (promptResult.rows.length === 0) {
-      return res.status(500).json({ message: 'DDID prompt not found in the database.' });
+    // Fetch the DDID prompt from the database (fallback if not found)
+    let ddid_prompt_template = '';
+    try {
+      const promptResult = await pool.query("SELECT prompt_content FROM prompts WHERE prompt_name = 'ddid_prompt'");
+      if (promptResult.rows.length > 0) {
+        ddid_prompt_template = promptResult.rows[0].prompt_content;
+      }
+    } catch (promptError) {
+      console.warn('[Generate Statement] Could not fetch DDID prompt from DB, using built-in format');
     }
-    const ddid_prompt_template = promptResult.rows[0].prompt_content;
 
     // Get knowledge base context
-    const knowledge = await searchKnowledgeBase(notes || '');
+    let knowledge = '';
+    try {
+      knowledge = await searchKnowledgeBase(notes || '') || '';
+    } catch (kbError) {
+      console.warn('[Generate Statement] Knowledge base search failed:', kbError.message);
+    }
     
-    // Get SOP context based on user's state and organization
+    // Step A: Fetch SOPs for State and Organization
     const sopContext = await getSopContext(userState, organization);
+    const hasSopContext = sopContext && sopContext.length > 0;
+    
+    console.log(`[Generate Statement] SOP Context loaded: ${hasSopContext ? 'Yes' : 'No'}`);
 
-    // Build comprehensive prompt
-    const prompt = `
-${sopContext ? `Relevant Standards of Practice (SOP) Documentation:\n${sopContext}\n---\n` : ''}
-${knowledge ? `Relevant Knowledge Base Info:\n${knowledge}\n---\n` : ''}
-${ddid_prompt_template}
+    // Build comprehensive prompt with clear instructions
+    const prompt = `You are an expert home inspector writing professional inspection reports.
 
-Inspector Data:
+=== ROLE & CONTEXT ===
+You must analyze the attached image of a home inspection defect and generate a professional statement.
+The inspector is working in ${userState} state${organization && organization !== 'None' ? ` and is a member of ${organization}` : ''}.
+
+=== STANDARDS OF PRACTICE (SOPs) ===
+${hasSopContext ? `The following regulatory documents apply to this inspection:
+
+${sopContext}
+
+CRITICAL HIERARCHY RULE: If there is ANY conflict between State regulations and Organization standards, you MUST follow the State (${userState}) regulations. State rules always take precedence over Organization guidelines.` : 'No specific SOP documents are loaded for this state/organization. Use general home inspection best practices.'}
+
+=== OUTPUT FORMAT: DDID ===
+You MUST structure your response using the DDID format:
+1. **DESCRIBE**: What is the component or system being inspected? (Be specific about location and type)
+2. **DETERMINE**: What is the defect or issue? (State the problem clearly)
+3. **IMPLICATION**: What damage or risk does this pose? (Explain the consequences if not addressed)
+4. **DIRECTION**: What action should be taken? (Provide a clear recommendation)
+
+Combine these four elements into a SINGLE, cohesive professional paragraph. Do NOT use bullet points or numbered lists.
+
+${ddid_prompt_template ? `=== ADDITIONAL GUIDANCE ===\n${ddid_prompt_template}\n` : ''}
+${knowledge ? `=== RELEVANT KNOWLEDGE ===\n${knowledge}\n` : ''}
+=== INSPECTOR INPUT ===
 - Location (State): ${userState}
 ${organization && organization !== 'None' ? `- Organization: ${organization}` : ''}
-- Inspector Notes: ${notes || 'None provided'}
-- Image: <attached>
+- Inspector Notes: ${notes || 'No additional notes provided'}
+- Image: [Attached below]
 
-IMPORTANT: Generate a professional DDID statement based on the image and notes provided. 
-The statement should be compliant with ${userState} state regulations${organization && organization !== 'None' ? ` and ${organization} standards` : ''}.
-Analyze the image thoroughly before generating the statement.
+=== INSTRUCTIONS ===
+1. Analyze the image thoroughly
+2. Identify the defect shown
+3. Write a single professional paragraph following the DDID format
+4. Cite applicable standards if relevant
+5. Be technical but clear
+6. Do NOT include greetings, explanations, or meta-commentary - just the statement
 
-Generate the DDID statement now.
-`;
+Generate the DDID statement now:`;
 
-    console.log('[Generate Statement] Processing request for state:', userState);
+    console.log('[Generate Statement] Sending request to OpenAI...');
 
     const response = await openai.chat.completions.create({
       model: 'gpt-4o',
@@ -273,10 +345,15 @@ Generate the DDID statement now.
         },
       ],
       max_tokens: 800,
+      temperature: 0.7,
     });
 
     let statement = response.choices[0].message.content?.trim() || 'Error generating statement.';
+    
+    // Clean up the response (remove markdown formatting, extra whitespace)
     statement = statement.replace(/\*\*/g, '');
+    statement = statement.replace(/^\s*[-•]\s*/gm, ''); // Remove bullet points if any
+    statement = statement.trim();
 
     // Increment usage counter AFTER successful generation (for free tier only)
     if (clerkId) {
@@ -290,14 +367,15 @@ Generate the DDID statement now.
           'UPDATE user_subscriptions SET statements_used = statements_used + 1, updated_at = NOW() WHERE clerk_id = $1',
           [clerkId]
         );
+        console.log(`[Generate Statement] Usage incremented for user ${clerkId}`);
       }
     }
 
-    console.log("[Generate Statement] Generated:", statement.substring(0, 100) + '...');
+    console.log("[Generate Statement] Successfully generated:", statement.substring(0, 100) + '...');
     
     return res.json({ 
       statement,
-      sopUsed: sopContext ? true : false,
+      sopUsed: hasSopContext,
       state: userState,
       organization: organization || null
     });
