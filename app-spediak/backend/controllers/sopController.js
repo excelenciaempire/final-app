@@ -404,6 +404,7 @@ const getSopHistory = async (req, res) => {
       actionType, 
       state, 
       organization, 
+      timeframe,
       search, 
       limit = 20, 
       offset = 0 
@@ -422,33 +423,51 @@ const getSopHistory = async (req, res) => {
     const params = [];
     let paramCount = 1;
 
-    // Apply filters
+    // Apply scope filter (state or organization)
     if (scope && scope !== 'all') {
       query += ` AND sh.assignment_type = $${paramCount}`;
       params.push(scope);
       paramCount++;
     }
 
+    // Apply action type filter
     if (actionType && actionType !== 'all') {
-      query += ` AND sh.action_type = $${paramCount}`;
+      query += ` AND LOWER(sh.action_type) = LOWER($${paramCount})`;
       params.push(actionType);
       paramCount++;
     }
 
-    if (state) {
+    // Apply timeframe filter
+    if (timeframe && timeframe !== 'all') {
+      if (timeframe === 'last7') {
+        query += ` AND sh.created_at >= NOW() - INTERVAL '7 days'`;
+      } else if (timeframe === 'last30') {
+        query += ` AND sh.created_at >= NOW() - INTERVAL '30 days'`;
+      }
+    }
+
+    // Apply state filter
+    if (state && state !== 'All') {
       query += ` AND sh.assignment_type = 'state' AND sh.assignment_value = $${paramCount}`;
       params.push(state);
       paramCount++;
     }
 
-    if (organization) {
+    // Apply organization filter
+    if (organization && organization !== 'All') {
       query += ` AND sh.assignment_type = 'organization' AND sh.assignment_value = $${paramCount}`;
       params.push(organization);
       paramCount++;
     }
 
+    // Apply search filter
     if (search) {
-      query += ` AND sd.document_name ILIKE $${paramCount}`;
+      query += ` AND (
+        sd.document_name ILIKE $${paramCount} OR 
+        sh.assignment_value ILIKE $${paramCount} OR
+        u.email ILIKE $${paramCount} OR
+        sh.action_type ILIKE $${paramCount}
+      )`;
       params.push(`%${search}%`);
       paramCount++;
     }
@@ -458,31 +477,59 @@ const getSopHistory = async (req, res) => {
 
     const result = await pool.query(query, params);
 
-    // Get total count
+    // Get total count with same filters
     let countQuery = `
       SELECT COUNT(*) 
       FROM sop_history sh
       LEFT JOIN sop_documents sd ON sh.sop_document_id = sd.id
+      LEFT JOIN users u ON sh.changed_by = u.clerk_id
       WHERE 1=1
     `;
-    const countParams = params.slice(0, -2); // Remove limit and offset
+    
+    // Rebuild params for count query (without limit/offset)
+    const countParams = [];
+    let countParamIndex = 1;
 
-    if (scope && scope !== 'all') countQuery += ` AND sh.assignment_type = $1`;
+    if (scope && scope !== 'all') {
+      countQuery += ` AND sh.assignment_type = $${countParamIndex}`;
+      countParams.push(scope);
+      countParamIndex++;
+    }
+
     if (actionType && actionType !== 'all') {
-      const idx = countParams.length + 1;
-      countQuery += ` AND sh.action_type = $${idx}`;
+      countQuery += ` AND LOWER(sh.action_type) = LOWER($${countParamIndex})`;
+      countParams.push(actionType);
+      countParamIndex++;
     }
-    if (state) {
-      const idx = countParams.length + 1;
-      countQuery += ` AND sh.assignment_type = 'state' AND sh.assignment_value = $${idx}`;
+
+    if (timeframe && timeframe !== 'all') {
+      if (timeframe === 'last7') {
+        countQuery += ` AND sh.created_at >= NOW() - INTERVAL '7 days'`;
+      } else if (timeframe === 'last30') {
+        countQuery += ` AND sh.created_at >= NOW() - INTERVAL '30 days'`;
+      }
     }
-    if (organization) {
-      const idx = countParams.length + 1;
-      countQuery += ` AND sh.assignment_type = 'organization' AND sh.assignment_value = $${idx}`;
+
+    if (state && state !== 'All') {
+      countQuery += ` AND sh.assignment_type = 'state' AND sh.assignment_value = $${countParamIndex}`;
+      countParams.push(state);
+      countParamIndex++;
     }
+
+    if (organization && organization !== 'All') {
+      countQuery += ` AND sh.assignment_type = 'organization' AND sh.assignment_value = $${countParamIndex}`;
+      countParams.push(organization);
+      countParamIndex++;
+    }
+
     if (search) {
-      const idx = countParams.length + 1;
-      countQuery += ` AND sd.document_name ILIKE $${idx}`;
+      countQuery += ` AND (
+        sd.document_name ILIKE $${countParamIndex} OR 
+        sh.assignment_value ILIKE $${countParamIndex} OR
+        u.email ILIKE $${countParamIndex} OR
+        sh.action_type ILIKE $${countParamIndex}
+      )`;
+      countParams.push(`%${search}%`);
     }
 
     const countResult = await pool.query(countQuery, countParams);
