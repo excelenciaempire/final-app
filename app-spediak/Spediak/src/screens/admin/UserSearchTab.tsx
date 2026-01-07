@@ -1088,14 +1088,15 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   input: {
-    backgroundColor: '#F9FAFB',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 8,
+    borderColor: '#D1D5DB',
+    borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 15,
     color: '#1F2937',
+    minHeight: 48,
   },
   textArea: {
     minHeight: 80,
@@ -1114,19 +1115,20 @@ const styles = StyleSheet.create({
   button: {
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderRadius: 8,
+    borderRadius: 10,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
+    minHeight: 44,
   },
   primaryButton: {
-    backgroundColor: '#1E3A5F',
+    backgroundColor: '#0B2455',
   },
   outlineButton: {
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#D1D5DB',
   },
   dangerOutlineButton: {
     backgroundColor: '#FEF2F2',

@@ -806,8 +806,8 @@ const styles = StyleSheet.create({
     viewReportButton: { marginTop: 8, flexDirection: 'row', alignItems: 'center' },
     viewReportButtonText: { marginLeft: 4, color: COLORS.primary },
     controlsContainer: { flexDirection: 'row', padding: 16, alignItems: 'center' },
-    totalCountText: { marginRight: 16 },
-    searchWrapper: { flex: 1, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#ccc', borderRadius: 8, paddingHorizontal: 8 },
+    totalCountText: { marginRight: 16, fontSize: 14, color: COLORS.darkText, fontWeight: '600' },
+    searchWrapper: { flex: 1, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 10, paddingHorizontal: 12, backgroundColor: '#FFFFFF', minHeight: 48 },
     searchIcon: { marginRight: 8 },
     searchInput: { flex: 1, height: 40 },
     sortButton: { marginLeft: 16 },
@@ -829,7 +829,7 @@ const styles = StyleSheet.create({
         zIndex: 1, // Ensure the button is on top
     },
     userControlsContainer: { flexDirection: 'row', padding: 16, alignItems: 'center' },
-    searchWrapperUsers: { flex: 1, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#ccc', borderRadius: 8, paddingHorizontal: 8 },
+    searchWrapperUsers: { flex: 1, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 10, paddingHorizontal: 12, backgroundColor: '#FFFFFF', minHeight: 48 },
     // Prompt Editor Styles...
     promptEditorContainer: { flex: 1, padding: 16 },
     lockContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, backgroundColor: '#fff', borderRadius: 8, marginBottom: 16 },
@@ -866,17 +866,19 @@ const styles = StyleSheet.create({
         letterSpacing: 0.5,
     },
     textInput: {
-        height: 200, // Increased height for more content visibility
-        textAlignVertical: 'top', // Start text from the top
+        height: 200,
+        textAlignVertical: 'top',
         borderWidth: 1,
-        borderColor: '#ccc',
-        borderRadius: 4,
-        padding: 12, // Increased padding
+        borderColor: '#D1D5DB',
+        borderRadius: 10,
+        padding: 14,
         marginBottom: 8,
-        fontSize: 14,
-        lineHeight: 20,
+        fontSize: 15,
+        lineHeight: 22,
+        backgroundColor: '#FFFFFF',
+        color: COLORS.darkText,
     },
-    disabledInput: { backgroundColor: '#f0f0f0' },
+    disabledInput: { backgroundColor: '#F3F4F6' },
     historyIconButton: {
         padding: 8,
     },

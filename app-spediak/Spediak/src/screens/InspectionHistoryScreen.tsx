@@ -582,19 +582,15 @@ const styles = StyleSheet.create({
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#ffffff',
-    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
     marginHorizontal: 16,
     marginTop: 16,
     marginBottom: 12,
     paddingHorizontal: 14,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
+    borderColor: '#D1D5DB',
+    minHeight: 48,
   },
   searchIcon: {
     marginRight: 10,
@@ -602,8 +598,8 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     height: 48,
-    fontSize: 16,
-    color: '#333',
+    fontSize: 15,
+    color: COLORS.textPrimary,
   },
   list: {
     flex: 1,
@@ -630,16 +626,16 @@ const styles = StyleSheet.create({
 
   // Card Styles
   cardContainer: {
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFFFF',
     borderRadius: 12,
     marginBottom: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,
-    shadowRadius: 6,
+    shadowRadius: 4,
     elevation: 2,
     borderWidth: 1,
-    borderColor: '#e8ecf0',
+    borderColor: '#E5E7EB',
     overflow: 'hidden',
   },
   cardContainerExpanded: {

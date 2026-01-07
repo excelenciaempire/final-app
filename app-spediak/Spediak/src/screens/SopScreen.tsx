@@ -348,14 +348,17 @@ const styles = StyleSheet.create({
   },
   pickerWrapper: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 8,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#E0E4E8',
+    borderColor: '#D1D5DB',
     overflow: 'hidden',
+    minHeight: 48,
+    justifyContent: 'center',
   },
   picker: {
-    height: 50,
+    height: 48,
     width: '100%',
+    color: COLORS.textPrimary,
   },
   currentStateText: {
     fontSize: 14,
