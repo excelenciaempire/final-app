@@ -7,16 +7,11 @@ import { NavigationContainer } from '@react-navigation/native';
 import { StyleSheet, Text, View, Platform, ScrollView } from 'react-native';
 import AuthNavigator from "./src/navigation/AuthNavigator";
 import RootNavigator from "./src/navigation/RootNavigator";
-import RootNavigatorSimple from "./src/navigation/RootNavigatorSimple";
-import RootNavigatorIntermediate from "./src/navigation/RootNavigatorIntermediate";
-import RootNavigatorNavTest from "./src/navigation/RootNavigatorNavTest";
-import RootNavigatorDrawerTest from "./src/navigation/RootNavigatorDrawerTest";
 import { GlobalStateProvider } from "./src/context/GlobalStateContext";
 import { SubscriptionProvider } from "./src/context/SubscriptionContext";
 
-// Version: 2.1.0 - FIXED: Corrected imports in newInspection.tsx (Error #130 resolved)
-// Changed from destructuring imports to default imports for AdBanner, SopAlignmentCard, StatementUsageCard
-const DEBUG_MODE = 'full' as const;
+// Version: 2.1.0 - Production Ready
+// Error #130 resolved: Fixed imports in newInspection.tsx
 
 // Error Boundary Component
 class ErrorBoundary extends React.Component<
@@ -118,23 +113,9 @@ export default function App() {
           <GlobalStateProvider>
             <SubscriptionProvider>
               <SignedIn>
-                {DEBUG_MODE === 'simple' ? (
-                  <RootNavigatorSimple />
-                ) : DEBUG_MODE === 'intermediate' ? (
-                  <RootNavigatorIntermediate />
-                ) : DEBUG_MODE === 'navtest' ? (
-                  <NavigationContainer>
-                    <RootNavigatorNavTest />
-                  </NavigationContainer>
-                ) : DEBUG_MODE === 'drawertest' ? (
-                  <NavigationContainer>
-                    <RootNavigatorDrawerTest />
-                  </NavigationContainer>
-                ) : (
-                  <NavigationContainer>
-                    <RootNavigator />
-                  </NavigationContainer>
-                )}
+                <NavigationContainer>
+                  <RootNavigator />
+                </NavigationContainer>
               </SignedIn>
               <SignedOut>
                 <NavigationContainer>
