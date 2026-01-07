@@ -733,12 +733,17 @@ export default function NewInspectionScreen() {
         };
     }, []);
 
-    const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    const handleDragOver = (event: any) => {
+        if (Platform.OS !== 'web') return;
         event.preventDefault();
         event.stopPropagation();
     };
 
-    const handleDrop = async (event: React.DragEvent<HTMLDivElement>) => {
+    const handleDrop = async (event: any) => {
+        if (Platform.OS !== 'web' || typeof FileReader === 'undefined') {
+            return;
+        }
+        
         event.preventDefault();
         event.stopPropagation();
         console.log('File dropped!');
@@ -773,6 +778,10 @@ export default function NewInspectionScreen() {
 
     // --- NEW: Function to launch camera directly on WEB ---
     const launchWebCamera = () => {
+        if (Platform.OS !== 'web' || typeof document === 'undefined') {
+            return;
+        }
+        
         // This will create a hidden file input and click it
         const input = document.createElement('input');
         input.type = 'file';

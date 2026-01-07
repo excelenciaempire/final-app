@@ -1,13 +1,80 @@
+import React from 'react';
 import { ClerkProvider, SignedIn, SignedOut } from "@clerk/clerk-expo";
 import Constants from "expo-constants";
 import * as SecureStore from "expo-secure-store";
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
-import { StyleSheet, Text, View, Platform } from 'react-native';
+import { StyleSheet, Text, View, Platform, ScrollView } from 'react-native';
 import AuthNavigator from "./src/navigation/AuthNavigator"; // Revert path
 import RootNavigator from "./src/navigation/RootNavigator"; // Import RootNavigator
 import { GlobalStateProvider } from "./src/context/GlobalStateContext";
 import { SubscriptionProvider } from "./src/context/SubscriptionContext";
+
+// Error Boundary Component
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error: Error | null }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('ErrorBoundary caught an error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <View style={errorStyles.container}>
+          <ScrollView contentContainerStyle={errorStyles.content}>
+            <Text style={errorStyles.title}>Something went wrong</Text>
+            <Text style={errorStyles.message}>
+              {this.state.error?.message || 'An unexpected error occurred'}
+            </Text>
+            <Text style={errorStyles.stack}>
+              {this.state.error?.stack}
+            </Text>
+          </ScrollView>
+        </View>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
+const errorStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#fff',
+    padding: 20,
+  },
+  content: {
+    paddingVertical: 40,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#dc3545',
+    marginBottom: 16,
+  },
+  message: {
+    fontSize: 16,
+    color: '#333',
+    marginBottom: 16,
+  },
+  stack: {
+    fontSize: 12,
+    color: '#666',
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+  },
+});
 
 const clerkPublishableKey = Constants.expoConfig?.extra?.clerkPublishableKey;
 
@@ -34,26 +101,28 @@ const tokenCache = {
 
 export default function App() {
   return (
-    <View style={styles.appWrapper}>
-      <ClerkProvider
-        tokenCache={tokenCache}
-        publishableKey={clerkPublishableKey}
-      >
-        <GlobalStateProvider>
-          <SubscriptionProvider>
-            <NavigationContainer>
-              <SignedIn>
-                <RootNavigator />
-              </SignedIn>
-              <SignedOut>
-                <AuthNavigator />
-              </SignedOut>
-            </NavigationContainer>
-            <StatusBar style="auto" />
-          </SubscriptionProvider>
-        </GlobalStateProvider>
-      </ClerkProvider>
-    </View>
+    <ErrorBoundary>
+      <View style={styles.appWrapper}>
+        <ClerkProvider
+          tokenCache={tokenCache}
+          publishableKey={clerkPublishableKey}
+        >
+          <GlobalStateProvider>
+            <SubscriptionProvider>
+              <NavigationContainer>
+                <SignedIn>
+                  <RootNavigator />
+                </SignedIn>
+                <SignedOut>
+                  <AuthNavigator />
+                </SignedOut>
+              </NavigationContainer>
+              <StatusBar style="auto" />
+            </SubscriptionProvider>
+          </GlobalStateProvider>
+        </ClerkProvider>
+      </View>
+    </ErrorBoundary>
   );
 }
 
