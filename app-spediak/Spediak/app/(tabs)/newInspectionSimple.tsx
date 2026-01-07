@@ -5,6 +5,7 @@ import { useSubscription } from '../../src/context/SubscriptionContext';
 import { COLORS } from '../../src/styles/colors';
 import StatementUsageCard from '../../src/components/StatementUsageCard';
 import AdBanner from '../../src/components/AdBanner';
+import SopAlignmentCard from '../../src/components/SopAlignmentCard';
 
 /**
  * SIMPLIFIED NEW INSPECTION SCREEN FOR DEBUGGING
@@ -40,19 +41,22 @@ const NewInspectionSimple: React.FC = () => {
         {/* PHASE 6.2: Testing AdBanner */}
         <AdBanner />
 
+        {/* PHASE 6.3: Testing SopAlignmentCard */}
+        <SopAlignmentCard />
+
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>🔍 Phase 6.2: Testing AdBanner</Text>
+          <Text style={styles.cardTitle}>🔍 Phase 6.3: Testing SopAlignmentCard (FINAL)</Text>
           <Text style={styles.cardText}>✓ CustomHeaderTitle with state selector</Text>
           <Text style={styles.cardText}>✓ CustomDrawerContent with user info</Text>
           <Text style={styles.cardText}>✓ Full drawer navigation</Text>
           <Text style={styles.cardText}>✓ StatementUsageCard (PASSED)</Text>
-          <Text style={styles.cardText}>🧪 AdBanner (TESTING NOW)</Text>
-          <Text style={styles.cardText}>✗ SopAlignmentCard (removed for test)</Text>
-          <Text style={styles.cardText}>✗ Complex image upload UI (removed for test)</Text>
+          <Text style={styles.cardText}>✓ AdBanner (PASSED)</Text>
+          <Text style={styles.cardText}>🧪 SopAlignmentCard (TESTING NOW)</Text>
+          <Text style={styles.cardText}>✗ Complex image upload UI (not tested yet)</Text>
         </View>
 
         <Text style={styles.success}>
-          💡 If you see this without Error #130, AdBanner is OK!
+          💡 If you see this without Error #130, SopAlignmentCard is OK!
         </Text>
       </View>
     </ScrollView>
