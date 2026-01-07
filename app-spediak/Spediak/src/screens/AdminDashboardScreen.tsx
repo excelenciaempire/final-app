@@ -493,6 +493,13 @@ const PromptEditor = () => {
 
     const isLockedByMe = prompts.some(p => p.is_locked && p.locked_by === userId);
     
+    // Filter out preliminary description prompt - we only use DDID now (streamlined flow)
+    const filteredPrompts = prompts.filter(p => 
+        !p.prompt_name.toLowerCase().includes('preliminary') && 
+        !p.prompt_name.toLowerCase().includes('pre_description') &&
+        !p.prompt_name.toLowerCase().includes('pre-description')
+    );
+    
     return (
         <ScrollView style={styles.promptEditorContainer}>
             <View style={styles.lockContainer}>
@@ -501,7 +508,15 @@ const PromptEditor = () => {
             </View>
             {lockedByOther && !isLockedByMe && <Text style={styles.lockedByText}>Locked by: {lockedByOther}</Text>}
             
-            {prompts.map(prompt => (
+            {/* Info banner explaining the streamlined flow */}
+            <View style={styles.infoBanner}>
+                <BrainCircuit size={20} color="#1E40AF" />
+                <Text style={styles.infoBannerText}>
+                    AI Generation uses a streamlined single-step DDID format. The DDID prompt below controls how inspection statements are generated.
+                </Text>
+            </View>
+            
+            {filteredPrompts.map(prompt => (
                 <View key={prompt.id} style={styles.promptCard}>
                     <View style={styles.promptHeader}>
                         <Text style={styles.promptTitle}>{prompt.prompt_name.replace(/_/g, ' ').toUpperCase()}</Text>
@@ -820,6 +835,23 @@ const styles = StyleSheet.create({
     lockContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, backgroundColor: '#fff', borderRadius: 8, marginBottom: 16 },
     lockLabel: { fontSize: 18, fontWeight: 'bold' },
     lockedByText: { textAlign: 'center', color: 'red', marginBottom: 16 },
+    infoBanner: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        backgroundColor: '#EFF6FF',
+        borderRadius: 8,
+        padding: 12,
+        marginBottom: 16,
+        borderLeftWidth: 4,
+        borderLeftColor: '#1E40AF',
+        gap: 10,
+    },
+    infoBannerText: {
+        flex: 1,
+        fontSize: 13,
+        color: '#1E40AF',
+        lineHeight: 18,
+    },
     promptCard: { backgroundColor: '#fff', borderRadius: 8, padding: 16, marginBottom: 16 },
     promptHeader: {
         flexDirection: 'row',
