@@ -648,10 +648,15 @@ const KnowledgeManager = () => {
             <View style={styles.uploadCard}>
                 <Text style={styles.cardTitle}>Upload New Document</Text>
                 <Text style={styles.cardSubtitle}>Accepted formats: PDF, TXT, MD</Text>
-                <View style={styles.fileInputContainer}>
-                     <input type="file" onChange={onFileChange} accept=".pdf,.txt,.md" />
-                     {selectedFile && <Text style={{ marginLeft: 10 }}>{selectedFile.name}</Text>}
-                </View>
+                {Platform.OS === 'web' ? (
+                    <View style={styles.fileInputContainer}>
+                        {/* @ts-ignore - web-only file input */}
+                        <input type="file" onChange={onFileChange} accept=".pdf,.txt,.md" />
+                        {selectedFile && <Text style={{ marginLeft: 10 }}>{selectedFile.name}</Text>}
+                    </View>
+                ) : (
+                    <Text style={styles.cardSubtitle}>File upload is only available on web.</Text>
+                )}
                 <TouchableOpacity
                     style={[styles.button, styles.uploadButton, (isUploading || !selectedFile) && styles.disabledButton]}
                     onPress={handleUpload}

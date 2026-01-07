@@ -846,10 +846,11 @@ export default function NewInspectionScreen() {
                 </View>
 
                 {Platform.OS === 'web' ? (
-                    <div 
-                        onDragOver={handleDragOver as any} 
-                        onDrop={handleDrop as any} 
-                        style={webDropZoneStyle}
+                    <View 
+                        // @ts-ignore - web-only drag/drop events
+                        onDragOver={handleDragOver} 
+                        onDrop={handleDrop} 
+                        style={webDropZoneStyleRN}
                     >
                         <TouchableOpacity style={styles.imagePickerWebMain} onPress={launchLibrary}> 
                             {imageUri ? (
@@ -867,7 +868,7 @@ export default function NewInspectionScreen() {
                                 <Text style={styles.buttonText}>Take Photo</Text>
                             </TouchableOpacity>
                         )}
-                    </div>
+                    </View>
                  ) : (
                     <TouchableOpacity style={styles.imagePicker} onPress={selectImageSource}>
                         {imageUri ? (
@@ -986,14 +987,13 @@ export default function NewInspectionScreen() {
     );
 }
 
-const webDropZoneStyle: React.CSSProperties = {
-    width: '100%',
+const webDropZoneStyleRN = {
+    width: '100%' as const,
     maxWidth: 500,
     marginBottom: 20,
-    alignSelf: 'center',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
+    alignSelf: 'center' as const,
+    flexDirection: 'column' as const,
+    alignItems: 'center' as const,
 };
 
 const styles = StyleSheet.create({
