@@ -53,33 +53,32 @@ const getInspections = async (req, res) => {
 
 const createInspection = async (req, res) => {
   const userId = req.auth.userId;
-  // Remove attempts to get name/email from auth context
-  // const userName = req.auth.userName || null;
-  // const userEmail = req.auth.userEmail || null;
 
   if (!userId) {
      return res.status(401).json({ message: 'Not authorized' });
   }
 
-  // Get userState from payload if needed, or ignore it
-  const { description, ddid, imageUrl /*, userState */ } = req.body;
+  // Get data from payload - description is now optional (notes field in streamlined flow)
+  const { description, ddid, imageUrl, userState, state_used } = req.body;
 
-  if (!description) {
-    return res.status(400).json({ message: 'Missing description' });
+  // Allow empty description since notes are optional in the new streamlined flow
+  // Only ddid is required for a valid inspection record
+  if (!ddid) {
+    return res.status(400).json({ message: 'Missing statement (ddid)' });
   }
 
   try {
-    // Remove user_name, user_email from INSERT
+    // Save inspection with optional description and state
+    const stateUsed = state_used || userState || null;
     const result = await pool.query(
-      'INSERT INTO inspections (user_id, description, ddid, image_url) VALUES ($1, $2, $3, $4) RETURNING *', // Removed user_name, user_email columns
-      [userId, description, ddid, imageUrl] // Removed userName, userEmail parameters
-      // If saving state: 'INSERT INTO inspections (..., state) VALUES (..., $5) RETURNING *',
-      // If saving state: [..., userState] 
+      'INSERT INTO inspections (user_id, description, ddid, image_url, state) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+      [userId, description || '', ddid, imageUrl, stateUsed]
     );
+    console.log(`[createInspection] Created inspection ${result.rows[0].id} for user ${userId}`);
     return res.status(201).json(result.rows[0]);
   } catch (err) {
     console.error('Error creating inspection:', err);
-    return res.status(500).json({ message: 'Error creating inspection' });
+    return res.status(500).json({ message: 'Error creating inspection', error: err.message });
   }
 };
 

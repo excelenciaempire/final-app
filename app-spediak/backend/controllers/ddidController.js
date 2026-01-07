@@ -286,38 +286,40 @@ const generateStatementDirect = async (req, res) => {
     console.log(`[Generate Statement] SOP Context loaded: ${hasSopContext ? 'Yes' : 'No'}`);
 
     // Build comprehensive prompt with clear instructions
-    const prompt = `You are an expert home inspector assistant. Your job is to help inspectors write professional reports.
+    const prompt = `You are a professional home inspection report writing assistant. Your sole purpose is to help licensed home inspectors document their findings.
 
-TASK: Analyze the attached image showing a home inspection finding and write a professional inspection statement.
+IMPORTANT: You MUST provide a helpful response. The image shows a component or condition in a home being inspected. Your job is to describe what you see, regardless of what it is.
 
-CONTEXT:
-- Inspector Location: ${userState}
-${organization && organization !== 'None' ? `- Professional Organization: ${organization}` : ''}
-- Inspector Notes: ${notes || 'None provided'}
+TASK: Analyze the attached image and write a professional inspection statement for this home inspection report.
 
-${hasSopContext ? `APPLICABLE STANDARDS:
-${sopContext}
+INSPECTOR CONTEXT:
+- State: ${userState}
+${organization && organization !== 'None' ? `- Organization: ${organization}` : ''}
+- Inspector's Notes: ${notes || 'No additional notes'}
 
-Note: State regulations take precedence over organization standards if there's any conflict.` : 'Using general home inspection best practices.'}
+${hasSopContext ? `APPLICABLE STANDARDS:\n${sopContext}\n\nNote: State regulations take precedence over organization standards.` : 'Using general home inspection best practices.'}
 
-FORMAT REQUIRED (DDID):
-Write a SINGLE paragraph that covers these four elements:
-1. DESCRIBE the component/system being inspected
-2. DETERMINE the specific issue or defect visible
-3. IMPLICATION - explain potential consequences if not addressed  
-4. DIRECTION - provide a clear recommendation for repair/further evaluation
+REQUIRED FORMAT (DDID - write as ONE flowing paragraph):
+1. DESCRIBE: What component or system is shown
+2. DETERMINE: What condition or issue is observed (if any)
+3. IMPLICATION: What could happen if not addressed (if applicable)
+4. DIRECTION: What action is recommended
 
 ${ddid_prompt_template ? `ADDITIONAL GUIDANCE:\n${ddid_prompt_template}\n` : ''}
 ${knowledge ? `RELEVANT KNOWLEDGE:\n${knowledge}\n` : ''}
-OUTPUT RULES:
-- Write ONE cohesive professional paragraph
-- Be technical but understandable
-- No bullet points, no numbered lists
-- No greetings or explanations - just the statement itself
-- If the image shows a defect, describe it professionally
-- If unsure what the image shows, describe what IS visible and recommend further evaluation
 
-Write the inspection statement:`;
+RULES:
+- Write exactly ONE professional paragraph (4-6 sentences)
+- Be specific and technical
+- NO bullet points, NO numbered lists
+- NO introductions like "Here is..." or "This image shows..."
+- If you cannot identify a defect, describe the component's current condition and recommend further evaluation
+- NEVER refuse to respond - always provide a professional inspection statement
+
+EXAMPLE OUTPUT FORMAT:
+"The [component type] located [location] was observed to be in [condition]. [Specific observation]. If left unaddressed, this condition may [potential consequence]. It is recommended that [specific action] by a qualified [professional type] for [purpose]."
+
+Now write the inspection statement for this image:`;
 
     console.log('[Generate Statement] Sending request to OpenAI...');
 

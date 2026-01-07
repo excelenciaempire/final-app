@@ -382,15 +382,17 @@ export default function NewInspectionScreen() {
             if (!token) throw new Error("User not authenticated");
 
             const payload = {
-                description: finalDescriptionForDdid,
+                description: initialDescription || '', // Use current notes, allow empty
                 ddid,
                 imageUrl: cloudinaryImageUrl,
-                userState
+                userState,
+                state_used: userState // Include state explicitly
             };
             console.log(`[saveInspection] Preparing to POST to ${BASE_URL}/api/inspections with payload:`, JSON.stringify(payload));
 
             await axios.post(`${BASE_URL}/api/inspections`, payload, {
-                headers: { Authorization: `Bearer ${token}` }
+                headers: { Authorization: `Bearer ${token}` },
+                timeout: 15000
             });
             console.log("[saveInspection] Inspection saved successfully via API.");
 
@@ -401,7 +403,8 @@ export default function NewInspectionScreen() {
                  console.error("[saveInspection] Error response status:", err.response.status);
             }
             const errorMessage = err.response?.data?.message || err.message || "Could not save the inspection.";
-            Alert.alert("Save Failed", `The statement was generated, but saving failed: ${errorMessage}`);
+            // Don't show alert for save failures - the statement was still generated successfully
+            console.warn("[saveInspection] Save failed but statement was generated:", errorMessage);
         }
     };
 
@@ -436,6 +439,7 @@ export default function NewInspectionScreen() {
                 organization: userOrganization,
             }, {
                 headers: { Authorization: `Bearer ${token}` },
+                timeout: 60000, // 60 second timeout for AI generation
             });
 
             const data = response.data as GenerateStatementResponse;
@@ -1036,9 +1040,9 @@ export default function NewInspectionScreen() {
 
                 <View style={styles.actionButtonsRow}>
                     <TouchableOpacity
-                        style={[styles.button, styles.analyzeButton, styles.actionButtonHalf, (!imageBase64 || !initialDescription.trim() || isLoading || !canGenerateStatement) && styles.buttonDisabled]}
+                        style={[styles.button, styles.analyzeButton, styles.actionButtonHalf, (!imageBase64 || isLoading || !canGenerateStatement) && styles.buttonDisabled]}
                         onPress={handleGenerateStatement}
-                        disabled={!imageBase64 || !initialDescription.trim() || isLoading || !canGenerateStatement}
+                        disabled={!imageBase64 || isLoading || !canGenerateStatement}
                     >
                         <Text style={styles.buttonText}>
                           {!canGenerateStatement ? 'Limit Reached' : 'Generate Statement'}
