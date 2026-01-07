@@ -4,6 +4,7 @@ import { useGlobalState } from '../../src/context/GlobalStateContext';
 import { useSubscription } from '../../src/context/SubscriptionContext';
 import { COLORS } from '../../src/styles/colors';
 import StatementUsageCard from '../../src/components/StatementUsageCard';
+import AdBanner from '../../src/components/AdBanner';
 
 /**
  * SIMPLIFIED NEW INSPECTION SCREEN FOR DEBUGGING
@@ -36,19 +37,22 @@ const NewInspectionSimple: React.FC = () => {
         {/* PHASE 6.1: Testing StatementUsageCard */}
         <StatementUsageCard />
 
+        {/* PHASE 6.2: Testing AdBanner */}
+        <AdBanner />
+
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>🔍 Phase 6.1: Testing StatementUsageCard</Text>
+          <Text style={styles.cardTitle}>🔍 Phase 6.2: Testing AdBanner</Text>
           <Text style={styles.cardText}>✓ CustomHeaderTitle with state selector</Text>
           <Text style={styles.cardText}>✓ CustomDrawerContent with user info</Text>
           <Text style={styles.cardText}>✓ Full drawer navigation</Text>
-          <Text style={styles.cardText}>🧪 StatementUsageCard (TESTING NOW)</Text>
-          <Text style={styles.cardText}>✗ AdBanner (removed for test)</Text>
+          <Text style={styles.cardText}>✓ StatementUsageCard (PASSED)</Text>
+          <Text style={styles.cardText}>🧪 AdBanner (TESTING NOW)</Text>
           <Text style={styles.cardText}>✗ SopAlignmentCard (removed for test)</Text>
           <Text style={styles.cardText}>✗ Complex image upload UI (removed for test)</Text>
         </View>
 
         <Text style={styles.success}>
-          💡 If you see this without Error #130, StatementUsageCard is OK!
+          💡 If you see this without Error #130, AdBanner is OK!
         </Text>
       </View>
     </ScrollView>
