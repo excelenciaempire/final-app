@@ -185,9 +185,9 @@ const SopManagementTab: React.FC = () => {
         copyToCacheDirectory: true,
       });
       
-      if (result.assets && result.assets[0]) {
+      if (result.type === 'success') {
         setSelectedSopFile(result);
-        Alert.alert('File Selected', `${result.assets[0].name} ready to upload`);
+        Alert.alert('File Selected', `${result.name} ready to upload`);
       }
     } catch (error) {
       console.error('Error picking document:', error);
@@ -196,7 +196,7 @@ const SopManagementTab: React.FC = () => {
   };
 
   const handleUploadSop = async () => {
-    if (!selectedSopFile?.assets?.[0] || !newSopDocName || !newSopDocType) {
+    if (!selectedSopFile || selectedSopFile.type !== 'success' || !newSopDocName || !newSopDocType) {
       Alert.alert('Error', 'Please select a file, enter document name, and select type');
       return;
     }
@@ -207,7 +207,7 @@ const SopManagementTab: React.FC = () => {
       if (!token) return;
 
       // Read file as base64
-      const base64 = await FileSystem.readAsStringAsync(selectedSopFile.assets[0].uri, {
+      const base64 = await FileSystem.readAsStringAsync(selectedSopFile.uri, {
         encoding: FileSystem.EncodingType.Base64,
       });
 
