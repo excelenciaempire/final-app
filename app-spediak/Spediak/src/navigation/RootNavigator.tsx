@@ -255,8 +255,8 @@ const RootNavigator: React.FC = () => {
   const isWebLarge = useMemo(() => {
     if (Platform.OS === 'web') {
       // Check for iPad user agent string to force mobile view for iPads
-      const userAgent = typeof window !== 'undefined' && window.navigator ? window.navigator.userAgent : '';
-      const isIPad = /iPad|Macintosh/.test(userAgent) && 'ontouchend' in document;
+      const userAgent = Platform.OS === 'web' && typeof window !== 'undefined' && window.navigator ? window.navigator.userAgent : '';
+      const isIPad = Platform.OS === 'web' && typeof document !== 'undefined' && /iPad|Macintosh/.test(userAgent) && 'ontouchend' in document;
       // Consider it large web if not an iPad and width is greater than a threshold
       if (isIPad) return false; // Force mobile view for iPads
       return width > 768; 
