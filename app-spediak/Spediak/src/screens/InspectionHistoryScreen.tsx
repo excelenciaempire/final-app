@@ -1,852 +1,793 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, FlatList, ActivityIndicator, TouchableOpacity, Image, Alert, Platform, RefreshControl, ScrollView } from 'react-native';
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  TextInput, 
+  FlatList, 
+  ActivityIndicator, 
+  TouchableOpacity, 
+  Image, 
+  Alert, 
+  Platform, 
+  RefreshControl, 
+  ScrollView,
+  Modal,
+  Dimensions,
+  useWindowDimensions
+} from 'react-native';
 import { useAuth } from '@clerk/clerk-expo';
 import { useNavigation } from '@react-navigation/native';
 import axios from 'axios';
-import { Search, Trash2, Copy, Download } from 'lucide-react-native';
+import { Search, Trash2, Copy, Download, X, ChevronDown, ChevronUp } from 'lucide-react-native';
 import { BASE_URL } from '../config/api';
 import { COLORS } from '../styles/colors';
-import Markdown from 'react-native-markdown-display';
 import * as Clipboard from 'expo-clipboard';
 import * as FileSystem from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library';
 
-// --- Define Base URL (Platform Specific) ---
-// const YOUR_COMPUTER_IP_ADDRESS = '<YOUR-COMPUTER-IP-ADDRESS>'; // Removed
-// const YOUR_BACKEND_PORT = '<PORT>'; // Removed
-// const API_BASE_URL = Platform.select({...}); // Removed Old Logic
-
-// const BASE_URL = Platform.select({...}); // <<< REMOVE THIS BLOCK >>>
-// --- End Base URL Definition ---
-
-// Placeholder for Inspection type - define based on your actual API response
 interface Inspection {
-    id: string; // Or number, depending on your backend
-    image_url: string; // Or uri
-    description: string;
-    created_at: string; // Corrected property name
-    ddid: string; // Full DDID text
-    // Add other relevant fields like userState, etc.
+  id: string;
+  image_url: string;
+  description: string;
+  created_at: string;
+  ddid: string;
 }
 
 // Helper function to get optimized Cloudinary image URL
 const getOptimizedImageUrl = (url: string | null | undefined, width: number, height: number): string | undefined => {
-    if (!url || !url.includes('cloudinary.com')) return url || undefined;
-    // Example: w_300,h_200,c_fill,q_auto:good
-    // Using c_pad to maintain aspect ratio and pad if necessary, q_auto for quality.
-    try {
-        const parts = url.split('/upload/');
-        if (parts.length === 2) {
-            return `${parts[0]}/upload/w_${width},h_${height},c_pad,q_auto/${parts[1]}`;
-        }
-    } catch (e) {
-        console.warn("Error constructing optimized image URL:", e);
+  if (!url || !url.includes('cloudinary.com')) return url || undefined;
+  try {
+    const parts = url.split('/upload/');
+    if (parts.length === 2) {
+      return `${parts[0]}/upload/w_${width},h_${height},c_pad,q_auto/${parts[1]}`;
     }
-    return url; // Fallback to original URL if manipulation fails
+  } catch (e) {
+    console.warn("Error constructing optimized image URL:", e);
+  }
+  return url;
+};
+
+// Get first meaningful sentence/title from description or DDID
+const getStatementTitle = (description: string, ddid: string): string => {
+  // Try to get a meaningful title from description first
+  if (description) {
+    // Look for first sentence or line
+    const firstLine = description.split(/[.\n]/)[0].trim();
+    if (firstLine && firstLine.length > 10) {
+      return firstLine.length > 60 ? firstLine.substring(0, 57) + '...' : firstLine;
+    }
+  }
+  // Fallback to DDID
+  if (ddid) {
+    const firstLine = ddid.split(/[.\n]/)[0].trim();
+    if (firstLine) {
+      return firstLine.length > 60 ? firstLine.substring(0, 57) + '...' : firstLine;
+    }
+  }
+  return 'Inspection Statement';
+};
+
+// Get preview text (truncated)
+const getPreviewText = (ddid: string, maxLength: number = 80): string => {
+  if (!ddid) return 'No statement available...';
+  const clean = ddid.replace(/\*\*/g, '').trim();
+  return clean.length > maxLength ? clean.substring(0, maxLength) + '...' : clean;
 };
 
 // Expandable Inspection Card Component
 const InspectionCard = React.memo(({ 
-    item, 
-    isExpanded, 
-    onToggleExpand, 
-    onDeleteItem,
-    onCopy,
-    onDownloadImage 
+  item, 
+  isExpanded, 
+  onToggleExpand, 
+  onDeleteItem,
+  onCopy,
+  onViewImage
 }: {
-    item: Inspection;
-    isExpanded: boolean;
-    onToggleExpand: () => void;
-    onDeleteItem: (id: string) => void;
-    onCopy: (text: string) => void;
-    onDownloadImage: (url: string, id: string) => void;
+  item: Inspection;
+  isExpanded: boolean;
+  onToggleExpand: () => void;
+  onDeleteItem: (id: string) => void;
+  onCopy: (text: string) => void;
+  onViewImage: (url: string) => void;
 }) => {
-    const displayDate = item.created_at ? new Date(item.created_at).toLocaleString() : 'Date not available';
-    const optimizedImageUrl = getOptimizedImageUrl(item.image_url, 100, 100);
-    const fullImageUrl = getOptimizedImageUrl(item.image_url, 600, 400);
+  const { width } = useWindowDimensions();
+  const isLargeScreen = width > 768;
+  
+  const displayDate = item.created_at 
+    ? new Date(item.created_at).toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' })
+    : 'Date not available';
+  const thumbnailUrl = getOptimizedImageUrl(item.image_url, 60, 60);
+  const statementTitle = getStatementTitle(item.description, item.ddid);
+  const previewText = getPreviewText(item.ddid);
 
-    // Get truncated description for preview
-    const truncatedDescription = item.description 
-        ? (item.description.length > 100 ? item.description.substring(0, 100) + '...' : item.description)
-        : 'No description';
+  return (
+    <View style={[styles.cardContainer, isExpanded && styles.cardContainerExpanded]}>
+      {/* Header Row - Always visible */}
+      <TouchableOpacity 
+        style={styles.cardHeader} 
+        onPress={onToggleExpand} 
+        activeOpacity={0.7}
+      >
+        {/* Thumbnail */}
+        <TouchableOpacity 
+          style={styles.thumbnailContainer}
+          onPress={() => item.image_url && onViewImage(item.image_url)}
+          activeOpacity={0.8}
+        >
+          {thumbnailUrl ? (
+            <Image source={{ uri: thumbnailUrl }} style={styles.thumbnail} />
+          ) : (
+            <View style={styles.thumbnailPlaceholder}>
+              <Text style={styles.thumbnailPlaceholderText}>No Image</Text>
+            </View>
+          )}
+        </TouchableOpacity>
 
-    return (
-        <View style={[styles.itemContainer, isExpanded && styles.itemContainerExpanded]}>
-            {/* Header Row - Always visible */}
-            <TouchableOpacity style={styles.cardHeader} onPress={onToggleExpand} activeOpacity={0.7}>
-                <View style={styles.imageWrapper}>
-                    {optimizedImageUrl ? (
-                        <Image source={{ uri: optimizedImageUrl }} style={styles.itemImage} />
-                    ) : (
-                        <View style={styles.itemImagePlaceholder}>
-                            <Text style={styles.itemImagePlaceholderText}>No Image</Text>
-                        </View>
-                    )}
-                </View>
-                <View style={styles.itemContent}>
-                    <Text style={styles.itemDescriptionPreview} numberOfLines={2}>
-                        {truncatedDescription}
-                    </Text>
-                    <Text style={styles.itemDate}>{displayDate}</Text>
-                </View>
-                <View style={styles.expandIndicator}>
-                    <Text style={styles.expandIndicatorText}>{isExpanded ? '▲' : '▼'}</Text>
-                </View>
+        {/* Title & Date */}
+        <View style={styles.cardInfo}>
+          <Text style={styles.cardTitle} numberOfLines={2}>
+            {statementTitle}
+          </Text>
+          <Text style={styles.cardDate}>{displayDate}</Text>
+          {!isExpanded && (
+            <Text style={styles.cardPreview} numberOfLines={1}>
+              {previewText}
+            </Text>
+          )}
+        </View>
+
+        {/* Expand Indicator */}
+        <View style={styles.expandButton}>
+          {isExpanded ? (
+            <ChevronUp size={20} color={COLORS.primary} />
+          ) : (
+            <ChevronDown size={20} color={COLORS.textSecondary} />
+          )}
+        </View>
+      </TouchableOpacity>
+
+      {/* Expanded Content */}
+      {isExpanded && (
+        <View style={styles.expandedContent}>
+          {/* Full Statement */}
+          <ScrollView 
+            style={styles.statementScrollView} 
+            nestedScrollEnabled={true}
+            showsVerticalScrollIndicator={true}
+          >
+            <Text style={styles.fullStatementText}>
+              {item.ddid || 'No statement available.'}
+            </Text>
+          </ScrollView>
+
+          {/* Action Buttons */}
+          <View style={styles.actionButtonsRow}>
+            <TouchableOpacity
+              style={styles.copyStatementBtn}
+              onPress={() => onCopy(item.ddid)}
+            >
+              <Copy size={16} color={COLORS.primary} />
+              <Text style={styles.copyStatementText}>Copy statement</Text>
             </TouchableOpacity>
 
-            {/* Expanded Content */}
-            {isExpanded && (
-                <View style={styles.expandedContent}>
-                    {/* Full Image */}
-                    {fullImageUrl && (
-                        <View style={styles.expandedImageContainer}>
-                            <Image source={{ uri: fullImageUrl }} style={styles.expandedImage} resizeMode="contain" />
-                        </View>
-                    )}
-
-                    {/* Statement Section */}
-                    <View style={styles.statementSection}>
-                        <Text style={styles.statementLabel}>Statement:</Text>
-                        <ScrollView style={styles.statementScrollView} nestedScrollEnabled={true}>
-                            <View style={styles.statementBox}>
-                                <Text style={styles.statementText}>{item.ddid || 'No statement available.'}</Text>
-                            </View>
-                        </ScrollView>
-                    </View>
-
-                    {/* Action Buttons */}
-                    <View style={styles.expandedActions}>
-                        <TouchableOpacity
-                            style={[styles.expandedActionBtn, styles.copyBtn]}
-                            onPress={() => onCopy(item.ddid)}
-                        >
-                            <Copy size={16} color={COLORS.white} />
-                            <Text style={styles.expandedActionBtnText}>Copy</Text>
-                        </TouchableOpacity>
-                        
-                        {item.image_url && (
-                            <TouchableOpacity
-                                style={[styles.expandedActionBtn, styles.downloadBtn]}
-                                onPress={() => onDownloadImage(item.image_url!, item.id)}
-                            >
-                                <Download size={16} color={COLORS.white} />
-                                <Text style={styles.expandedActionBtnText}>Download</Text>
-                            </TouchableOpacity>
-                        )}
-                        
-                        <TouchableOpacity
-                            style={[styles.expandedActionBtn, styles.deleteBtn]}
-                            onPress={() => onDeleteItem(item.id)}
-                        >
-                            <Trash2 size={16} color={COLORS.white} />
-                            <Text style={styles.expandedActionBtnText}>Delete</Text>
-                        </TouchableOpacity>
-                    </View>
-                </View>
-            )}
+            <TouchableOpacity
+              style={styles.deleteBtn}
+              onPress={() => onDeleteItem(item.id)}
+            >
+              <Trash2 size={20} color={COLORS.textSecondary} />
+            </TouchableOpacity>
+          </View>
         </View>
-    );
+      )}
+    </View>
+  );
 });
+
+// Full Image Modal Component
+const ImageModal = ({ 
+  visible, 
+  imageUrl, 
+  onClose, 
+  onDownload 
+}: { 
+  visible: boolean; 
+  imageUrl: string | null; 
+  onClose: () => void; 
+  onDownload: () => void;
+}) => {
+  const { width, height } = useWindowDimensions();
+  const isLargeScreen = width > 768;
+
+  if (!imageUrl) return null;
+
+  return (
+    <Modal
+      visible={visible}
+      transparent={true}
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={[styles.modalContent, { maxWidth: isLargeScreen ? 800 : width * 0.95 }]}>
+          {/* Close Button */}
+          <TouchableOpacity style={styles.modalCloseBtn} onPress={onClose}>
+            <X size={24} color="#fff" />
+          </TouchableOpacity>
+
+          {/* Image */}
+          <Image 
+            source={{ uri: imageUrl }} 
+            style={[styles.modalImage, { maxHeight: height * 0.7 }]}
+            resizeMode="contain"
+          />
+
+          {/* Download Button */}
+          <TouchableOpacity style={styles.modalDownloadBtn} onPress={onDownload}>
+            <Download size={20} color="#fff" />
+            <Text style={styles.modalDownloadText}>Download Image</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+};
 
 export default function InspectionHistoryScreen() {
-    // Step 37: State Variables
-    const [inspections, setInspections] = useState<Inspection[]>([]);
-    const [isLoading, setIsLoading] = useState<boolean>(false);
-    const [isRefreshing, setIsRefreshing] = useState<boolean>(false); // State for RefreshControl
-    const [error, setError] = useState<string | null>(null);
-    const [searchQuery, setSearchQuery] = useState<string>('');
-    const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
+  const [inspections, setInspections] = useState<Inspection[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
 
-    // Pagination state
-    const [currentPage, setCurrentPage] = useState(1);
-    const [totalPages, setTotalPages] = useState(1);
-    const [isLoadingMore, setIsLoadingMore] = useState(false);
-    const ITEMS_PER_PAGE = 10; // Or your preferred limit
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const ITEMS_PER_PAGE = 10;
 
-    const { getToken } = useAuth();
-    const navigation = useNavigation(); // Get navigation object
-    const [mediaLibraryPermission, requestMediaLibraryPermission] = MediaLibrary.usePermissions(); // For saving to gallery
+  // Image modal state
+  const [imageModalVisible, setImageModalVisible] = useState(false);
+  const [selectedImageUrl, setSelectedImageUrl] = useState<string | null>(null);
+  const [selectedInspectionId, setSelectedInspectionId] = useState<string | null>(null);
 
-    // Request Media Library permission on mount if not granted
-    useEffect(() => {
-        if (Platform.OS !== 'web' && (!mediaLibraryPermission || mediaLibraryPermission.status !== MediaLibrary.PermissionStatus.GRANTED)) {
-            requestMediaLibraryPermission();
-        }
-    }, [mediaLibraryPermission]);
+  const { getToken } = useAuth();
+  const navigation = useNavigation();
+  const [mediaLibraryPermission, requestMediaLibraryPermission] = MediaLibrary.usePermissions();
 
-    // Step 38: Data Fetching
-    const fetchInspections = useCallback(async (pageToFetch = 1, isRefreshingData = false) => {
-        console.log(`[fetchInspections] Fetching inspections for page: ${pageToFetch}, isRefreshing: ${isRefreshingData}`);
-        if (pageToFetch === 1) {
-            setIsLoading(true); // Full screen loader for first page or refresh
-        } else {
-            setIsLoadingMore(true); // Footer loader for subsequent pages
-        }
-        if (isRefreshingData) {
-            setInspections([]); // Clear existing inspections if refreshing
-        }
-        setError(null);
+  // Request Media Library permission on mount if not granted
+  useEffect(() => {
+    if (Platform.OS !== 'web' && (!mediaLibraryPermission || mediaLibraryPermission.status !== MediaLibrary.PermissionStatus.GRANTED)) {
+      requestMediaLibraryPermission();
+    }
+  }, [mediaLibraryPermission]);
 
-        try {
-            const token = await getToken();
-            if (!token) throw new Error("User not authenticated");
+  // Fetch inspections
+  const fetchInspections = useCallback(async (pageToFetch = 1, isRefreshingData = false) => {
+    if (pageToFetch === 1) {
+      setIsLoading(true);
+    } else {
+      setIsLoadingMore(true);
+    }
+    if (isRefreshingData) {
+      setInspections([]);
+    }
+    setError(null);
 
-            console.log(`[fetchInspections] Calling GET ${BASE_URL}/api/inspections?page=${pageToFetch}&limit=${ITEMS_PER_PAGE}`);
-            const response = await axios.get<{ items: Inspection[], totalPages: number, currentPage: number }>(`${BASE_URL}/api/inspections?page=${pageToFetch}&limit=${ITEMS_PER_PAGE}`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            console.log("[fetchInspections] API call successful, status:", response.status);
-            console.log("[fetchInspections] Received data:", JSON.stringify(response.data, null, 2));
-            
-            // Defensive coding: Check the structure of the response data
-            const responseData = response.data;
-            const items = responseData && Array.isArray(responseData.items) ? responseData.items : [];
-            const newTotalPages = (responseData && typeof responseData.totalPages === 'number') ? responseData.totalPages : 1;
-            const newCurrentPage = (responseData && typeof responseData.currentPage === 'number') ? responseData.currentPage : 1;
+    try {
+      const token = await getToken();
+      if (!token) throw new Error("User not authenticated");
 
-            console.log("[fetchInspections] Setting inspections state with count:", items.length);
-            
-            if (pageToFetch === 1 || isRefreshingData) {
-                setInspections(items);
-            } else {
-                setInspections(prevInspections => [...prevInspections, ...items]);
-            }
-            setTotalPages(newTotalPages);
-            setCurrentPage(newCurrentPage);
+      const response = await axios.get<{ items: Inspection[], totalPages: number, currentPage: number }>(
+        `${BASE_URL}/api/inspections?page=${pageToFetch}&limit=${ITEMS_PER_PAGE}`, 
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      
+      const responseData = response.data;
+      const items = responseData && Array.isArray(responseData.items) ? responseData.items : [];
+      const newTotalPages = (responseData && typeof responseData.totalPages === 'number') ? responseData.totalPages : 1;
+      const newCurrentPage = (responseData && typeof responseData.currentPage === 'number') ? responseData.currentPage : 1;
+      
+      if (pageToFetch === 1 || isRefreshingData) {
+        setInspections(items);
+      } else {
+        setInspections(prevInspections => [...prevInspections, ...items]);
+      }
+      setTotalPages(newTotalPages);
+      setCurrentPage(newCurrentPage);
 
-        } catch (err: any) {
-            console.error("[fetchInspections] Error caught:", err);
-            if (err.response) {
-                console.error("[fetchInspections] Error response data:", err.response.data);
-                console.error("[fetchInspections] Error response status:", err.response.status);
-            }
-            const errorMessage = err.response?.data?.message || err.message || "Failed to fetch inspections";
-            console.log("[fetchInspections] Setting error state:", errorMessage);
-            setError(errorMessage);
-        } finally {
-            console.log("[fetchInspections] Setting loading states to false in finally block");
-            setIsLoading(false);
-            setIsLoadingMore(false);
-            if (isRefreshingData) setIsRefreshing(false); // Also turn off pull-to-refresh indicator
-        }
-    }, [getToken, ITEMS_PER_PAGE]);
+    } catch (err: any) {
+      console.error("[fetchInspections] Error:", err);
+      const errorMessage = err.response?.data?.message || err.message || "Failed to fetch inspections";
+      setError(errorMessage);
+    } finally {
+      setIsLoading(false);
+      setIsLoadingMore(false);
+      if (isRefreshingData) setIsRefreshing(false);
+    }
+  }, [getToken, ITEMS_PER_PAGE]);
 
-    // --- Fetch data on initial mount AND on screen focus using event listener ---
-    useEffect(() => {
-        console.log("[useEffect Mount] Fetching initial inspections...");
-        fetchInspections(1, true); // Fetch page 1 and indicate it's a refresh/initial load
+  // Fetch data on mount and focus
+  useEffect(() => {
+    fetchInspections(1, true);
 
-        const unsubscribe = navigation.addListener('focus', () => {
-            console.log("[navigation Listener] Screen focused, fetching inspections...");
-            // Reset and fetch if you always want fresh data on focus, 
-            // or implement more sophisticated cache-invalidation logic.
-            // For now, let's re-fetch page 1 as a refresh.
-            setCurrentPage(1); // Reset page on focus if desired
-            fetchInspections(1, true);
+    const unsubscribe = navigation.addListener('focus', () => {
+      setCurrentPage(1);
+      fetchInspections(1, true);
+    });
+
+    return unsubscribe;
+  }, [navigation]);
+
+  // Pull to refresh
+  const onRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    setCurrentPage(1);
+    await fetchInspections(1, true);
+  }, [fetchInspections]);
+
+  // Load more (pagination)
+  const handleLoadMore = () => {
+    if (!isLoadingMore && currentPage < totalPages) {
+      fetchInspections(currentPage + 1);
+    }
+  };
+
+  // Delete inspection
+  const handleDeleteInspection = async (id: string) => {
+    const deleteConfirmedAction = async () => {
+      try {
+        const token = await getToken();
+        if (!token) throw new Error("User not authenticated");
+
+        await axios.delete(`${BASE_URL}/api/inspections/${id}`, {
+          headers: { Authorization: `Bearer ${token}` }
         });
 
-        return unsubscribe;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [navigation]); // Removed fetchInspections from dependency array to avoid re-triggering on its own change
+        Alert.alert("Success", "Statement deleted successfully.");
+        await fetchInspections(1, true);
 
-    // --- Pull to Refresh Logic ---
-    const onRefresh = useCallback(async () => {
-        console.log("[onRefresh] Starting refresh...");
-        setIsRefreshing(true);
-        setCurrentPage(1); // Reset to page 1 on pull-to-refresh
-        await fetchInspections(1, true); // Pass page 1 and isRefreshing=true
-        //setIsRefreshing(false); // fetchInspections will handle this in its finally block
-        console.log("[onRefresh] Refresh finished call initiated.");
-    }, [fetchInspections]);
+      } catch (err: any) {
+        console.error(`Error deleting inspection ID ${id}:`, err);
+        const errorMessage = err.response?.data?.message || err.message || "Failed to delete";
+        Alert.alert("Error", errorMessage);
+      }
+    };
 
-    // --- Handle Load More --- 
-    const handleLoadMore = () => {
-        if (!isLoadingMore && currentPage < totalPages) {
-            console.log(`[handleLoadMore] Loading more inspections, current page: ${currentPage}, total pages: ${totalPages}`);
-            fetchInspections(currentPage + 1);
-        } else if (isLoadingMore) {
-            console.log("[handleLoadMore] Already loading more or no more pages.");
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined' && window.confirm("Are you sure you want to delete this statement?")) {
+        await deleteConfirmedAction();
+      }
+    } else {
+      Alert.alert(
+        "Confirm Deletion",
+        "Are you sure you want to delete this statement?",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Delete", style: "destructive", onPress: deleteConfirmedAction },
+        ]
+      );
+    }
+  };
+
+  // View image in modal
+  const handleViewImage = (imageUrl: string) => {
+    const fullUrl = getOptimizedImageUrl(imageUrl, 1200, 900);
+    setSelectedImageUrl(fullUrl || imageUrl);
+    // Find the inspection id for this image
+    const inspection = inspections.find(i => i.image_url === imageUrl);
+    setSelectedInspectionId(inspection?.id || null);
+    setImageModalVisible(true);
+  };
+
+  // Download image
+  const handleDownloadImage = async () => {
+    if (!selectedImageUrl) {
+      Alert.alert("Error", "No image to download.");
+      return;
+    }
+
+    if (Platform.OS === 'web') {
+      try {
+        const response = await fetch(selectedImageUrl);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch image`);
         }
-    };
-
-    // Step 42: Delete Logic
-    const handleDeleteInspection = async (id: string) => {
-        const deleteConfirmedAction = async () => {
-            try {
-                const token = await getToken();
-                if (!token) throw new Error("User not authenticated");
-
-                console.log(`Attempting to delete inspection ID: ${id}`);
-
-                // Use BASE_URL
-                await axios.delete(`${BASE_URL}/api/inspections/${id}`, {
-                    headers: { Authorization: `Bearer ${token}` }
-                });
-
-                Alert.alert("Success", "Inspection deleted."); // Give feedback
-
-                // Refresh list from server after successful deletion
-                await fetchInspections();
-
-            } catch (err: any) {
-                console.error(`Error deleting inspection ID ${id}:`, err);
-                const errorMessage = err.response?.data?.message || err.message || "Failed to delete inspection";
-                Alert.alert("Error", errorMessage);
-            }
-        };
-
-        if (Platform.OS === 'web') {
-            // Web: Use window.confirm
-            if (Platform.OS === 'web' && typeof window !== 'undefined' && window.confirm("Are you sure you want to delete this inspection?")) {
-                await deleteConfirmedAction();
-            }
-        } else {
-            // Native: Use Alert.alert
-            Alert.alert(
-                "Confirm Deletion",
-                "Are you sure you want to delete this inspection?",
-                [
-                    { text: "Cancel", style: "cancel" },
-                    {
-                        text: "Delete",
-                        style: "destructive",
-                        onPress: deleteConfirmedAction, // Call the shared action
-                    },
-                ]
-            );
+        
+        if (typeof window === 'undefined' || typeof document === 'undefined') {
+          throw new Error('Download not supported');
         }
-    };
-
-    // New Function: Handle Image Download
-    const handleDownloadImage = async (imageUrl: string, inspectionId: string) => {
-        if (!imageUrl) {
-            Alert.alert("Error", "No image URL available for download.");
-            return;
+        
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `spediak_statement_${selectedInspectionId || Date.now()}.jpg`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+        Alert.alert("Success", "Image download started.");
+      } catch (error: any) {
+        console.error("[handleDownloadImage Web] Error:", error);
+        Alert.alert("Error", error.message || "Failed to download image.");
+      }
+    } else {
+      // Native download
+      if (!mediaLibraryPermission || mediaLibraryPermission.status !== MediaLibrary.PermissionStatus.GRANTED) {
+        const { status } = await requestMediaLibraryPermission();
+        if (status !== MediaLibrary.PermissionStatus.GRANTED) {
+          Alert.alert("Permission Denied", "Storage permission is required to save the image.");
+          return;
         }
-        console.log(`[handleDownloadImage] Attempting to download image: ${imageUrl}`);
+      }
 
-        if (Platform.OS === 'web') {
-            try {
-                // Fetch the image as a blob
-                const response = await fetch(imageUrl);
-                if (!response.ok) {
-                    throw new Error(`Failed to fetch image. Status: ${response.status} ${response.statusText}`);
-                }
-                if (Platform.OS !== 'web' || typeof window === 'undefined' || typeof document === 'undefined') {
-                    throw new Error('Download not supported on this platform');
-                }
-                
-                const blob = await response.blob();
-                
-                // Create an object URL for the blob
-                const url = window.URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = `spediak_inspection_${inspectionId}_${Date.now()}.jpg`; 
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                window.URL.revokeObjectURL(url); // Clean up the object URL
-                Alert.alert("Success", "Image download started.");
-            } catch (error: any) {
-                console.error("[handleDownloadImage Web] Error:", error);
-                Alert.alert("Error", error.message || "Failed to download image on web.");
-            }
-        } else {
-            // Native: Download using FileSystem and save to MediaLibrary
-            if (!mediaLibraryPermission || mediaLibraryPermission.status !== MediaLibrary.PermissionStatus.GRANTED) {
-                const { status } = await requestMediaLibraryPermission();
-                if (status !== MediaLibrary.PermissionStatus.GRANTED) {
-                    Alert.alert("Permission Denied", "Storage permission is required to save the image.");
-                    return;
-                }
-            }
+      try {
+        const fileName = `spediak_statement_${selectedInspectionId || Date.now()}.jpg`;
+        const fileUri = FileSystem.documentDirectory + fileName;
 
-            try {
-                const fileName = `spediak_inspection_${inspectionId}_${Date.now()}.jpg`;
-                const fileUri = FileSystem.documentDirectory + fileName;
+        const downloadResult = await FileSystem.downloadAsync(selectedImageUrl, fileUri);
 
-                console.log(`[handleDownloadImage Native] Downloading to URI: ${fileUri}`);
-                const downloadResult = await FileSystem.downloadAsync(imageUrl, fileUri);
-                console.log('[handleDownloadImage Native] Download result:', downloadResult);
-
-                if (downloadResult.status !== 200) {
-                    throw new Error(`Failed to download image. Status: ${downloadResult.status}`);
-                }
-
-                const asset = await MediaLibrary.createAssetAsync(downloadResult.uri);
-                await MediaLibrary.createAlbumAsync('Spediak Inspections', asset, false);
-                Alert.alert("Success", "Image saved to your gallery in 'Spediak Inspections' album!");
-            } catch (error: any) {
-                console.error("[handleDownloadImage Native] Error:", error);
-                Alert.alert("Error", error.message || "Failed to download and save image.");
-            }
+        if (downloadResult.status !== 200) {
+          throw new Error(`Failed to download image`);
         }
-    };
 
-    // Step 40: Filter Logic
-    const filteredInspections = useMemo(() => {
-        return inspections.filter(inspection =>
-            (inspection.description?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
-            (inspection.ddid?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
-            (inspection.created_at?.toLowerCase() || '').includes(searchQuery.toLowerCase())
-        );
-    }, [inspections, searchQuery]);
+        const asset = await MediaLibrary.createAssetAsync(downloadResult.uri);
+        await MediaLibrary.createAlbumAsync('Spediak', asset, false);
+        Alert.alert("Success", "Image saved to your gallery!");
+      } catch (error: any) {
+        console.error("[handleDownloadImage Native] Error:", error);
+        Alert.alert("Error", error.message || "Failed to download image.");
+      }
+    }
+  };
 
-    // Render Footer for FlatList (Loading Indicator for pagination)
-    const renderFooter = () => {
-        if (!isLoadingMore) return null;
-        return (
-            <View style={{ paddingVertical: 20 }}>
-                <ActivityIndicator animating size="large" color={COLORS.primary} />
-            </View>
-        );
-    };
+  // Copy to clipboard
+  const handleCopyToClipboard = async (textToCopy: string) => {
+    if (!textToCopy) {
+      Alert.alert("Error", "No text to copy.");
+      return;
+    }
+    const plainText = textToCopy.replace(/\*\*/g, '');
+    try {
+      await Clipboard.setStringAsync(plainText);
+      Alert.alert("Copied!", "Statement copied to clipboard.");
+    } catch (e) {
+      console.error("Failed to copy:", e);
+      Alert.alert("Error", "Could not copy to clipboard.");
+    }
+  };
 
-    // Toggle expanded state
-    const toggleExpanded = (itemId: string) => {
-        setExpandedItemId(expandedItemId === itemId ? null : itemId);
-    };
-
-    // Step 39: Render Item Function - Now uses expandable cards
-    const renderItem = ({ item }: { item: Inspection }) => {
-        return (
-            <InspectionCard 
-                item={item}
-                isExpanded={expandedItemId === item.id}
-                onToggleExpand={() => toggleExpanded(item.id)}
-                onDeleteItem={handleDeleteInspection}
-                onCopy={handleCopyToClipboard}
-                onDownloadImage={handleDownloadImage}
-            />
-        );
-    };
-
-    // --- NEW: Handle Copy within History Modal ---
-    const handleCopyToClipboard = async (textToCopy: string) => {
-        if (!textToCopy) return;
-        // Remove potential markdown formatting before copying
-        const plainText = textToCopy.replace(/\*\*/g, '');
-        try {
-            await Clipboard.setStringAsync(plainText);
-            Alert.alert("Copied", "Statement copied to clipboard.");
-        } catch (e) {
-            console.error("Failed to copy text from history: ", e);
-            Alert.alert("Error", "Could not copy text to clipboard.");
-        }
-    };
-
-    return (
-        <View style={styles.container}>
-            {/* CHANGE 1: Update Header Title */}
-            <Text style={styles.headerTitle}>Statement History</Text>
-
-            {/* Step 36: Search Input */}
-            <View style={styles.searchContainer}>
-                 <Search size={20} color="#6c757d" style={styles.searchIcon} />
-                 <TextInput
-                    style={styles.searchInput}
-                    placeholder="Search statements..."
-                    value={searchQuery}
-                    onChangeText={setSearchQuery} // Step 40
-                    placeholderTextColor="#6c757d"
-                />
-            </View>
-
-            {/* Step 36 & 39 & 40: FlatList using filtered data */}
-            {isLoading && <ActivityIndicator size="large" color="#007bff" style={styles.loader} />}
-            {error && <Text style={styles.errorText}>{error}</Text>}
-            {!isLoading && !error && (
-                 // Explicit check for empty data after loading
-                 filteredInspections.length === 0 ? (
-                    <Text style={styles.emptyText}>{searchQuery ? 'No matching inspections found.' : 'No inspection history found.'}</Text>
-                 ) : (
-                    <FlatList
-                        data={filteredInspections} // Use filtered data (Step 40)
-                        renderItem={renderItem}
-                        keyExtractor={item => item.id}
-                        style={styles.list}
-                        // --- Add RefreshControl ---
-                        refreshControl={
-                            <RefreshControl
-                                refreshing={isRefreshing}
-                                onRefresh={onRefresh}
-                                colors={["#007bff"]} // Optional: spinner color
-                                tintColor={"#007bff"} // Optional: spinner color for iOS
-                            />
-                        }
-                        // --- End RefreshControl ---
-                        // ListEmptyComponent can still be used as a fallback, but the check above is more direct
-                        // ListEmptyComponent={<Text style={styles.emptyText}>{searchQuery ? 'No matching inspections found.' : 'No inspections found.'}</Text>}
-                        ListFooterComponent={renderFooter} // Added for pagination
-                        onEndReached={handleLoadMore} // Added for pagination
-                        onEndReachedThreshold={0.5} // Trigger onEndReached when half a screen away from the end
-                    />
-                 )
-            )}
-
-            {/* Expandable cards are now inline - no modal needed */}
-        </View>
+  // Filter by search query
+  const filteredInspections = useMemo(() => {
+    return inspections.filter(inspection =>
+      (inspection.description?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
+      (inspection.ddid?.toLowerCase() || '').includes(searchQuery.toLowerCase())
     );
+  }, [inspections, searchQuery]);
+
+  // Toggle expanded
+  const toggleExpanded = (itemId: string) => {
+    setExpandedItemId(expandedItemId === itemId ? null : itemId);
+  };
+
+  // Render item
+  const renderItem = ({ item }: { item: Inspection }) => (
+    <InspectionCard 
+      item={item}
+      isExpanded={expandedItemId === item.id}
+      onToggleExpand={() => toggleExpanded(item.id)}
+      onDeleteItem={handleDeleteInspection}
+      onCopy={handleCopyToClipboard}
+      onViewImage={handleViewImage}
+    />
+  );
+
+  // Render footer (loading indicator)
+  const renderFooter = () => {
+    if (!isLoadingMore) return null;
+    return (
+      <View style={{ paddingVertical: 20 }}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </View>
+    );
+  };
+
+  return (
+    <View style={styles.container}>
+      <Text style={styles.headerTitle}>Statement History</Text>
+
+      {/* Search */}
+      <View style={styles.searchContainer}>
+        <Search size={20} color="#6c757d" style={styles.searchIcon} />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search statements..."
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholderTextColor="#6c757d"
+        />
+      </View>
+
+      {/* List */}
+      {isLoading && <ActivityIndicator size="large" color={COLORS.primary} style={styles.loader} />}
+      {error && <Text style={styles.errorText}>{error}</Text>}
+      {!isLoading && !error && (
+        filteredInspections.length === 0 ? (
+          <Text style={styles.emptyText}>
+            {searchQuery ? 'No matching statements found.' : 'No statement history found.'}
+          </Text>
+        ) : (
+          <FlatList
+            data={filteredInspections}
+            renderItem={renderItem}
+            keyExtractor={item => item.id}
+            style={styles.list}
+            contentContainerStyle={styles.listContent}
+            refreshControl={
+              <RefreshControl
+                refreshing={isRefreshing}
+                onRefresh={onRefresh}
+                colors={[COLORS.primary]}
+                tintColor={COLORS.primary}
+              />
+            }
+            ListFooterComponent={renderFooter}
+            onEndReached={handleLoadMore}
+            onEndReachedThreshold={0.5}
+          />
+        )
+      )}
+
+      {/* Image Modal */}
+      <ImageModal
+        visible={imageModalVisible}
+        imageUrl={selectedImageUrl}
+        onClose={() => setImageModalVisible(false)}
+        onDownload={handleDownloadImage}
+      />
+    </View>
+  );
 }
 
-// Step 36, 39, 42: Styles (Updated)
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: '#f5f5f5',
-    },
-    headerTitle: {
-        fontSize: 24,
-        fontWeight: '700',
-        color: COLORS.textPrimary,
-        paddingHorizontal: 20,
-        paddingTop: Platform.OS === 'ios' ? 10 : 20,
-        paddingBottom: 15,
-        backgroundColor: '#fff',
-        borderBottomWidth: 1,
-        borderBottomColor: '#eee',
-    },
-    searchContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: '#ffffff',
-        borderRadius: 12,
-        marginHorizontal: 16,
-        marginTop: 16,
-        marginBottom: 16,
-        paddingHorizontal: 14,
-        borderWidth: 1,
-        borderColor: '#e0e0e0',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 2,
-        elevation: 1,
-    },
-    searchIcon: {
-        marginRight: 10,
-    },
-    searchInput: {
-        flex: 1,
-        height: 48,
-        fontSize: 16,
-        color: '#333',
-    },
-    list: {
-        flex: 1,
-        paddingHorizontal: 16,
-    },
-    itemContainer: {
-        backgroundColor: COLORS.white,
-        borderRadius: 12,
-        marginBottom: 12,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.08,
-        shadowRadius: 4,
-        elevation: 2,
-        overflow: 'hidden',
-    },
-    imageWrapper: {
-        marginRight: 12,
-    },
-    itemImage: {
-        width: 70,
-        height: 70,
-        borderRadius: 8,
-        backgroundColor: '#f0f0f0',
-    },
-    itemImagePlaceholder: {
-        width: 70,
-        height: 70,
-        borderRadius: 8,
-        backgroundColor: '#f0f0f0',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    itemImagePlaceholderText: {
-        fontSize: 10,
-        color: COLORS.textSecondary,
-        textAlign: 'center',
-    },
-    itemContent: {
-        flex: 1,
-        justifyContent: 'center',
-        paddingRight: 8,
-    },
-    itemDescription: {
-        fontSize: 14,
-        marginBottom: 6,
-        color: COLORS.textPrimary,
-        lineHeight: 20,
-    },
-    itemDescriptionPreview: {
-        fontSize: 14,
-        color: COLORS.textPrimary,
-        marginBottom: 6,
-        lineHeight: 20,
-    },
-    boldText: {
-        fontWeight: '600',
-        color: COLORS.primary,
-    },
-    itemDate: {
-        fontSize: 12,
-        color: COLORS.textSecondary,
-        fontWeight: '500',
-    },
-    actionsContainer: {
-        flexDirection: 'row',
-        justifyContent: 'flex-start', // Align buttons to the start
-        alignItems: 'center', // Align items vertically
-        marginTop: 10, // Add some space above the buttons
-    },
-    actionButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingVertical: 8,
-        paddingHorizontal: 12,
-        borderRadius: 5,
-        marginRight: 10, // Space between buttons
-        // minWidth: 90, // Ensure buttons have a decent width
-        justifyContent: 'center',
-    },
-    actionButtonText: {
-        marginLeft: 6,
-        fontSize: 13,
-        fontWeight: '500',
-    },
-    viewButton: {
-        backgroundColor: COLORS.secondary, // Light gray for view
-    },
-    viewButtonText: {
-        color: COLORS.primary, // Primary color text for view
-    },
-    deleteButton: {
-        backgroundColor: COLORS.danger, // Danger color for delete
-    },
-    deleteButtonText: {
-        color: COLORS.white,
-    },
-    deleteIconContainer: { // New style for the delete icon's touchable area
-        padding: 10, // Make it easier to tap
-        justifyContent: 'center',
-        alignItems: 'center',
-        // Removed marginLeft as it's positioned by flex in itemContainer or absolutely
-    },
-    loader: {
-        marginTop: 50,
-    },
-    errorText: {
-        color: 'red',
-        textAlign: 'center',
-        marginTop: 20,
-        marginHorizontal: 20,
-    },
-    emptyText: {
-        textAlign: 'center',
-        marginTop: 50,
-        color: '#6c757d',
-        fontSize: 16,
-    },
-    // --- Modal Styles ---
-    modalOverlay: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: 'rgba(0,0,0,0.6)', // Darker overlay
-    },
-    modalContent: {
-        width: '90%',
-        maxWidth: 500, // Max width for larger screens
-        backgroundColor: COLORS.white, // Use white background
-        borderRadius: 10, // Rounded corners
-        padding: 20, // Consistent padding
-        alignItems: 'stretch', // Stretch children to fill width
-        shadowColor: '#000',
-        shadowOffset: {
-            width: 0,
-            height: 2,
-        },
-        shadowOpacity: 0.25,
-        shadowRadius: 3.84,
-        elevation: 5,
-    },
-    modalCloseIconContainer: { // Style for the X icon container
-        position: 'absolute',
-        top: 10,
-        right: 10,
-        padding: 5, // Add some padding for easier tapping
-        zIndex: 10, // Ensure it's above other content
-    },
-    historyModalImage: {
-        width: '100%', // Make image responsive
-        height: 150, // Adjust height as needed
-        borderRadius: 8,
-        marginBottom: 15,
-        backgroundColor: '#eee',
-        alignSelf: 'center',
-    },
-    modalTitle: {
-        fontSize: 20,
-        fontWeight: 'bold',
-        marginBottom: 15,
-        color: COLORS.primary,
-        textAlign: 'center',
-    },
-    modalScrollView: {
-        marginBottom: 20, // Space before action buttons
-        // Adjust max height based on content
-    },
-    modalActionsRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between', // Distribute space for main buttons
-        alignItems: 'center', // Vertically align all items in the row
-        marginTop: 10, // Add margin above buttons
-    },
-    modalButton: {
-        flexDirection: 'row',
-        paddingVertical: 12,
-        paddingHorizontal: 20,
-        borderRadius: 8,
-        alignItems: 'center',
-        justifyContent: 'center',
-        flex: 1, // Allow buttons to grow
-        marginHorizontal: 5, // Space between buttons
-    },
-    modalButtonIcon: {
-        marginRight: 8,
-    },
-    modalButtonText: {
-        color: COLORS.white,
-        fontSize: 16,
-        fontWeight: 'bold',
-        textAlign: 'center',
-    },
-    copyHistoryButton: {
-        backgroundColor: COLORS.primary, // Or another distinct color
-        marginRight: 'auto', // Push other items to the right if only copy and close
-        flexShrink: 1, // Allow button to shrink if needed
-    },
-    modalDownloadButton: { // Style for the old download icon button (now unused but kept for reference if needed)
-        padding: 10,
-        marginLeft: 'auto', 
-    },
-    downloadImageButton: { // New style for the prominent Download Image button
-        backgroundColor: COLORS.success, // Or another distinct color like a blue
-        marginLeft: 10,
-        flexShrink: 1, // Allow button to shrink if needed
-    },
-    closeButton: { // This style is now effectively replaced by downloadImageButton or the X icon
-        backgroundColor: '#6c757d', 
-        marginLeft: 10, 
-    },
-    // Expandable Card Styles
-    itemContainerExpanded: {
-        borderColor: COLORS.primary,
-        borderWidth: 2,
-    },
-    cardHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        padding: 14,
-    },
-    expandIndicator: {
-        width: 32,
-        height: 32,
-        borderRadius: 16,
-        backgroundColor: '#f0f4f8',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    expandIndicatorText: {
-        fontSize: 12,
-        color: COLORS.primary,
-        fontWeight: '700',
-    },
-    expandedContent: {
-        paddingHorizontal: 14,
-        paddingBottom: 14,
-        paddingTop: 0,
-        borderTopWidth: 1,
-        borderTopColor: '#eee',
-    },
-    expandedImageContainer: {
-        marginTop: 14,
-        backgroundColor: '#f5f5f5',
-        borderRadius: 10,
-        overflow: 'hidden',
-        alignItems: 'center',
-    },
-    expandedImage: {
-        width: '100%',
-        height: 220,
-        borderRadius: 10,
-    },
-    statementSection: {
-        marginTop: 14,
-        marginBottom: 14,
-    },
-    statementLabel: {
-        fontSize: 13,
-        fontWeight: '700',
-        color: COLORS.primary,
-        marginBottom: 8,
-        textTransform: 'uppercase',
-        letterSpacing: 0.5,
-    },
-    statementScrollView: {
-        maxHeight: 180,
-    },
-    statementBox: {
-        backgroundColor: '#f8f9fa',
-        borderRadius: 10,
-        padding: 14,
-        borderWidth: 1,
-        borderColor: '#eee',
-    },
-    statementText: {
-        fontSize: 14,
-        color: COLORS.textPrimary,
-        lineHeight: 22,
-    },
-    expandedActions: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        gap: 10,
-    },
-    expandedActionBtn: {
-        flex: 1,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingVertical: 12,
-        paddingHorizontal: 14,
-        borderRadius: 8,
-        gap: 6,
-    },
-    expandedActionBtnText: {
-        color: COLORS.white,
-        fontSize: 13,
-        fontWeight: '600',
-    },
-    copyBtn: {
-        backgroundColor: COLORS.primary,
-    },
-    downloadBtn: {
-        backgroundColor: '#28a745',
-    },
-    deleteBtn: {
-        backgroundColor: COLORS.danger,
-    },
-});
+  container: {
+    flex: 1,
+    backgroundColor: '#f5f7fa',
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+    paddingHorizontal: 20,
+    paddingTop: Platform.OS === 'ios' ? 10 : 20,
+    paddingBottom: 15,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 12,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  searchIcon: {
+    marginRight: 10,
+  },
+  searchInput: {
+    flex: 1,
+    height: 48,
+    fontSize: 16,
+    color: '#333',
+  },
+  list: {
+    flex: 1,
+  },
+  listContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 20,
+  },
+  loader: {
+    marginTop: 50,
+  },
+  errorText: {
+    color: 'red',
+    textAlign: 'center',
+    marginTop: 20,
+    marginHorizontal: 20,
+  },
+  emptyText: {
+    textAlign: 'center',
+    marginTop: 50,
+    color: '#6c757d',
+    fontSize: 16,
+  },
 
-// Add markdown styles if needed
-const markdownStyles = {
-    body: {
-        fontSize: 14,
-        color: '#333',
-        lineHeight: 20,
-    },
-}; 
+  // Card Styles
+  cardContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#e8ecf0',
+    overflow: 'hidden',
+  },
+  cardContainerExpanded: {
+    borderColor: COLORS.primary,
+    borderWidth: 2,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+  },
+  thumbnailContainer: {
+    marginRight: 12,
+  },
+  thumbnail: {
+    width: 56,
+    height: 56,
+    borderRadius: 8,
+    backgroundColor: '#f0f0f0',
+  },
+  thumbnailPlaceholder: {
+    width: 56,
+    height: 56,
+    borderRadius: 8,
+    backgroundColor: '#e8ecf0',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  thumbnailPlaceholderText: {
+    fontSize: 9,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+  },
+  cardInfo: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  cardTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+    marginBottom: 4,
+    lineHeight: 20,
+  },
+  cardDate: {
+    fontSize: 12,
+    color: COLORS.primary,
+    fontWeight: '500',
+    marginBottom: 4,
+  },
+  cardPreview: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    lineHeight: 18,
+  },
+  expandButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#f0f4f8',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 8,
+  },
+
+  // Expanded Content
+  expandedContent: {
+    paddingHorizontal: 14,
+    paddingBottom: 14,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+  },
+  statementScrollView: {
+    maxHeight: 200,
+    marginVertical: 14,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 10,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#e8ecf0',
+  },
+  fullStatementText: {
+    fontSize: 14,
+    color: COLORS.textPrimary,
+    lineHeight: 22,
+  },
+
+  // Action Buttons
+  actionButtonsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  copyStatementBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#e8f4fd',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    gap: 8,
+  },
+  copyStatementText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.primary,
+  },
+  deleteBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#f5f5f5',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    width: '95%',
+    alignItems: 'center',
+  },
+  modalCloseBtn: {
+    position: 'absolute',
+    top: -50,
+    right: 0,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  modalImage: {
+    width: '100%',
+    minHeight: 300,
+    borderRadius: 12,
+    backgroundColor: '#1a1a1a',
+  },
+  modalDownloadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.primary,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 10,
+    marginTop: 20,
+    gap: 10,
+  },
+  modalDownloadText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
+});
