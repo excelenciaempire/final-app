@@ -496,65 +496,71 @@ export default function InspectionHistoryScreen() {
     );
   };
 
+  const { width: screenWidth } = useWindowDimensions();
+  const isLargeScreen = screenWidth > 768;
+  const contentMaxWidth = isLargeScreen ? 900 : screenWidth;
+
   return (
     <View style={styles.container}>
-      <Text style={styles.headerTitle}>Statement History</Text>
-      
-      {/* Usage & Ad Banner for free users */}
-      <View style={styles.promoContainer}>
-        <StatementUsageCard />
-        <AdBanner />
-      </View>
+      <View style={[styles.contentWrapper, { maxWidth: contentMaxWidth, alignSelf: 'center', width: '100%' }]}>
+        <Text style={styles.headerTitle}>Statement History</Text>
+        
+        {/* Usage & Ad Banner for free users */}
+        <View style={styles.promoContainer}>
+          <StatementUsageCard />
+          <AdBanner />
+        </View>
 
-      {/* Search */}
-      <View style={styles.searchContainer}>
-        <Search size={20} color="#6c757d" style={styles.searchIcon} />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search statements..."
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          placeholderTextColor="#6c757d"
+        {/* Search */}
+        <View style={styles.searchContainer}>
+          <Search size={20} color="#6c757d" style={styles.searchIcon} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search statements..."
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholderTextColor="#6c757d"
+          />
+        </View>
+
+        {/* List */}
+        {isLoading && <ActivityIndicator size="large" color={COLORS.primary} style={styles.loader} />}
+        {error && <Text style={styles.errorText}>{error}</Text>}
+        {!isLoading && !error && (
+          filteredInspections.length === 0 ? (
+            <Text style={styles.emptyText}>
+              {searchQuery ? 'No matching statements found.' : 'No statement history found.'}
+            </Text>
+          ) : (
+            <FlatList
+              data={filteredInspections}
+              renderItem={renderItem}
+              keyExtractor={item => item.id}
+              style={styles.list}
+              contentContainerStyle={[styles.listContent, isLargeScreen && { paddingHorizontal: 24 }]}
+              refreshControl={
+                <RefreshControl
+                  refreshing={isRefreshing}
+                  onRefresh={onRefresh}
+                  colors={[COLORS.primary]}
+                  tintColor={COLORS.primary}
+                />
+              }
+              ListFooterComponent={renderFooter}
+              onEndReached={handleLoadMore}
+              onEndReachedThreshold={0.5}
+            />
+          )
+        )}
+
+        {/* Image Modal */}
+        <ImageModal
+          visible={imageModalVisible}
+          imageUrl={selectedImageUrl}
+          onClose={() => setImageModalVisible(false)}
+          onDownload={handleDownloadImage}
         />
       </View>
-
-      {/* List */}
-      {isLoading && <ActivityIndicator size="large" color={COLORS.primary} style={styles.loader} />}
-      {error && <Text style={styles.errorText}>{error}</Text>}
-      {!isLoading && !error && (
-        filteredInspections.length === 0 ? (
-          <Text style={styles.emptyText}>
-            {searchQuery ? 'No matching statements found.' : 'No statement history found.'}
-          </Text>
-        ) : (
-          <FlatList
-            data={filteredInspections}
-            renderItem={renderItem}
-            keyExtractor={item => item.id}
-            style={styles.list}
-            contentContainerStyle={styles.listContent}
-            refreshControl={
-              <RefreshControl
-                refreshing={isRefreshing}
-                onRefresh={onRefresh}
-                colors={[COLORS.primary]}
-                tintColor={COLORS.primary}
-              />
-            }
-            ListFooterComponent={renderFooter}
-            onEndReached={handleLoadMore}
-            onEndReachedThreshold={0.5}
-          />
-        )
-      )}
-
-      {/* Image Modal */}
-      <ImageModal
-        visible={imageModalVisible}
-        imageUrl={selectedImageUrl}
-        onClose={() => setImageModalVisible(false)}
-        onDownload={handleDownloadImage}
-      />
     </View>
   );
 }
@@ -563,6 +569,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f5f7fa',
+  },
+  contentWrapper: {
+    flex: 1,
+    paddingHorizontal: Platform.OS === 'web' ? 20 : 0,
   },
   promoContainer: {
     paddingHorizontal: 16,

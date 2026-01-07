@@ -299,18 +299,21 @@ const SopHistoryScreen: React.FC = () => {
     </TouchableOpacity>
   );
 
+  const contentMaxWidth = isLargeScreen ? 900 : width;
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.title}>SOP Change History</Text>
-        <Text style={styles.description}>
-          This log shows when state or organization SOP assignments were created, updated, or removed in the SOP Admin panel.
-        </Text>
-        <Text style={styles.hint}>
-          Use the filters, chips, and search bar to quickly find specific SOP changes.
-        </Text>
-      </View>
+      <View style={[styles.contentWrapper, { maxWidth: contentMaxWidth, alignSelf: 'center', width: '100%' }]}>
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={styles.title}>SOP Change History</Text>
+          <Text style={styles.description}>
+            This log shows when state or organization SOP assignments were created, updated, or removed in the SOP Admin panel.
+          </Text>
+          <Text style={styles.hint}>
+            Use the filters, chips, and search bar to quickly find specific SOP changes.
+          </Text>
+        </View>
 
       {/* View Mode Toggle & Action Buttons */}
       <View style={styles.actionRow}>
@@ -495,6 +498,7 @@ const SopHistoryScreen: React.FC = () => {
           )}
         </>
       )}
+      </View>
     </ScrollView>
   );
 };
@@ -507,6 +511,11 @@ const styles = StyleSheet.create({
   contentContainer: {
     padding: 16,
     paddingBottom: 40,
+    paddingHorizontal: Platform.OS === 'web' ? 24 : 16,
+  },
+  contentWrapper: {
+    flex: 1,
+    paddingHorizontal: Platform.OS === 'web' ? 8 : 0,
   },
   header: {
     marginBottom: 20,
