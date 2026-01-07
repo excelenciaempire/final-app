@@ -34,6 +34,7 @@ router.post('/sop/assign-state', sopController.assignStateSop);
 router.post('/sop/assign-org', sopController.assignOrgSop);
 router.get('/sop/assignments', sopController.getSopAssignments);
 router.get('/sop/history', sopController.getSopHistory);
+router.get('/sop/history/export-csv', sopController.exportSopHistoryCsv);
 
 // Ad Management Routes (Admin only)
 router.get('/ads', adController.getAllAds);

@@ -6,13 +6,23 @@ const cloudinary = require('cloudinary').v2;
  */
 const uploadSopDocument = async (req, res) => {
   try {
-    const { documentName, documentType, fileUrl } = req.body;
+    const { documentName, documentType, fileBase64 } = req.body;
     const clerkId = req.auth.userId;
 
-    if (!documentName || !documentType || !fileUrl) {
-      return res.status(400).json({ message: 'Missing required fields' });
+    if (!documentName || !documentType || !fileBase64) {
+      return res.status(400).json({ message: 'Missing required fields: documentName, documentType, fileBase64' });
     }
 
+    // Upload base64 PDF to Cloudinary
+    const uploadResult = await cloudinary.uploader.upload(`data:application/pdf;base64,${fileBase64}`, {
+      resource_type: "raw",
+      folder: "sop_documents",
+      public_id: `${documentName.replace(/\s/g, '_')}_${Date.now()}`,
+    });
+
+    const fileUrl = uploadResult.secure_url;
+
+    // Save to database
     const result = await pool.query(`
       INSERT INTO sop_documents (
         document_name,
@@ -23,6 +33,16 @@ const uploadSopDocument = async (req, res) => {
       ) VALUES ($1, $2, $3, $4, NOW())
       RETURNING *
     `, [documentName, documentType, fileUrl, clerkId]);
+
+    // Log to sop_history
+    await pool.query(`
+      INSERT INTO sop_history (
+        action_type,
+        sop_document_id,
+        changed_by,
+        created_at
+      ) VALUES ($1, $2, $3, NOW())
+    `, ['uploaded', result.rows[0].id, clerkId]);
 
     res.json({
       message: 'SOP document uploaded successfully',
@@ -428,6 +448,121 @@ const getSopDocuments = async (req, res) => {
   }
 };
 
+/**
+ * Export SOP history as CSV with current filters
+ */
+const exportSopHistoryCsv = async (req, res) => {
+  try {
+    const { scope, actionType, state, organization, timeframe, search } = req.query;
+
+    // Build the same query as getSopHistory but without pagination
+    let query = `
+      SELECT 
+        sh.id,
+        sh.action_type,
+        sh.sop_document_id,
+        sd.document_name as sop_document_name,
+        sh.assignment_type,
+        sh.assignment_value,
+        sh.changed_by,
+        u.email as changed_by_email,
+        sh.change_details,
+        sh.created_at
+      FROM sop_history sh
+      LEFT JOIN sop_documents sd ON sh.sop_document_id = sd.id
+      LEFT JOIN users u ON sh.changed_by = u.clerk_id
+      WHERE 1=1
+    `;
+    const params = [];
+    let paramIndex = 1;
+
+    // Apply same filters as getSopHistory
+    if (scope && scope !== 'all') {
+      if (scope === 'document') {
+        query += ` AND sh.assignment_type IS NULL`;
+      } else if (scope === 'assignment') {
+        query += ` AND sh.assignment_type IS NOT NULL`;
+      }
+    }
+
+    if (actionType && actionType !== 'all') {
+      query += ` AND sh.action_type = $${paramIndex}`;
+      params.push(actionType);
+      paramIndex++;
+    }
+
+    if (state && state !== 'all') {
+      query += ` AND sh.assignment_type = 'state' AND sh.assignment_value = $${paramIndex}`;
+      params.push(state);
+      paramIndex++;
+    }
+
+    if (organization && organization !== 'all') {
+      query += ` AND sh.assignment_type = 'organization' AND sh.assignment_value = $${paramIndex}`;
+      params.push(organization);
+      paramIndex++;
+    }
+
+    if (timeframe && timeframe !== 'all') {
+      const now = new Date();
+      let dateFilter;
+      if (timeframe === '24h') dateFilter = new Date(now.setDate(now.getDate() - 1));
+      else if (timeframe === '7d') dateFilter = new Date(now.setDate(now.getDate() - 7));
+      else if (timeframe === '30d') dateFilter = new Date(now.setDate(now.getDate() - 30));
+      else if (timeframe === '1y') dateFilter = new Date(now.setFullYear(now.getFullYear() - 1));
+
+      if (dateFilter) {
+        query += ` AND sh.created_at >= $${paramIndex}`;
+        params.push(dateFilter.toISOString());
+        paramIndex++;
+      }
+    }
+
+    if (search) {
+      query += ` AND (sd.document_name ILIKE $${paramIndex} OR u.email ILIKE $${paramIndex})`;
+      params.push(`%${search}%`);
+      paramIndex++;
+    }
+
+    query += ` ORDER BY sh.created_at DESC`;
+
+    const result = await pool.query(query, params);
+
+    if (result.rows.length === 0) {
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', 'attachment; filename="sop_history.csv"');
+      return res.status(200).send('No SOP history found matching filters.');
+    }
+
+    // Format data for CSV
+    const csvData = result.rows.map(row => ({
+      'History ID': row.id,
+      'Action Type': row.action_type,
+      'Document Name': row.sop_document_name || 'N/A',
+      'Assignment Type': row.assignment_type || 'N/A',
+      'Assignment Value': row.assignment_value || 'N/A',
+      'Changed By Email': row.changed_by_email || 'Unknown',
+      'Date': new Date(row.created_at).toLocaleString(),
+      'Change Details': row.change_details ? JSON.stringify(row.change_details) : 'N/A'
+    }));
+
+    const { Parser } = require('json2csv');
+    const fields = ['History ID', 'Action Type', 'Document Name', 'Assignment Type', 'Assignment Value', 'Changed By Email', 'Date', 'Change Details'];
+    const json2csvParser = new Parser({ fields });
+    const csv = json2csvParser.parse(csvData);
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="sop_history_${new Date().toISOString().split('T')[0]}.csv"`);
+    res.status(200).send(csv);
+
+  } catch (error) {
+    console.error('Error exporting SOP history CSV:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ message: 'Failed to export SOP history CSV', error: error.message });
+    }
+  }
+};
+
 module.exports = {
   uploadSopDocument,
   assignStateSop,
@@ -435,6 +570,7 @@ module.exports = {
   getActiveSops,
   getSopAssignments,
   getSopHistory,
-  getSopDocuments
+  getSopDocuments,
+  exportSopHistoryCsv
 };
 

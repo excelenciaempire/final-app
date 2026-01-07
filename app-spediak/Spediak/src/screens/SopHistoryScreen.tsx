@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert, FlatList } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert, FlatList, Platform } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { useAuth } from '@clerk/clerk-expo';
 import axios from 'axios';
@@ -8,6 +8,8 @@ import { COLORS } from '../styles/colors';
 import { Search, Download, Link as LinkIcon, Filter } from 'lucide-react-native';
 import { format } from 'date-fns';
 import { US_STATES } from '../context/GlobalStateContext';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 
 const ORGANIZATIONS = ['All', 'ASHI', 'InterNACHI'];
 
@@ -91,9 +93,59 @@ const SopHistoryScreen: React.FC = () => {
     Alert.alert('Copy Link', 'Link to current filters copied to clipboard (feature placeholder)');
   };
 
-  const handleExportCsv = () => {
-    // In a real app, this would trigger CSV export
-    Alert.alert('Export CSV', 'CSV export feature coming soon');
+  const handleExportCsv = async () => {
+    try {
+      setIsLoading(true);
+      const token = await getToken();
+      if (!token) return;
+
+      // Build query params from current filters
+      const params: any = {};
+      if (scopeFilter !== 'all') params.scope = scopeFilter;
+      if (actionFilter !== 'all') params.actionType = actionFilter;
+      if (stateFilter !== 'All') params.state = stateFilter;
+      if (orgFilter !== 'All') params.organization = orgFilter;
+      if (searchQuery.trim()) params.search = searchQuery.trim();
+
+      const response = await axios.get(`${BASE_URL}/api/admin/sop/history/export-csv`, {
+        params,
+        headers: { Authorization: `Bearer ${token}` },
+        responseType: 'text',
+      });
+
+      if (Platform.OS === 'web') {
+        // Web: Trigger download
+        const blob = new Blob([response.data], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', `sop_history_${new Date().toISOString().split('T')[0]}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
+        Alert.alert('Success', 'CSV file downloaded');
+      } else {
+        // Mobile: Save and share
+        const filename = `sop_history_${new Date().toISOString().split('T')[0]}.csv`;
+        const fileUri = FileSystem.documentDirectory + filename;
+        await FileSystem.writeAsStringAsync(fileUri, response.data, {
+          encoding: FileSystem.EncodingType.UTF8,
+        });
+        
+        const canShare = await Sharing.isAvailableAsync();
+        if (canShare) {
+          await Sharing.shareAsync(fileUri);
+        } else {
+          Alert.alert('Success', `CSV saved to ${fileUri}`);
+        }
+      }
+    } catch (error: any) {
+      console.error('Error exporting CSV:', error);
+      Alert.alert('Error', error.response?.data?.message || 'Failed to export CSV');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleLoadMore = () => {

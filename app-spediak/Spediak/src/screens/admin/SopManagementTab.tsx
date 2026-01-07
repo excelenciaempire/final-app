@@ -7,6 +7,8 @@ import { BASE_URL } from '../../config/api';
 import { COLORS } from '../../styles/colors';
 import { Upload, Trash2, Eye, Copy, Check, X, FileText, Users, Settings as SettingsIcon } from 'lucide-react-native';
 import { US_STATES } from '../../context/GlobalStateContext';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
 
 const ORGANIZATIONS = ['ASHI', 'InterNACHI'];
 
@@ -30,11 +32,16 @@ const SopManagementTab: React.FC = () => {
   const [selectedStateSop, setSelectedStateSop] = useState<string>('NC');
   const [selectedOrgSop, setSelectedOrgSop] = useState<string>('ASHI');
   const [isLoadingSops, setIsLoadingSops] = useState(false);
+  const [selectedSopFile, setSelectedSopFile] = useState<DocumentPicker.DocumentPickerResult | null>(null);
+  const [uploadingSop, setUploadingSop] = useState(false);
+  const [newSopDocName, setNewSopDocName] = useState('');
+  const [newSopDocType, setNewSopDocType] = useState<'state' | 'organization'>('state');
   
   // User Search
   const [userSearchEmail, setUserSearchEmail] = useState('');
   const [searchedUser, setSearchedUser] = useState<any>(null);
   const [isSearchingUser, setIsSearchingUser] = useState(false);
+  const [searchResults, setSearchResults] = useState<any[]>([]);
 
   useEffect(() => {
     if (user) {
@@ -171,24 +178,57 @@ const SopManagementTab: React.FC = () => {
     }
   };
 
-  const handleUploadSop = () => {
-    Alert.alert(
-      'Upload SOP',
-      'SOP document upload integration with file picker will be available soon. For now, please provide the document URL.',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel'
-        },
-        {
-          text: 'Enter URL',
-          onPress: () => {
-            // In a real implementation, this would open a file picker or URL input modal
-            Alert.alert('Feature Coming Soon', 'File upload integration is in progress');
-          }
-        }
-      ]
-    );
+  const handlePickSopDocument = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'application/pdf',
+        copyToCacheDirectory: true,
+      });
+      
+      if (result.assets && result.assets[0]) {
+        setSelectedSopFile(result);
+        Alert.alert('File Selected', `${result.assets[0].name} ready to upload`);
+      }
+    } catch (error) {
+      console.error('Error picking document:', error);
+      Alert.alert('Error', 'Failed to pick document');
+    }
+  };
+
+  const handleUploadSop = async () => {
+    if (!selectedSopFile?.assets?.[0] || !newSopDocName || !newSopDocType) {
+      Alert.alert('Error', 'Please select a file, enter document name, and select type');
+      return;
+    }
+
+    try {
+      setUploadingSop(true);
+      const token = await getToken();
+      if (!token) return;
+
+      // Read file as base64
+      const base64 = await FileSystem.readAsStringAsync(selectedSopFile.assets[0].uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      await axios.post(`${BASE_URL}/api/admin/sop/upload`, {
+        documentName: newSopDocName,
+        documentType: newSopDocType,
+        fileBase64: base64,
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      Alert.alert('Success', 'SOP document uploaded successfully!');
+      setSelectedSopFile(null);
+      setNewSopDocName('');
+      fetchSopDocuments();
+    } catch (error: any) {
+      console.error('Error uploading SOP:', error);
+      Alert.alert('Error', error.response?.data?.message || 'Failed to upload SOP');
+    } finally {
+      setUploadingSop(false);
+    }
   };
 
   const handleAssignStateSop = async (documentId: number) => {
@@ -234,7 +274,7 @@ const SopManagementTab: React.FC = () => {
   // User Search Function
   const handleSearchUser = async () => {
     if (!userSearchEmail.trim()) {
-      Alert.alert('Error', 'Please enter an email address');
+      Alert.alert('Error', 'Please enter search query (name or email)');
       return;
     }
 
@@ -243,13 +283,18 @@ const SopManagementTab: React.FC = () => {
       const token = await getToken();
       if (!token) return;
 
-      // This would need a new endpoint in the backend
-      // For now, showing placeholder
-      Alert.alert('Feature Coming Soon', 'User search integration is in progress');
-      setSearchedUser(null);
+      const response = await axios.get(`${BASE_URL}/api/admin/all-users`, {
+        params: { search: userSearchEmail, limit: 10 },
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      setSearchResults(response.data.users || []);
+      if (response.data.users.length === 0) {
+        Alert.alert('No Results', 'No users found matching your search');
+      }
     } catch (error: any) {
       console.error('Error searching user:', error);
-      Alert.alert('Error', 'Failed to search user');
+      Alert.alert('Error', error.response?.data?.message || 'Failed to search users');
     } finally {
       setIsSearchingUser(false);
     }
