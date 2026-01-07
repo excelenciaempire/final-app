@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { useGlobalState } from '../../src/context/GlobalStateContext';
 import { useSubscription } from '../../src/context/SubscriptionContext';
 import { COLORS } from '../../src/styles/colors';
+import StatementUsageCard from '../../src/components/StatementUsageCard';
 
 /**
  * SIMPLIFIED NEW INSPECTION SCREEN FOR DEBUGGING
@@ -32,19 +33,22 @@ const NewInspectionSimple: React.FC = () => {
           <Text style={styles.cardText}>Usage: {subscription?.statements_used}/{subscription?.statements_limit}</Text>
         </View>
 
+        {/* PHASE 6.1: Testing StatementUsageCard */}
+        <StatementUsageCard />
+
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>🔍 What This Tests</Text>
+          <Text style={styles.cardTitle}>🔍 Phase 6.1: Testing StatementUsageCard</Text>
           <Text style={styles.cardText}>✓ CustomHeaderTitle with state selector</Text>
           <Text style={styles.cardText}>✓ CustomDrawerContent with user info</Text>
           <Text style={styles.cardText}>✓ Full drawer navigation</Text>
+          <Text style={styles.cardText}>🧪 StatementUsageCard (TESTING NOW)</Text>
           <Text style={styles.cardText}>✗ AdBanner (removed for test)</Text>
-          <Text style={styles.cardText}>✗ StatementUsageCard (removed for test)</Text>
           <Text style={styles.cardText}>✗ SopAlignmentCard (removed for test)</Text>
           <Text style={styles.cardText}>✗ Complex image upload UI (removed for test)</Text>
         </View>
 
         <Text style={styles.success}>
-          💡 If you see this without errors, the problem is in one of the removed components!
+          💡 If you see this without Error #130, StatementUsageCard is OK!
         </Text>
       </View>
     </ScrollView>
