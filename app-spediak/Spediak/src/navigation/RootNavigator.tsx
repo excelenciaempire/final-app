@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../styles/colors';
 import { useGlobalState, US_STATES } from '../context/GlobalStateContext';
 import { Picker } from '@react-native-picker/picker';
+import SafeComponent from '../components/SafeComponent';
 
 // Import Screens
 import NewInspectionScreen from '../../app/(tabs)/newInspection';
@@ -38,16 +39,106 @@ export type RootDrawerParamList = {
 const Drawer = createDrawerNavigator<RootDrawerParamList>();
 
 // --- Custom Header Title Component with State Selector ---
-const CustomHeaderTitle: React.FC = () => {
-  // Temporarily simplified to debug error #130
+const CustomHeaderTitleInner: React.FC = () => {
+  const { selectedState, setSelectedState } = useGlobalState();
+  const [showStatePicker, setShowStatePicker] = useState(false);
+
+  // Don't render state selector until context is ready
+  if (!setSelectedState) {
+    return (
+      <View style={styles.customHeaderContainer}>
+        <Image 
+          source={require('../../assets/logo_header.png')} 
+          style={styles.headerLogo}
+        />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.customHeaderContainer}>
       <Image 
         source={require('../../assets/logo_header.png')} 
         style={styles.headerLogo}
       />
-      <Text style={styles.headerStateText}>Spediak</Text>
+      <TouchableOpacity 
+        style={styles.stateSelector}
+        onPress={() => setShowStatePicker(true)}
+      >
+        <Text style={styles.headerStateText}>
+          {selectedState || 'NC'}
+        </Text>
+        <Ionicons name="chevron-down" size={16} color={COLORS.white} />
+      </TouchableOpacity>
+
+      {/* State Picker Modal */}
+      <Modal
+        visible={showStatePicker}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowStatePicker(false)}
+      >
+        <TouchableOpacity 
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowStatePicker(false)}
+        >
+          <View style={styles.statePickerContainer}>
+            <Text style={styles.statePickerTitle}>Select State</Text>
+            <ScrollView style={styles.statePickerScroll}>
+              {US_STATES.map((state) => (
+                <TouchableOpacity
+                  key={state.value}
+                  style={[
+                    styles.statePickerItem,
+                    selectedState === state.value && styles.statePickerItemActive
+                  ]}
+                  onPress={() => {
+                    setSelectedState(state.value);
+                    setShowStatePicker(false);
+                  }}
+                >
+                  <Text style={[
+                    styles.statePickerItemText,
+                    selectedState === state.value && styles.statePickerItemTextActive
+                  ]}>
+                    {state.value} - {state.label}
+                  </Text>
+                  {selectedState === state.value && (
+                    <Ionicons name="checkmark" size={20} color={COLORS.primary} />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <TouchableOpacity
+              style={styles.closePickerButton}
+              onPress={() => setShowStatePicker(false)}
+            >
+              <Text style={styles.closePickerButtonText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
+  );
+};
+
+// Wrapped version with error boundary
+const CustomHeaderTitle: React.FC = () => {
+  return (
+    <SafeComponent 
+      componentName="CustomHeaderTitle"
+      fallback={
+        <View style={styles.customHeaderContainer}>
+          <Image 
+            source={require('../../assets/logo_header.png')} 
+            style={styles.headerLogo}
+          />
+        </View>
+      }
+    >
+      <CustomHeaderTitleInner />
+    </SafeComponent>
   );
 };
 
