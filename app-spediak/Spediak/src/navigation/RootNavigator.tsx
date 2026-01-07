@@ -16,6 +16,7 @@ import SafeComponent from '../components/SafeComponent';
 
 // Import Screens
 import NewInspectionScreen from '../../app/(tabs)/newInspection';
+import NewInspectionSimple from '../../app/(tabs)/newInspectionSimple';
 import InspectionHistoryScreen from '../screens/InspectionHistoryScreen';
 import ProfileSettingsScreen from '../screens/ProfileSettingsScreen';
 import WelcomeScreen from '../screens/WelcomeScreen';
@@ -285,7 +286,7 @@ const RootNavigator: React.FC = () => {
     let CurrentScreenComponent: React.ComponentType<any> | null = null;
 
     if (activeScreen === 'Home' || activeScreen === 'NewStatement') {
-        CurrentScreenComponent = NewInspectionScreen;
+        CurrentScreenComponent = NewInspectionSimple; // Using simplified version for testing
     } else if (activeScreen === 'InspectionHistory') {
         CurrentScreenComponent = InspectionHistoryScreen;
     } else if (activeScreen === 'SOP') {
@@ -344,7 +345,7 @@ const RootNavigator: React.FC = () => {
         })}
         >
         {/* Regular Screens */}
-         <Drawer.Screen name="Home" component={NewInspectionScreen} options={{ title: 'Home' }} />
+         <Drawer.Screen name="Home" component={NewInspectionSimple} options={{ title: 'Home' }} />
          <Drawer.Screen name="InspectionHistory" component={InspectionHistoryScreen} options={{ title: 'Statement History' }} />
          <Drawer.Screen name="SOP" component={SopScreen} options={{ title: 'SOP' }} />
          <Drawer.Screen name="Discord" component={DiscordScreen} options={{ title: 'Discord' }} />
