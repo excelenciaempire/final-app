@@ -39,74 +39,14 @@ const Drawer = createDrawerNavigator<RootDrawerParamList>();
 
 // --- Custom Header Title Component with State Selector ---
 const CustomHeaderTitle: React.FC = () => {
-  const globalState = useGlobalState();
-  const { selectedState, setSelectedState } = globalState || { selectedState: null, setSelectedState: () => {} };
-  const [showStatePicker, setShowStatePicker] = useState(false);
-
+  // Temporarily simplified to debug error #130
   return (
     <View style={styles.customHeaderContainer}>
       <Image 
         source={require('../../assets/logo_header.png')} 
         style={styles.headerLogo}
       />
-      <TouchableOpacity 
-        style={styles.stateSelector}
-        onPress={() => setShowStatePicker(true)}
-      >
-        <Text style={styles.headerStateText}>
-          {selectedState || 'Select State'}
-        </Text>
-        <Ionicons name="chevron-down" size={16} color={COLORS.white} />
-      </TouchableOpacity>
-
-      {/* State Picker Modal */}
-      <Modal
-        visible={showStatePicker}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setShowStatePicker(false)}
-      >
-        <TouchableOpacity 
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setShowStatePicker(false)}
-        >
-          <View style={styles.statePickerContainer}>
-            <Text style={styles.statePickerTitle}>Select State</Text>
-            <ScrollView style={styles.statePickerScroll}>
-              {US_STATES.map((state) => (
-                <TouchableOpacity
-                  key={state.value}
-                  style={[
-                    styles.statePickerItem,
-                    selectedState === state.value && styles.statePickerItemActive
-                  ]}
-                  onPress={() => {
-                    setSelectedState(state.value);
-                    setShowStatePicker(false);
-                  }}
-                >
-                  <Text style={[
-                    styles.statePickerItemText,
-                    selectedState === state.value && styles.statePickerItemTextActive
-                  ]}>
-                    {state.value} - {state.label}
-                  </Text>
-                  {selectedState === state.value && (
-                    <Ionicons name="checkmark" size={20} color={COLORS.primary} />
-                  )}
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-            <TouchableOpacity
-              style={styles.closePickerButton}
-              onPress={() => setShowStatePicker(false)}
-            >
-              <Text style={styles.closePickerButtonText}>Close</Text>
-            </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
-      </Modal>
+      <Text style={styles.headerStateText}>Spediak</Text>
     </View>
   );
 };
