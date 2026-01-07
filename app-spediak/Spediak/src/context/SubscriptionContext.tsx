@@ -24,6 +24,9 @@ interface SubscriptionContextType {
   refreshSubscription: () => Promise<void>;
   canGenerateStatement: boolean;
   incrementUsage: () => Promise<boolean>;
+  // Admin preview mode - allows admins to see ads/banners as if they were free users
+  adminPreviewMode: boolean;
+  setAdminPreviewMode: (enabled: boolean) => void;
 }
 
 const SubscriptionContext = createContext<SubscriptionContextType | undefined>(undefined);
@@ -32,6 +35,7 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
   const [subscription, setSubscription] = useState<SubscriptionData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [adminPreviewMode, setAdminPreviewMode] = useState(false);
   const { getToken, isSignedIn } = useAuth();
 
   const refreshSubscription = useCallback(async () => {
@@ -115,6 +119,8 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
         refreshSubscription,
         canGenerateStatement,
         incrementUsage,
+        adminPreviewMode,
+        setAdminPreviewMode,
       }}
     >
       {children}
@@ -134,6 +140,8 @@ export const useSubscription = () => {
       refreshSubscription: async () => {},
       canGenerateStatement: true,
       incrementUsage: async () => true,
+      adminPreviewMode: false,
+      setAdminPreviewMode: () => {},
     };
   }
   return context;

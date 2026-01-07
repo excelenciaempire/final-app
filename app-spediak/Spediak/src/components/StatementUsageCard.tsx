@@ -6,7 +6,7 @@ import { COLORS } from '../styles/colors';
 import { FileText } from 'lucide-react-native';
 
 const StatementUsageCard: React.FC = () => {
-  const { subscription, isLoading } = useSubscription();
+  const { subscription, isLoading, adminPreviewMode } = useSubscription();
   const navigation = useNavigation<any>();
   const { width } = useWindowDimensions();
 
@@ -35,9 +35,45 @@ const StatementUsageCard: React.FC = () => {
     navigation.navigate('Profile');
   };
 
-  // Don't show for admins - they have unlimited access
-  if (is_admin) {
+  // Don't show for admins - unless preview mode is on
+  if (is_admin && !adminPreviewMode) {
     return null;
+  }
+
+  // If admin in preview mode, show the free plan preview
+  if (adminPreviewMode) {
+    return (
+      <View style={styles.card}>
+        <View style={styles.previewBanner}>
+          <Text style={styles.previewBannerText}>👁 Admin Preview Mode</Text>
+        </View>
+        <View style={styles.headerRow}>
+          <View style={styles.iconBox}>
+            <FileText size={20} color={COLORS.primary} />
+          </View>
+          <View style={styles.titleContainer}>
+            <Text style={styles.title}>Statements (Free Plan)</Text>
+            <Text style={styles.subtitle}>
+              You have 3 of 5 free statements remaining.
+            </Text>
+          </View>
+          <View style={styles.usageBadge}>
+            <Text style={styles.usageBadgeText}>2 / 5 used</Text>
+          </View>
+        </View>
+        <Text style={styles.infoText}>
+          Free plan statements reset every 30 days. Upgrade now to unlock <Text style={styles.highlightText}>unlimited statements</Text> and remove ads.
+        </Text>
+        <View style={styles.buttonRow}>
+          <TouchableOpacity style={styles.upgradeButton} onPress={handleUpgrade}>
+            <Text style={styles.upgradeButtonText}>Upgrade to Pro</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.detailsButton} onPress={handleViewDetails}>
+            <Text style={styles.detailsButtonText}>View limits & details</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
   }
 
   // For paid plans
@@ -199,6 +235,21 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     textDecorationLine: 'underline',
+  },
+  previewBanner: {
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    marginBottom: 12,
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+  },
+  previewBannerText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#B45309',
   },
 });
 

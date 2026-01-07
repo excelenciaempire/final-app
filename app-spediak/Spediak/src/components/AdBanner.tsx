@@ -17,14 +17,15 @@ interface AdData {
 
 const AdBanner: React.FC = () => {
   const { getToken } = useAuth();
-  const { subscription } = useSubscription();
+  const { subscription, adminPreviewMode } = useSubscription();
   const [ads, setAds] = useState<AdData[]>([]);
   const [currentAdIndex, setCurrentAdIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(false);
 
-  // Only show ads for free tier users (not for admins or paid users)
-  const shouldShowAds = subscription?.plan_type === 'free' && !subscription?.is_admin;
+  // Show ads for free tier users OR when admin preview mode is enabled
+  const isAdmin = subscription?.is_admin;
+  const shouldShowAds = (subscription?.plan_type === 'free' && !isAdmin) || adminPreviewMode;
 
   const fetchAds = useCallback(async () => {
     try {
@@ -146,6 +147,11 @@ const AdBanner: React.FC = () => {
         )}
         <View style={styles.sponsoredRow}>
           <Text style={styles.sponsoredLabel}>Sponsored</Text>
+          {adminPreviewMode && (
+            <View style={styles.previewBadge}>
+              <Text style={styles.previewBadgeText}>👁 Admin Preview</Text>
+            </View>
+          )}
           {ads.length > 1 && (
             <View style={styles.dotContainer}>
               {ads.map((_, index) => (
@@ -257,6 +263,19 @@ const styles = StyleSheet.create({
   },
   dotActive: {
     backgroundColor: COLORS.primary,
+  },
+  previewBadge: {
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+  },
+  previewBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#B45309',
   },
 });
 

@@ -20,6 +20,7 @@ import axios from 'axios';
 import * as ImagePicker from 'expo-image-picker';
 import { BASE_URL } from '../../config/api';
 import { COLORS } from '../../styles/colors';
+import { useSubscription } from '../../context/SubscriptionContext';
 import { 
   Plus, 
   Trash2, 
@@ -31,7 +32,9 @@ import {
   Crop,
   AlertCircle,
   Info,
-  Move
+  Move,
+  Eye,
+  EyeOff
 } from 'lucide-react-native';
 
 interface Ad {
@@ -53,6 +56,7 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const AdManagerTab: React.FC = () => {
   const { getToken } = useAuth();
+  const { adminPreviewMode, setAdminPreviewMode } = useSubscription();
   const [ads, setAds] = useState<Ad[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -384,6 +388,33 @@ const AdManagerTab: React.FC = () => {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+      {/* Admin Preview Mode Toggle */}
+      <View style={styles.previewCard}>
+        <View style={styles.previewHeader}>
+          <View style={styles.previewTitleRow}>
+            {adminPreviewMode ? (
+              <Eye size={20} color="#F59E0B" />
+            ) : (
+              <EyeOff size={20} color="#6B7280" />
+            )}
+            <Text style={styles.previewTitle}>Admin Preview Mode</Text>
+          </View>
+          <TouchableOpacity
+            style={[styles.previewToggle, adminPreviewMode && styles.previewToggleActive]}
+            onPress={() => setAdminPreviewMode(!adminPreviewMode)}
+          >
+            <Text style={[styles.previewToggleText, adminPreviewMode && styles.previewToggleTextActive]}>
+              {adminPreviewMode ? 'ON' : 'OFF'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.previewDescription}>
+          {adminPreviewMode 
+            ? '✅ Preview mode enabled! You can now see ads and usage cards on all screens as if you were a free user. Ads will rotate automatically.'
+            : 'Enable to preview how ads and statement limits appear to free-tier users across the app.'}
+        </Text>
+      </View>
+
       {/* Dimensions Info */}
       <View style={styles.infoCard}>
         <View style={styles.infoHeader}>
@@ -706,6 +737,54 @@ const styles = StyleSheet.create({
     marginTop: 12,
     fontSize: 14,
     color: COLORS.textSecondary,
+  },
+  previewCard: {
+    backgroundColor: '#FFFBEB',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#FCD34D',
+  },
+  previewHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  previewTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  previewTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#92400E',
+  },
+  previewToggle: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: '#E5E7EB',
+    borderRadius: 20,
+    minWidth: 60,
+    alignItems: 'center',
+  },
+  previewToggleActive: {
+    backgroundColor: '#F59E0B',
+  },
+  previewToggleText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#6B7280',
+  },
+  previewToggleTextActive: {
+    color: '#FFFFFF',
+  },
+  previewDescription: {
+    fontSize: 13,
+    color: '#92400E',
+    lineHeight: 18,
   },
   infoCard: {
     backgroundColor: '#EFF6FF',
