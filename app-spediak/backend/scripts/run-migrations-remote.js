@@ -88,7 +88,10 @@ async function runMigrations() {
       'sop_documents',
       'sop_state_assignments',
       'sop_org_assignments',
-      'sop_history'
+      'sop_history',
+      'admin_gifted_credits',
+      'admin_user_notes',
+      'admin_trial_resets'
     ];
     
     const existingTables = tablesResult.rows.map(r => r.table_name);

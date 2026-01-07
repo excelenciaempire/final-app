@@ -63,7 +63,8 @@ const updateProfile = async (req, res) => {
       primaryState, 
       secondaryStates, 
       organization, 
-      companyName 
+      companyName,
+      phoneNumber
     } = req.body;
 
     if (!clerkId) {
@@ -86,10 +87,11 @@ const updateProfile = async (req, res) => {
           secondary_states, 
           organization, 
           company_name,
+          phone_number,
           updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, NOW())
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
         RETURNING *
-      `, [clerkId, profilePhotoUrl, primaryState, secondaryStates || [], organization, companyName]);
+      `, [clerkId, profilePhotoUrl, primaryState, secondaryStates || [], organization, companyName, phoneNumber]);
 
       return res.json({ 
         message: 'Profile created successfully', 
@@ -106,10 +108,11 @@ const updateProfile = async (req, res) => {
         secondary_states = COALESCE($4, secondary_states),
         organization = COALESCE($5, organization),
         company_name = COALESCE($6, company_name),
+        phone_number = COALESCE($7, phone_number),
         updated_at = NOW()
       WHERE clerk_id = $1
       RETURNING *
-    `, [clerkId, profilePhotoUrl, primaryState, secondaryStates, organization, companyName]);
+    `, [clerkId, profilePhotoUrl, primaryState, secondaryStates, organization, companyName, phoneNumber]);
 
     res.json({ 
       message: 'Profile updated successfully', 

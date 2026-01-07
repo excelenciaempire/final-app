@@ -26,6 +26,12 @@ interface GeneratePreDescriptionResponse {
 interface GenerateDdidResponse {
   ddid: string;
 }
+interface GenerateStatementResponse {
+  statement: string;
+  sopUsed: boolean;
+  state: string;
+  organization: string | null;
+}
 interface TranscribeAudioResponse {
   transcript: string;
 }
@@ -378,7 +384,65 @@ export default function NewInspectionScreen() {
         }
     };
 
-    // --- NEW: Step 1 - Handle Analyze Button Press ---
+    // --- NEW: Direct Statement Generation (streamlined flow) ---
+    const handleGenerateStatement = async () => {
+        console.log("[handleGenerateStatement] Function called - Direct generation flow");
+        if (!imageBase64) {
+            Alert.alert("Missing Image", "Please upload an image first.");
+            return;
+        }
+
+        setIsGeneratingFinalDdid(true);
+        setError(null);
+        setGeneratedDdid(null);
+
+        const currentCloudinaryUrl = cloudinaryUrl || await uploadImageToCloudinary(imageBase64);
+        if (!currentCloudinaryUrl) {
+            setIsGeneratingFinalDdid(false);
+            return;
+        }
+
+        try {
+            const token = await getToken();
+            if (!token) throw new Error("Authentication token not found.");
+
+            // Get organization from user profile (if available)
+            const organization = user?.unsafeMetadata?.organization as string || 'None';
+
+            console.log(`[handleGenerateStatement] Calling POST ${BASE_URL}/api/generate-statement`);
+            const response = await axios.post(`${BASE_URL}/api/generate-statement`, {
+                imageBase64,
+                notes: initialDescription,
+                userState,
+                organization,
+            }, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+
+            const data = response.data as GenerateStatementResponse;
+
+            if (data && data.statement) {
+                console.log("[handleGenerateStatement] Statement received:", data.statement.substring(0, 100) + '...');
+                setGeneratedDdid(data.statement);
+                setFinalDescriptionForDdid(initialDescription);
+                setShowDdidModal(true);
+
+                // Save the inspection
+                await saveInspection(data.statement, currentCloudinaryUrl);
+            } else {
+                throw new Error("Invalid response from statement server.");
+            }
+        } catch (err: any) {
+            console.error("[handleGenerateStatement] Error generating statement:", err);
+            const errorMessage = err.response?.data?.message || err.message || "Failed to generate statement";
+            setError(errorMessage);
+            Alert.alert("Generation Failed", errorMessage);
+        } finally {
+            setIsGeneratingFinalDdid(false);
+        }
+    };
+
+    // --- Legacy: Step 1 - Handle Analyze Button Press (two-step flow) ---
     const handleAnalyze = async () => {
         console.log("[handleAnalyze] Function called");
         if (!imageBase64) {
@@ -817,7 +881,7 @@ export default function NewInspectionScreen() {
     // --- Loading Indicator Logic ---
     const isLoading = isUploading || isGeneratingPreDescription || isGeneratingFinalDdid;
     const loadingText = isUploading ? 'Uploading Image...' :
-                       isGeneratingPreDescription ? 'Analyzing Defect...' :
+                       isGeneratingPreDescription ? 'Analyzing...' :
                        isGeneratingFinalDdid ? 'Generating Statement...' : '';
 
     return (
@@ -921,11 +985,11 @@ export default function NewInspectionScreen() {
                 <View style={styles.actionButtonsRow}>
                     <TouchableOpacity
                         style={[styles.button, styles.analyzeButton, styles.actionButtonHalf, (!imageBase64 || !initialDescription.trim() || isLoading || !canGenerateStatement) && styles.buttonDisabled]}
-                        onPress={handleAnalyze}
+                        onPress={handleGenerateStatement}
                         disabled={!imageBase64 || !initialDescription.trim() || isLoading || !canGenerateStatement}
                     >
                         <Text style={styles.buttonText}>
-                          {!canGenerateStatement ? 'Limit Reached' : 'Analyze Defect'}
+                          {!canGenerateStatement ? 'Limit Reached' : 'Generate Statement'}
                         </Text>
                     </TouchableOpacity>
                     <TouchableOpacity

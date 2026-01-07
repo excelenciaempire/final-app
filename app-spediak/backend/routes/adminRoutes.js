@@ -3,7 +3,19 @@ const router = express.Router();
 const { requireAuth } = require('../middleware/clerkAuth');
 const { requireAdmin } = require('../middleware/adminAuth');
 const { getPrompts, updatePrompts, lockPrompt, unlockPrompt, getPromptHistory, restorePromptVersion } = require('../controllers/promptController');
-const { getAllInspections, getAllUsers, exportUsersCsv, deleteUser } = require('../controllers/adminController');
+const { 
+  getAllInspections, 
+  getAllUsers, 
+  exportUsersCsv, 
+  deleteUser,
+  giftCredits,
+  resetTrial,
+  getUserNotes,
+  addUserNote,
+  getGiftHistory,
+  getTrialResetHistory,
+  getUserDetails
+} = require('../controllers/adminController');
 const knowledgeRoutes = require('./knowledgeRoutes'); // Import knowledge base routes
 const sopController = require('../controllers/sopController');
 const adController = require('../controllers/adController');
@@ -28,6 +40,17 @@ router.get('/all-users', getAllUsers);
 router.get('/export-users-csv', exportUsersCsv);
 router.delete('/delete-user/:userId', deleteUser);
 
+// User management (gift credits, reset trial, notes)
+router.get('/users/:userId/details', getUserDetails);
+router.post('/users/:userId/gift-credits', giftCredits);
+router.post('/users/:userId/reset-trial', resetTrial);
+router.get('/users/:userId/notes', getUserNotes);
+router.post('/users/:userId/notes', addUserNote);
+
+// Admin history logs
+router.get('/gift-history', getGiftHistory);
+router.get('/trial-reset-history', getTrialResetHistory);
+
 // SOP Management Routes (Admin only)
 router.post('/sop/upload', sopController.uploadSopDocument);
 router.post('/sop/assign-state', sopController.assignStateSop);
@@ -35,6 +58,7 @@ router.post('/sop/assign-org', sopController.assignOrgSop);
 router.get('/sop/assignments', sopController.getSopAssignments);
 router.get('/sop/history', sopController.getSopHistory);
 router.get('/sop/history/export-csv', sopController.exportSopHistoryCsv);
+router.post('/sop/:documentId/retry-extraction', sopController.retryPdfExtraction);
 
 // Ad Management Routes (Admin only)
 router.get('/ads', adController.getAllAds);

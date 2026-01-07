@@ -11,9 +11,64 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 // Define the states available for selection
 const availableStates = [
+    { label: 'Alabama', value: 'AL' },
+    { label: 'Alaska', value: 'AK' },
+    { label: 'Arizona', value: 'AZ' },
+    { label: 'Arkansas', value: 'AR' },
+    { label: 'California', value: 'CA' },
+    { label: 'Colorado', value: 'CO' },
+    { label: 'Connecticut', value: 'CT' },
+    { label: 'Delaware', value: 'DE' },
+    { label: 'Florida', value: 'FL' },
+    { label: 'Georgia', value: 'GA' },
+    { label: 'Hawaii', value: 'HI' },
+    { label: 'Idaho', value: 'ID' },
+    { label: 'Illinois', value: 'IL' },
+    { label: 'Indiana', value: 'IN' },
+    { label: 'Iowa', value: 'IA' },
+    { label: 'Kansas', value: 'KS' },
+    { label: 'Kentucky', value: 'KY' },
+    { label: 'Louisiana', value: 'LA' },
+    { label: 'Maine', value: 'ME' },
+    { label: 'Maryland', value: 'MD' },
+    { label: 'Massachusetts', value: 'MA' },
+    { label: 'Michigan', value: 'MI' },
+    { label: 'Minnesota', value: 'MN' },
+    { label: 'Mississippi', value: 'MS' },
+    { label: 'Missouri', value: 'MO' },
+    { label: 'Montana', value: 'MT' },
+    { label: 'Nebraska', value: 'NE' },
+    { label: 'Nevada', value: 'NV' },
+    { label: 'New Hampshire', value: 'NH' },
+    { label: 'New Jersey', value: 'NJ' },
+    { label: 'New Mexico', value: 'NM' },
+    { label: 'New York', value: 'NY' },
     { label: 'North Carolina', value: 'NC' },
+    { label: 'North Dakota', value: 'ND' },
+    { label: 'Ohio', value: 'OH' },
+    { label: 'Oklahoma', value: 'OK' },
+    { label: 'Oregon', value: 'OR' },
+    { label: 'Pennsylvania', value: 'PA' },
+    { label: 'Rhode Island', value: 'RI' },
     { label: 'South Carolina', value: 'SC' },
-    // Add other states as needed
+    { label: 'South Dakota', value: 'SD' },
+    { label: 'Tennessee', value: 'TN' },
+    { label: 'Texas', value: 'TX' },
+    { label: 'Utah', value: 'UT' },
+    { label: 'Vermont', value: 'VT' },
+    { label: 'Virginia', value: 'VA' },
+    { label: 'Washington', value: 'WA' },
+    { label: 'West Virginia', value: 'WV' },
+    { label: 'Wisconsin', value: 'WI' },
+    { label: 'Wyoming', value: 'WY' },
+];
+
+// Define organizations
+const organizationOptions = [
+    { label: 'None', value: 'None' },
+    { label: 'ASHI (American Society of Home Inspectors)', value: 'ASHI' },
+    { label: 'InterNACHI (International Association of Certified Home Inspectors)', value: 'InterNACHI' },
+    { label: 'Other', value: 'Other' },
 ];
 
 const ProfileSettingsScreen: React.FC = () => {
@@ -26,11 +81,16 @@ const ProfileSettingsScreen: React.FC = () => {
     const [firstName, setFirstName] = useState<string>('');
     const [lastName, setLastName] = useState<string>('');
     const [selectedState, setSelectedState] = useState<string | null>(null);
+    const [secondaryStates, setSecondaryStates] = useState<string[]>([]);
+    const [organization, setOrganization] = useState<string>('None');
+    const [phoneNumber, setPhoneNumber] = useState<string>('');
+    const [companyName, setCompanyName] = useState<string>('');
     const [profileImageUri, setProfileImageUri] = useState<string | null>(null); // Local URI for display/upload
     const [profileImageBase64, setProfileImageBase64] = useState<string | null>(null); // Store base64
     const [initialImageUri, setInitialImageUri] = useState<string | null>(null); // To track if image changed
     const [newImageUri, setNewImageUri] = useState<string | null>(null); // URI of newly selected image
     const [newImageBlob, setNewImageBlob] = useState<Blob | null>(null); // Blob for upload
+    const [isSavingProfile, setIsSavingProfile] = useState<boolean>(false);
 
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
@@ -47,18 +107,45 @@ const ProfileSettingsScreen: React.FC = () => {
 
     const { user: clerkUser, isLoaded: clerkIsLoaded } = useUser();
 
+    const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5000';
+
+    // Load profile from backend
+    const loadProfile = async () => {
+        try {
+            const token = await getToken();
+            const response = await fetch(`${API_URL}/api/user/profile`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (response.ok) {
+                const data = await response.json();
+                if (data.profile) {
+                    setSelectedState(data.profile.primary_state || null);
+                    setSecondaryStates(data.profile.secondary_states || []);
+                    setOrganization(data.profile.organization || 'None');
+                    setPhoneNumber(data.profile.phone_number || '');
+                    setCompanyName(data.profile.company_name || '');
+                }
+            }
+        } catch (err) {
+            console.error('Error loading profile:', err);
+        }
+    };
+
     // Initialize form fields (just use user data, no auto-edit)
     useEffect(() => {
         setIsClientMounted(true); // Set client mounted state
         if (clerkUser) {
             setFirstName(clerkUser.firstName || '');
             setLastName(clerkUser.lastName || '');
+            // Load state from unsafeMetadata as fallback, but prefer backend
             setSelectedState(clerkUser.unsafeMetadata?.inspectionState as string || null);
             if (!newImageUri) { // Only set from clerkUser if no new image is staged
                 setProfileImageUri(clerkUser.imageUrl || null);
                 setInitialImageUri(clerkUser.imageUrl || null);
             }
             setProfileImageBase64(null); // Ensure base64 is cleared on load/mode switch
+            // Load profile from backend
+            loadProfile();
         }
     }, [clerkUser]); // Removed isEditing dependency, should fetch on clerkUser change primarily
 
@@ -100,16 +187,16 @@ const ProfileSettingsScreen: React.FC = () => {
 
         // Keep validation, but message is less critical now
         if (!firstName || !lastName || !selectedState) {
-            //  Alert.alert("Missing Information", "Please ensure First Name, Last Name, and State are provided.");
             setError("Please ensure First Name, Last Name, and State are provided.");
-             return;
+            return;
         }
 
         setIsLoading(true); 
+        setIsSavingProfile(true);
         setError(null);
         setSuccessMessage(null); 
         setEmailChangeError(null);
-        setEmailChangeSuccess(null); // Clear all messages
+        setEmailChangeSuccess(null);
         let imageUpdateSuccess = true; 
 
         try {
@@ -120,12 +207,12 @@ const ProfileSettingsScreen: React.FC = () => {
                     file: newImageBlob,
                 });
                 console.log("Profile image updated successfully on Clerk (using blob).");
-                setInitialImageUri(newImageUri); // Update initial URI tracker on success
-                setNewImageUri(null); // Clear temporary states after successful upload
+                setInitialImageUri(newImageUri);
+                setNewImageUri(null);
                 setNewImageBlob(null);
             }
 
-            // --- Step 2: Handle Text Field Updates ---
+            // --- Step 2: Handle Clerk Updates (name, state in metadata) ---
             if (imageUpdateSuccess) {
                 const updates: any = {};
 
@@ -138,28 +225,43 @@ const ProfileSettingsScreen: React.FC = () => {
                 if (Object.keys(updates).length > 0) {
                     console.log("Updating user profile metadata/name with:", updates);
                     await clerkUser.update(updates);
-                    Alert.alert("Success", "Profile updated successfully!");
-                 } else if (!newImageBlob) {
-                    console.log("No changes detected to save.");
-                 } else {
-                     Alert.alert("Success", "Profile image updated successfully!");
-                 }
-                setIsEditing(false); // Exit edit mode on success
+                }
             }
 
-            setSuccessMessage('Profile updated successfully!'); // Corrected to use setSuccessMessage
-            // setError(null); // Already cleared above
-            // setEmailChangeError(null); // Already cleared above
-            // setEmailChangeSuccess(null); // Already cleared above
+            // --- Step 3: Save to Backend (profile with all new fields) ---
+            const token = await getToken();
+            const backendResponse = await fetch(`${API_URL}/api/user/profile`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    primaryState: selectedState,
+                    secondaryStates: secondaryStates,
+                    organization: organization,
+                    phoneNumber: phoneNumber,
+                    companyName: companyName,
+                    profilePhotoUrl: clerkUser.imageUrl
+                })
+            });
+
+            if (!backendResponse.ok) {
+                const errorData = await backendResponse.json();
+                throw new Error(errorData.message || 'Failed to save profile to backend');
+            }
+
+            setIsEditing(false);
+            setSuccessMessage('Profile updated successfully!');
+            Alert.alert("Success", "Profile updated successfully!");
 
         } catch (err: any) {
-            // Catch errors from user.update()
-            console.error("Error saving profile metadata/name:", err);
-            const errMessage = err.errors?.[0]?.longMessage || err.errors?.[0]?.message || "Failed to save profile details.";
+            console.error("Error saving profile:", err);
+            const errMessage = err.errors?.[0]?.longMessage || err.errors?.[0]?.message || err.message || "Failed to save profile details.";
             setError(errMessage); 
-            // Alert.alert("Error", `Failed to save profile details: ${errMessage}`); // Error state is shown
         } finally {
-            setIsLoading(false); // Clear loading for main save
+            setIsLoading(false);
+            setIsSavingProfile(false);
         }
     };
 
@@ -352,21 +454,105 @@ const ProfileSettingsScreen: React.FC = () => {
                     />
                 </View>
                 
+                {/* Phone Number */}
+                <View style={styles.inputContainer}>
+                    <Ionicons name="call-outline" size={20} color={COLORS.darkText} style={styles.inputIcon} />
+                    <TextInput
+                        placeholder="Phone Number"
+                        value={phoneNumber}
+                        onChangeText={setPhoneNumber}
+                        style={styles.input}
+                        placeholderTextColor={COLORS.darkText}
+                        keyboardType="phone-pad"
+                        editable={!isLoading}
+                    />
+                </View>
+
+                {/* Company Name */}
+                <View style={styles.inputContainer}>
+                    <Ionicons name="business-outline" size={20} color={COLORS.darkText} style={styles.inputIcon} />
+                    <TextInput
+                        placeholder="Company Name (Optional)"
+                        value={companyName}
+                        onChangeText={setCompanyName}
+                        style={styles.input}
+                        placeholderTextColor={COLORS.darkText}
+                        editable={!isLoading}
+                    />
+                </View>
+
+                {/* Primary State */}
+                <Text style={styles.fieldLabel}>Primary State</Text>
                 <View style={styles.inputContainer}> 
                     <Ionicons name="map-outline" size={20} color={COLORS.darkText} style={styles.inputIcon} />
-                        <Picker
+                    <Picker
                         selectedValue={selectedState}
-                            onValueChange={(itemValue) => setSelectedState(itemValue)}
+                        onValueChange={(itemValue) => setSelectedState(itemValue)}
                         style={styles.input}
                         dropdownIconColor={COLORS.primary}
-                        enabled={!isLoading} // Disable if any loading
-                        >
-                        <Picker.Item label="Select State..." value={null} />
-                            {availableStates.map(state => (
-                                <Picker.Item key={state.value} label={state.label} value={state.value} />
-                            ))}
-                        </Picker>
-                     </View>
+                        enabled={!isLoading}
+                    >
+                        <Picker.Item label="Select Primary State..." value={null} />
+                        {availableStates.map(state => (
+                            <Picker.Item key={state.value} label={state.label} value={state.value} />
+                        ))}
+                    </Picker>
+                </View>
+
+                {/* Secondary States */}
+                <Text style={styles.fieldLabel}>Secondary States (up to 3)</Text>
+                <Text style={styles.fieldHint}>Select additional states where you perform inspections</Text>
+                <View style={styles.secondaryStatesContainer}>
+                    {[0, 1, 2].map((index) => (
+                        <View key={index} style={styles.secondaryStatePickerWrapper}>
+                            <Picker
+                                selectedValue={secondaryStates[index] || ''}
+                                onValueChange={(itemValue) => {
+                                    const newSecondaryStates = [...secondaryStates];
+                                    if (itemValue) {
+                                        newSecondaryStates[index] = itemValue;
+                                    } else {
+                                        newSecondaryStates.splice(index, 1);
+                                    }
+                                    setSecondaryStates(newSecondaryStates.filter(Boolean));
+                                }}
+                                style={styles.secondaryStatePicker}
+                                dropdownIconColor={COLORS.primary}
+                                enabled={!isLoading}
+                            >
+                                <Picker.Item label={`State ${index + 1} (Optional)`} value="" />
+                                {availableStates
+                                    .filter(s => s.value !== selectedState && !secondaryStates.includes(s.value))
+                                    .map(state => (
+                                        <Picker.Item key={state.value} label={state.label} value={state.value} />
+                                    ))}
+                                {secondaryStates[index] && (
+                                    <Picker.Item 
+                                        label={availableStates.find(s => s.value === secondaryStates[index])?.label || secondaryStates[index]} 
+                                        value={secondaryStates[index]} 
+                                    />
+                                )}
+                            </Picker>
+                        </View>
+                    ))}
+                </View>
+
+                {/* Organization */}
+                <Text style={styles.fieldLabel}>Professional Organization</Text>
+                <View style={styles.inputContainer}> 
+                    <Ionicons name="ribbon-outline" size={20} color={COLORS.darkText} style={styles.inputIcon} />
+                    <Picker
+                        selectedValue={organization}
+                        onValueChange={(itemValue) => setOrganization(itemValue)}
+                        style={styles.input}
+                        dropdownIconColor={COLORS.primary}
+                        enabled={!isLoading}
+                    >
+                        {organizationOptions.map(org => (
+                            <Picker.Item key={org.value} label={org.label} value={org.value} />
+                        ))}
+                    </Picker>
+                </View>
 
                 {/* Moved Save Changes Button and general messages UP */}
                 <TouchableOpacity
@@ -584,6 +770,32 @@ const styles = StyleSheet.create({
         color: '#888888',
         textAlign: 'center',
         marginBottom: 20,
+    },
+    fieldLabel: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: COLORS.darkText,
+        marginBottom: 8,
+        marginTop: 10,
+    },
+    fieldHint: {
+        fontSize: 12,
+        color: '#888',
+        marginBottom: 8,
+    },
+    secondaryStatesContainer: {
+        marginBottom: 15,
+    },
+    secondaryStatePickerWrapper: {
+        backgroundColor: '#f0f0f0',
+        borderRadius: 8,
+        marginBottom: 8,
+        borderWidth: 1,
+        borderColor: '#ddd',
+    },
+    secondaryStatePicker: {
+        height: 50,
+        color: '#333',
     },
 }); 
 

@@ -1,5 +1,46 @@
 const pool = require('../db');
 const cloudinary = require('cloudinary').v2;
+const { extractTextFromPdf, cleanExtractedText, truncateText } = require('../utils/pdfExtractor');
+
+/**
+ * Extract text from a PDF document asynchronously (non-blocking)
+ * @param {string} documentId - The document ID
+ * @param {string} fileUrl - The PDF file URL
+ */
+async function extractAndStorePdfText(documentId, fileUrl) {
+  try {
+    console.log(`[SOP] Starting PDF extraction for document ${documentId}`);
+    
+    // Update status to 'processing'
+    await pool.query(
+      'UPDATE sop_documents SET extraction_status = $1 WHERE id = $2',
+      ['processing', documentId]
+    );
+    
+    // Extract text from PDF
+    const { text, numPages } = await extractTextFromPdf(fileUrl);
+    
+    // Clean and truncate text
+    const cleanedText = cleanExtractedText(text);
+    const finalText = truncateText(cleanedText, 100000); // Max 100k characters
+    
+    // Store extracted text
+    await pool.query(
+      'UPDATE sop_documents SET extracted_text = $1, extraction_status = $2 WHERE id = $3',
+      [finalText, 'completed', documentId]
+    );
+    
+    console.log(`[SOP] PDF extraction completed for document ${documentId}: ${numPages} pages, ${finalText.length} characters`);
+  } catch (error) {
+    console.error(`[SOP] PDF extraction failed for document ${documentId}:`, error.message);
+    
+    // Update status to 'failed'
+    await pool.query(
+      'UPDATE sop_documents SET extraction_status = $1 WHERE id = $2',
+      ['failed', documentId]
+    );
+  }
+}
 
 /**
  * Upload SOP document to Cloudinary and save metadata
@@ -13,6 +54,9 @@ const uploadSopDocument = async (req, res) => {
       return res.status(400).json({ message: 'Missing required fields: documentName, documentType, fileBase64' });
     }
 
+    // Calculate file size from base64
+    const fileSize = Math.round((fileBase64.length * 3) / 4);
+
     // Upload base64 PDF to Cloudinary
     const uploadResult = await cloudinary.uploader.upload(`data:application/pdf;base64,${fileBase64}`, {
       resource_type: "raw",
@@ -22,17 +66,21 @@ const uploadSopDocument = async (req, res) => {
 
     const fileUrl = uploadResult.secure_url;
 
-    // Save to database
+    // Save to database with file_size and extraction_status
     const result = await pool.query(`
       INSERT INTO sop_documents (
         document_name,
         document_type,
         file_url,
+        file_size,
+        extraction_status,
         uploaded_by,
         created_at
-      ) VALUES ($1, $2, $3, $4, NOW())
+      ) VALUES ($1, $2, $3, $4, $5, $6, NOW())
       RETURNING *
-    `, [documentName, documentType, fileUrl, clerkId]);
+    `, [documentName, documentType, fileUrl, fileSize, 'pending', clerkId]);
+
+    const document = result.rows[0];
 
     // Log to sop_history
     await pool.query(`
@@ -42,11 +90,16 @@ const uploadSopDocument = async (req, res) => {
         changed_by,
         created_at
       ) VALUES ($1, $2, $3, NOW())
-    `, ['uploaded', result.rows[0].id, clerkId]);
+    `, ['uploaded', document.id, clerkId]);
+
+    // Start PDF text extraction asynchronously (don't await)
+    extractAndStorePdfText(document.id, fileUrl).catch(err => {
+      console.error('[SOP] Background PDF extraction error:', err);
+    });
 
     res.json({
-      message: 'SOP document uploaded successfully',
-      document: result.rows[0]
+      message: 'SOP document uploaded successfully. Text extraction in progress.',
+      document: document
     });
 
   } catch (error) {
@@ -563,6 +616,138 @@ const exportSopHistoryCsv = async (req, res) => {
   }
 };
 
+/**
+ * Retry PDF text extraction for a document
+ */
+const retryPdfExtraction = async (req, res) => {
+  try {
+    const { documentId } = req.params;
+    
+    // Get document
+    const result = await pool.query(
+      'SELECT * FROM sop_documents WHERE id = $1',
+      [documentId]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Document not found' });
+    }
+    
+    const document = result.rows[0];
+    
+    // Start extraction asynchronously
+    extractAndStorePdfText(document.id, document.file_url).catch(err => {
+      console.error('[SOP] Retry PDF extraction error:', err);
+    });
+    
+    res.json({
+      message: 'PDF extraction retry started',
+      documentId: document.id
+    });
+    
+  } catch (error) {
+    console.error('Error retrying PDF extraction:', error);
+    res.status(500).json({ message: 'Failed to retry PDF extraction', error: error.message });
+  }
+};
+
+/**
+ * Get SOP text content for AI context (used by generate-statement endpoint)
+ * Returns the extracted text from SOPs matching user's state and organization
+ */
+const getSopTextForContext = async (req, res) => {
+  try {
+    const { state, organization } = req.query;
+    
+    if (!state) {
+      return res.status(400).json({ message: 'State parameter is required' });
+    }
+    
+    let sopTexts = [];
+    
+    // Get state SOP text
+    const stateResult = await pool.query(`
+      SELECT sd.document_name, sd.extracted_text, sd.extraction_status
+      FROM sop_assignments sa
+      JOIN sop_documents sd ON sa.document_id = sd.id
+      WHERE sa.assignment_type = 'state' AND sa.assignment_value = $1
+      AND sd.extracted_text IS NOT NULL
+    `, [state]);
+    
+    if (stateResult.rows.length > 0 && stateResult.rows[0].extracted_text) {
+      sopTexts.push({
+        type: 'state',
+        name: stateResult.rows[0].document_name,
+        text: stateResult.rows[0].extracted_text
+      });
+    }
+    
+    // Get organization SOP text if provided
+    if (organization && organization !== 'None') {
+      const orgResult = await pool.query(`
+        SELECT sd.document_name, sd.extracted_text, sd.extraction_status
+        FROM sop_assignments sa
+        JOIN sop_documents sd ON sa.document_id = sd.id
+        WHERE sa.assignment_type = 'organization' AND sa.assignment_value = $1
+        AND sd.extracted_text IS NOT NULL
+      `, [organization]);
+      
+      if (orgResult.rows.length > 0 && orgResult.rows[0].extracted_text) {
+        sopTexts.push({
+          type: 'organization',
+          name: orgResult.rows[0].document_name,
+          text: orgResult.rows[0].extracted_text
+        });
+      }
+    }
+    
+    // Combine SOP texts into a single context string
+    let combinedContext = '';
+    
+    if (sopTexts.length > 0) {
+      combinedContext = sopTexts.map(sop => 
+        `=== ${sop.type.toUpperCase()} SOP: ${sop.name} ===\n${sop.text}`
+      ).join('\n\n');
+    }
+    
+    res.json({
+      state,
+      organization: organization || null,
+      hasSopContent: sopTexts.length > 0,
+      sopCount: sopTexts.length,
+      context: combinedContext,
+      sops: sopTexts.map(s => ({ type: s.type, name: s.name, length: s.text.length }))
+    });
+    
+  } catch (error) {
+    console.error('Error fetching SOP text for context:', error);
+    res.status(500).json({ message: 'Failed to fetch SOP text', error: error.message });
+  }
+};
+
+/**
+ * Get extraction status for all documents
+ */
+const getExtractionStatus = async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT id, document_name, extraction_status, 
+             CASE WHEN extracted_text IS NOT NULL THEN LENGTH(extracted_text) ELSE 0 END as text_length,
+             created_at
+      FROM sop_documents 
+      ORDER BY created_at DESC
+    `);
+    
+    res.json({
+      documents: result.rows
+    });
+    
+  } catch (error) {
+    console.error('Error fetching extraction status:', error);
+    res.status(500).json({ message: 'Failed to fetch extraction status', error: error.message });
+  }
+};
+
 module.exports = {
   uploadSopDocument,
   assignStateSop,
@@ -571,6 +756,9 @@ module.exports = {
   getSopAssignments,
   getSopHistory,
   getSopDocuments,
-  exportSopHistoryCsv
+  exportSopHistoryCsv,
+  retryPdfExtraction,
+  getSopTextForContext,
+  getExtractionStatus
 };
 

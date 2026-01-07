@@ -253,9 +253,390 @@ const deleteUser = async (req, res) => {
   }
 };
 
+// ============================================
+// NEW ADMIN FEATURES
+// ============================================
+
+/**
+ * Gift credits to a user
+ */
+const giftCredits = async (req, res) => {
+  const { userId } = req.params;
+  const { credits, reason } = req.body;
+  const adminClerkId = req.auth?.userId;
+
+  if (!userId || !credits) {
+    return res.status(400).json({ message: 'User ID and credits amount are required' });
+  }
+
+  if (credits <= 0 || credits > 100) {
+    return res.status(400).json({ message: 'Credits must be between 1 and 100' });
+  }
+
+  try {
+    // Check if user exists
+    const userResult = await pool.query(
+      'SELECT clerk_id, email FROM users WHERE clerk_id = $1',
+      [userId]
+    );
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Update user's subscription - add credits to their limit
+    const updateResult = await pool.query(`
+      UPDATE user_subscriptions 
+      SET statements_limit = statements_limit + $1, updated_at = NOW()
+      WHERE clerk_id = $2
+      RETURNING *
+    `, [credits, userId]);
+
+    if (updateResult.rows.length === 0) {
+      return res.status(404).json({ message: 'User subscription not found' });
+    }
+
+    // Log the gift to admin_gifted_credits
+    await pool.query(`
+      INSERT INTO admin_gifted_credits (user_clerk_id, admin_clerk_id, credits_amount, reason)
+      VALUES ($1, $2, $3, $4)
+    `, [userId, adminClerkId, credits, reason || null]);
+
+    // Log to admin_audit_log
+    await pool.query(`
+      INSERT INTO admin_audit_log (admin_clerk_id, action_type, target_type, target_id, action_details)
+      VALUES ($1, $2, $3, $4, $5)
+    `, [adminClerkId, 'gift_credits', 'user', userId, JSON.stringify({ credits, reason, new_limit: updateResult.rows[0].statements_limit })]);
+
+    console.log(`[Admin] Gifted ${credits} credits to user ${userId} by admin ${adminClerkId}`);
+
+    res.json({
+      message: `Successfully gifted ${credits} credits to user`,
+      subscription: updateResult.rows[0]
+    });
+
+  } catch (error) {
+    console.error('[Admin] Error gifting credits:', error);
+    res.status(500).json({ message: 'Failed to gift credits', error: error.message });
+  }
+};
+
+/**
+ * Reset user's trial (reset statements_used to 0)
+ */
+const resetTrial = async (req, res) => {
+  const { userId } = req.params;
+  const { reason } = req.body;
+  const adminClerkId = req.auth?.userId;
+
+  if (!userId) {
+    return res.status(400).json({ message: 'User ID is required' });
+  }
+
+  try {
+    // Get current usage before reset
+    const currentResult = await pool.query(
+      'SELECT statements_used FROM user_subscriptions WHERE clerk_id = $1',
+      [userId]
+    );
+
+    if (currentResult.rows.length === 0) {
+      return res.status(404).json({ message: 'User subscription not found' });
+    }
+
+    const previousUsage = currentResult.rows[0].statements_used;
+
+    // Reset usage to 0
+    const updateResult = await pool.query(`
+      UPDATE user_subscriptions 
+      SET statements_used = 0, last_reset_date = NOW(), updated_at = NOW()
+      WHERE clerk_id = $1
+      RETURNING *
+    `, [userId]);
+
+    // Log the reset to admin_trial_resets
+    await pool.query(`
+      INSERT INTO admin_trial_resets (user_clerk_id, admin_clerk_id, previous_usage, reason)
+      VALUES ($1, $2, $3, $4)
+    `, [userId, adminClerkId, previousUsage, reason || null]);
+
+    // Log to admin_audit_log
+    await pool.query(`
+      INSERT INTO admin_audit_log (admin_clerk_id, action_type, target_type, target_id, action_details)
+      VALUES ($1, $2, $3, $4, $5)
+    `, [adminClerkId, 'reset_trial', 'user', userId, JSON.stringify({ previous_usage: previousUsage, reason })]);
+
+    console.log(`[Admin] Reset trial for user ${userId} by admin ${adminClerkId} (previous usage: ${previousUsage})`);
+
+    res.json({
+      message: 'Successfully reset user trial',
+      previousUsage,
+      subscription: updateResult.rows[0]
+    });
+
+  } catch (error) {
+    console.error('[Admin] Error resetting trial:', error);
+    res.status(500).json({ message: 'Failed to reset trial', error: error.message });
+  }
+};
+
+/**
+ * Get admin notes for a user
+ */
+const getUserNotes = async (req, res) => {
+  const { userId } = req.params;
+
+  if (!userId) {
+    return res.status(400).json({ message: 'User ID is required' });
+  }
+
+  try {
+    const result = await pool.query(`
+      SELECT 
+        n.*,
+        u.email as admin_email,
+        u.name as admin_name
+      FROM admin_user_notes n
+      LEFT JOIN users u ON n.admin_clerk_id = u.clerk_id
+      WHERE n.user_clerk_id = $1
+      ORDER BY n.created_at DESC
+    `, [userId]);
+
+    res.json({
+      notes: result.rows
+    });
+
+  } catch (error) {
+    console.error('[Admin] Error fetching user notes:', error);
+    res.status(500).json({ message: 'Failed to fetch user notes', error: error.message });
+  }
+};
+
+/**
+ * Add admin note for a user
+ */
+const addUserNote = async (req, res) => {
+  const { userId } = req.params;
+  const { note } = req.body;
+  const adminClerkId = req.auth?.userId;
+
+  if (!userId || !note) {
+    return res.status(400).json({ message: 'User ID and note are required' });
+  }
+
+  if (note.length > 2000) {
+    return res.status(400).json({ message: 'Note must be less than 2000 characters' });
+  }
+
+  try {
+    const result = await pool.query(`
+      INSERT INTO admin_user_notes (user_clerk_id, admin_clerk_id, note)
+      VALUES ($1, $2, $3)
+      RETURNING *
+    `, [userId, adminClerkId, note]);
+
+    // Log to admin_audit_log
+    await pool.query(`
+      INSERT INTO admin_audit_log (admin_clerk_id, action_type, target_type, target_id, action_details)
+      VALUES ($1, $2, $3, $4, $5)
+    `, [adminClerkId, 'add_note', 'user', userId, JSON.stringify({ note_id: result.rows[0].id, note_preview: note.substring(0, 100) })]);
+
+    console.log(`[Admin] Added note for user ${userId} by admin ${adminClerkId}`);
+
+    res.json({
+      message: 'Note added successfully',
+      note: result.rows[0]
+    });
+
+  } catch (error) {
+    console.error('[Admin] Error adding user note:', error);
+    res.status(500).json({ message: 'Failed to add user note', error: error.message });
+  }
+};
+
+/**
+ * Get gift credits history (all or for specific user)
+ */
+const getGiftHistory = async (req, res) => {
+  const { userId } = req.query;
+  const limit = parseInt(req.query.limit) || 50;
+  const offset = parseInt(req.query.offset) || 0;
+
+  try {
+    let query = `
+      SELECT 
+        g.*,
+        u.email as user_email,
+        u.name as user_name,
+        a.email as admin_email,
+        a.name as admin_name
+      FROM admin_gifted_credits g
+      LEFT JOIN users u ON g.user_clerk_id = u.clerk_id
+      LEFT JOIN users a ON g.admin_clerk_id = a.clerk_id
+    `;
+    const params = [];
+
+    if (userId) {
+      query += ' WHERE g.user_clerk_id = $1';
+      params.push(userId);
+    }
+
+    query += ` ORDER BY g.created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+    params.push(limit, offset);
+
+    const result = await pool.query(query, params);
+
+    // Get total count
+    let countQuery = 'SELECT COUNT(*) FROM admin_gifted_credits';
+    if (userId) {
+      countQuery += ' WHERE user_clerk_id = $1';
+    }
+    const countResult = await pool.query(countQuery, userId ? [userId] : []);
+
+    res.json({
+      history: result.rows,
+      total: parseInt(countResult.rows[0].count),
+      limit,
+      offset
+    });
+
+  } catch (error) {
+    console.error('[Admin] Error fetching gift history:', error);
+    res.status(500).json({ message: 'Failed to fetch gift history', error: error.message });
+  }
+};
+
+/**
+ * Get trial reset history (all or for specific user)
+ */
+const getTrialResetHistory = async (req, res) => {
+  const { userId } = req.query;
+  const limit = parseInt(req.query.limit) || 50;
+  const offset = parseInt(req.query.offset) || 0;
+
+  try {
+    let query = `
+      SELECT 
+        r.*,
+        u.email as user_email,
+        u.name as user_name,
+        a.email as admin_email,
+        a.name as admin_name
+      FROM admin_trial_resets r
+      LEFT JOIN users u ON r.user_clerk_id = u.clerk_id
+      LEFT JOIN users a ON r.admin_clerk_id = a.clerk_id
+    `;
+    const params = [];
+
+    if (userId) {
+      query += ' WHERE r.user_clerk_id = $1';
+      params.push(userId);
+    }
+
+    query += ` ORDER BY r.created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+    params.push(limit, offset);
+
+    const result = await pool.query(query, params);
+
+    // Get total count
+    let countQuery = 'SELECT COUNT(*) FROM admin_trial_resets';
+    if (userId) {
+      countQuery += ' WHERE user_clerk_id = $1';
+    }
+    const countResult = await pool.query(countQuery, userId ? [userId] : []);
+
+    res.json({
+      history: result.rows,
+      total: parseInt(countResult.rows[0].count),
+      limit,
+      offset
+    });
+
+  } catch (error) {
+    console.error('[Admin] Error fetching trial reset history:', error);
+    res.status(500).json({ message: 'Failed to fetch trial reset history', error: error.message });
+  }
+};
+
+/**
+ * Get user details with subscription and admin info
+ */
+const getUserDetails = async (req, res) => {
+  const { userId } = req.params;
+
+  if (!userId) {
+    return res.status(400).json({ message: 'User ID is required' });
+  }
+
+  try {
+    // Get user info
+    const userResult = await pool.query(`
+      SELECT 
+        u.*,
+        up.primary_state,
+        up.secondary_states,
+        up.organization,
+        up.company_name,
+        up.phone_number,
+        us.plan_type,
+        us.statements_used,
+        us.statements_limit,
+        us.last_reset_date,
+        (SELECT COUNT(*) FROM inspections WHERE user_id = u.clerk_id) as inspection_count
+      FROM users u
+      LEFT JOIN user_profiles up ON u.clerk_id = up.clerk_id
+      LEFT JOIN user_subscriptions us ON u.clerk_id = us.clerk_id
+      WHERE u.clerk_id = $1
+    `, [userId]);
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Get notes count
+    const notesResult = await pool.query(
+      'SELECT COUNT(*) FROM admin_user_notes WHERE user_clerk_id = $1',
+      [userId]
+    );
+
+    // Get total gifted credits
+    const giftsResult = await pool.query(
+      'SELECT COALESCE(SUM(credits_amount), 0) as total_gifted FROM admin_gifted_credits WHERE user_clerk_id = $1',
+      [userId]
+    );
+
+    // Get trial reset count
+    const resetsResult = await pool.query(
+      'SELECT COUNT(*) FROM admin_trial_resets WHERE user_clerk_id = $1',
+      [userId]
+    );
+
+    res.json({
+      user: userResult.rows[0],
+      adminInfo: {
+        notesCount: parseInt(notesResult.rows[0].count),
+        totalGiftedCredits: parseInt(giftsResult.rows[0].total_gifted),
+        trialResetCount: parseInt(resetsResult.rows[0].count)
+      }
+    });
+
+  } catch (error) {
+    console.error('[Admin] Error fetching user details:', error);
+    res.status(500).json({ message: 'Failed to fetch user details', error: error.message });
+  }
+};
+
 module.exports = {
   getAllInspections: getAllInspectionsWithUserDetails,
   getAllUsers,
   exportUsersCsv,
-  deleteUser, 
+  deleteUser,
+  // New admin features
+  giftCredits,
+  resetTrial,
+  getUserNotes,
+  addUserNote,
+  getGiftHistory,
+  getTrialResetHistory,
+  getUserDetails
 }; 

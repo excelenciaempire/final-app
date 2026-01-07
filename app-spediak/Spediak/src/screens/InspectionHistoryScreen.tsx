@@ -1,16 +1,15 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, FlatList, ActivityIndicator, TouchableOpacity, Image, Alert, Platform, RefreshControl, Modal, ScrollView, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, TextInput, FlatList, ActivityIndicator, TouchableOpacity, Image, Alert, Platform, RefreshControl, ScrollView } from 'react-native';
 import { useAuth } from '@clerk/clerk-expo';
-import { useNavigation } from '@react-navigation/native'; // Import useNavigation
+import { useNavigation } from '@react-navigation/native';
 import axios from 'axios';
-import { Search, Trash2, Eye, Copy, Download, X } from 'lucide-react-native'; // Added X icon
-import DdidModal from '../components/DdidModal'; // Step 41: Import Modal
-import { BASE_URL } from '../config/api'; // Import centralized BASE_URL
-import { COLORS } from '../styles/colors'; // Corrected path to styles
-import Markdown from 'react-native-markdown-display'; // Import Markdown display
-import * as Clipboard from 'expo-clipboard'; // Import Clipboard
-import * as FileSystem from 'expo-file-system'; // For native download
-import * as MediaLibrary from 'expo-media-library'; // For saving to gallery on native
+import { Search, Trash2, Copy, Download } from 'lucide-react-native';
+import { BASE_URL } from '../config/api';
+import { COLORS } from '../styles/colors';
+import Markdown from 'react-native-markdown-display';
+import * as Clipboard from 'expo-clipboard';
+import * as FileSystem from 'expo-file-system';
+import * as MediaLibrary from 'expo-media-library';
 
 // --- Define Base URL (Platform Specific) ---
 // const YOUR_COMPUTER_IP_ADDRESS = '<YOUR-COMPUTER-IP-ADDRESS>'; // Removed
@@ -46,46 +45,94 @@ const getOptimizedImageUrl = (url: string | null | undefined, width: number, hei
     return url; // Fallback to original URL if manipulation fails
 };
 
-// Memoized Inspection Item Component
-const InspectionItem = React.memo(({ item, onSelectItem, onDeleteItem }: {
+// Expandable Inspection Card Component
+const InspectionCard = React.memo(({ 
+    item, 
+    isExpanded, 
+    onToggleExpand, 
+    onDeleteItem,
+    onCopy,
+    onDownloadImage 
+}: {
     item: Inspection;
-    onSelectItem: (inspection: Inspection) => void;
+    isExpanded: boolean;
+    onToggleExpand: () => void;
     onDeleteItem: (id: string) => void;
+    onCopy: (text: string) => void;
+    onDownloadImage: (url: string, id: string) => void;
 }) => {
     const displayDate = item.created_at ? new Date(item.created_at).toLocaleString() : 'Date not available';
-    const optimizedImageUrl = getOptimizedImageUrl(item.image_url, 80, 80); // Optimize for list item size
+    const optimizedImageUrl = getOptimizedImageUrl(item.image_url, 80, 80);
+    const fullImageUrl = getOptimizedImageUrl(item.image_url, 400, 300);
 
     return (
-        <View style={styles.itemContainer}>
-            {optimizedImageUrl ? (
-                <Image source={{ uri: optimizedImageUrl }} style={styles.itemImage} />
-            ) : (
-                <View style={styles.itemImagePlaceholder}>
-                    <Text style={styles.itemImagePlaceholderText}>No Image</Text>
+        <View style={[styles.itemContainer, isExpanded && styles.itemContainerExpanded]}>
+            {/* Header Row - Always visible */}
+            <TouchableOpacity style={styles.cardHeader} onPress={onToggleExpand} activeOpacity={0.7}>
+                {optimizedImageUrl ? (
+                    <Image source={{ uri: optimizedImageUrl }} style={styles.itemImage} />
+                ) : (
+                    <View style={styles.itemImagePlaceholder}>
+                        <Text style={styles.itemImagePlaceholderText}>No Image</Text>
+                    </View>
+                )}
+                <View style={styles.itemContent}>
+                    <Text style={styles.itemDescription} numberOfLines={isExpanded ? undefined : 2} ellipsizeMode="tail">
+                        <Text style={styles.boldText}>Description:</Text> {item.description || 'N/A'}
+                    </Text>
+                    <Text style={styles.itemDate}><Text style={styles.boldText}>Date:</Text> {displayDate}</Text>
+                </View>
+                <View style={styles.expandIndicator}>
+                    <Text style={styles.expandIndicatorText}>{isExpanded ? '▲' : '▼'}</Text>
+                </View>
+            </TouchableOpacity>
+
+            {/* Expanded Content */}
+            {isExpanded && (
+                <View style={styles.expandedContent}>
+                    {/* Full Image */}
+                    {fullImageUrl && (
+                        <Image source={{ uri: fullImageUrl }} style={styles.expandedImage} resizeMode="contain" />
+                    )}
+
+                    {/* Statement Section */}
+                    <View style={styles.statementSection}>
+                        <Text style={styles.statementLabel}>Statement:</Text>
+                        <View style={styles.statementBox}>
+                            <Markdown style={markdownStyles}>{item.ddid || 'No statement available.'}</Markdown>
+                        </View>
+                    </View>
+
+                    {/* Action Buttons */}
+                    <View style={styles.expandedActions}>
+                        <TouchableOpacity
+                            style={[styles.expandedActionBtn, styles.copyBtn]}
+                            onPress={() => onCopy(item.ddid)}
+                        >
+                            <Copy size={16} color={COLORS.white} />
+                            <Text style={styles.expandedActionBtnText}>Copy</Text>
+                        </TouchableOpacity>
+                        
+                        {item.image_url && (
+                            <TouchableOpacity
+                                style={[styles.expandedActionBtn, styles.downloadBtn]}
+                                onPress={() => onDownloadImage(item.image_url!, item.id)}
+                            >
+                                <Download size={16} color={COLORS.white} />
+                                <Text style={styles.expandedActionBtnText}>Download</Text>
+                            </TouchableOpacity>
+                        )}
+                        
+                        <TouchableOpacity
+                            style={[styles.expandedActionBtn, styles.deleteBtn]}
+                            onPress={() => onDeleteItem(item.id)}
+                        >
+                            <Trash2 size={16} color={COLORS.white} />
+                            <Text style={styles.expandedActionBtnText}>Delete</Text>
+                        </TouchableOpacity>
+                    </View>
                 </View>
             )}
-            <View style={styles.itemContent}>
-                <Text style={styles.itemDescription} numberOfLines={2} ellipsizeMode="tail">
-                    <Text style={styles.boldText}>Description:</Text> {item.description || 'N/A'}
-                </Text>
-                <Text style={styles.itemDate}><Text style={styles.boldText}>Date:</Text> {displayDate}</Text>
-
-                <View style={styles.actionsContainer}>
-                    <TouchableOpacity
-                        style={[styles.actionButton, styles.viewButton]}
-                        onPress={() => onSelectItem(item)}
-                    >
-                        <Eye size={16} color={COLORS.primary} />
-                        <Text style={[styles.actionButtonText, styles.viewButtonText]}>View</Text>
-                    </TouchableOpacity>
-                </View>
-            </View>
-            <TouchableOpacity
-                style={styles.deleteIconContainer}
-                onPress={() => onDeleteItem(item.id)}
-            >
-                <Trash2 size={20} color={COLORS.danger} />
-            </TouchableOpacity>
         </View>
     );
 });
@@ -97,10 +144,7 @@ export default function InspectionHistoryScreen() {
     const [isRefreshing, setIsRefreshing] = useState<boolean>(false); // State for RefreshControl
     const [error, setError] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState<string>('');
-    const [selectedInspectionDdid, setSelectedInspectionDdid] = useState<string | null>(null);
-    const [selectedImageUrl, setSelectedImageUrl] = useState<string | null>(null);
-    const [showDetailModal, setShowDetailModal] = useState<boolean>(false);
-    const [selectedInspection, setSelectedInspection] = useState<Inspection | null>(null);
+    const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
 
     // Pagination state
     const [currentPage, setCurrentPage] = useState(1);
@@ -348,16 +392,21 @@ export default function InspectionHistoryScreen() {
         );
     };
 
-    // Step 39: Render Item Function - Now uses the memoized component
+    // Toggle expanded state
+    const toggleExpanded = (itemId: string) => {
+        setExpandedItemId(expandedItemId === itemId ? null : itemId);
+    };
+
+    // Step 39: Render Item Function - Now uses expandable cards
     const renderItem = ({ item }: { item: Inspection }) => {
         return (
-            <InspectionItem 
-                item={item} 
-                onSelectItem={(selectedItem) => {
-                    setSelectedInspection(selectedItem);
-                    setShowDetailModal(true); // Assuming this state controls your modal
-                }}
+            <InspectionCard 
+                item={item}
+                isExpanded={expandedItemId === item.id}
+                onToggleExpand={() => toggleExpanded(item.id)}
                 onDeleteItem={handleDeleteInspection}
+                onCopy={handleCopyToClipboard}
+                onDownloadImage={handleDownloadImage}
             />
         );
     };
@@ -425,51 +474,7 @@ export default function InspectionHistoryScreen() {
                  )
             )}
 
-            {/* Modal to display full DDID with Copy Button */}
-            {selectedInspection && (
-                <Modal
-                    animationType="slide"
-                    transparent={true}
-                    visible={!!selectedInspection}
-                    onRequestClose={() => setSelectedInspection(null)}
-                >
-                    <View style={styles.modalOverlay}>
-                        <View style={styles.modalContent}>
-                            <TouchableOpacity onPress={() => setSelectedInspection(null)} style={styles.modalCloseIconContainer}>
-                                <X size={24} color={COLORS.darkText} />
-                            </TouchableOpacity>
-                            {/* Optional: Display image */}
-                            {selectedInspection.image_url && (
-                                <Image source={{ uri: selectedInspection.image_url }} style={styles.historyModalImage} resizeMode="contain" />
-                            )}
-                            <Text style={styles.modalTitle}>Inspection Statement</Text>
-                            <ScrollView style={styles.modalScrollView}>
-                                <Markdown style={markdownStyles}>{selectedInspection.ddid || 'No statement available.'}</Markdown>
-                            </ScrollView>
-                            {/* Action Buttons Row */}
-                            <View style={styles.modalActionsRow}>
-                                <TouchableOpacity
-                                    style={[styles.modalButton, styles.copyHistoryButton]}
-                                    onPress={() => handleCopyToClipboard(selectedInspection.ddid)}
-                                >
-                                    <Copy size={18} color={COLORS.white} style={styles.modalButtonIcon} />
-                                    <Text style={styles.modalButtonText}>Copy Statement</Text>
-                                </TouchableOpacity>
-                                
-                                {selectedInspection.image_url && ( // Ensure download button only shows if there's an image
-                                <TouchableOpacity
-                                    style={[styles.modalButton, styles.downloadImageButton]} // New style for download button
-                                    onPress={() => handleDownloadImage(selectedInspection.image_url!, selectedInspection.id)}
-                                >
-                                    <Download size={18} color={COLORS.white} style={styles.modalButtonIcon} />
-                                    <Text style={styles.modalButtonText}>Download Image</Text> 
-                                </TouchableOpacity>
-                                )}
-                            </View>
-                        </View>
-                    </View>
-                </Modal>
-            )}
+            {/* Expandable cards are now inline - no modal needed */}
         </View>
     );
 }
@@ -515,7 +520,7 @@ const styles = StyleSheet.create({
     },
     list: {
         flex: 1,
-        // Remove paddingHorizontal from here if adding to container
+        paddingHorizontal: 16,
     },
     itemContainer: {
         backgroundColor: COLORS.white,
@@ -713,13 +718,89 @@ const styles = StyleSheet.create({
         backgroundColor: '#6c757d', 
         marginLeft: 10, 
     },
+    // Expandable Card Styles
+    itemContainerExpanded: {
+        borderColor: COLORS.primary,
+        borderWidth: 2,
+    },
+    cardHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    expandIndicator: {
+        padding: 8,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    expandIndicatorText: {
+        fontSize: 14,
+        color: COLORS.primary,
+        fontWeight: '600',
+    },
+    expandedContent: {
+        marginTop: 16,
+        paddingTop: 16,
+        borderTopWidth: 1,
+        borderTopColor: '#eee',
+    },
+    expandedImage: {
+        width: '100%',
+        height: 200,
+        borderRadius: 8,
+        marginBottom: 16,
+        backgroundColor: '#f0f0f0',
+    },
+    statementSection: {
+        marginBottom: 16,
+    },
+    statementLabel: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: COLORS.primary,
+        marginBottom: 8,
+    },
+    statementBox: {
+        backgroundColor: '#f9f9f9',
+        borderRadius: 8,
+        padding: 12,
+        maxHeight: 200,
+    },
+    expandedActions: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        gap: 8,
+    },
+    expandedActionBtn: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 10,
+        paddingHorizontal: 12,
+        borderRadius: 6,
+        gap: 6,
+    },
+    expandedActionBtnText: {
+        color: COLORS.white,
+        fontSize: 13,
+        fontWeight: '600',
+    },
+    copyBtn: {
+        backgroundColor: COLORS.primary,
+    },
+    downloadBtn: {
+        backgroundColor: '#28a745',
+    },
+    deleteBtn: {
+        backgroundColor: COLORS.danger,
+    },
 });
 
 // Add markdown styles if needed
 const markdownStyles = {
     body: {
-        fontSize: 16,
+        fontSize: 14,
         color: '#333',
+        lineHeight: 20,
     },
-    // Add other markdown element styles if necessary
 }; 

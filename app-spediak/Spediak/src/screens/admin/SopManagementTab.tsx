@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Switch, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Switch, ActivityIndicator, Platform, Modal } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { useAuth, useUser } from '@clerk/clerk-expo';
 import axios from 'axios';
@@ -37,11 +37,19 @@ const SopManagementTab: React.FC = () => {
   const [newSopDocName, setNewSopDocName] = useState('');
   const [newSopDocType, setNewSopDocType] = useState<'state' | 'organization'>('state');
   
-  // User Search
+  // User Search & Management
   const [userSearchEmail, setUserSearchEmail] = useState('');
   const [searchedUser, setSearchedUser] = useState<any>(null);
   const [isSearchingUser, setIsSearchingUser] = useState(false);
   const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [selectedUserForAction, setSelectedUserForAction] = useState<any>(null);
+  const [giftCreditsAmount, setGiftCreditsAmount] = useState('5');
+  const [giftCreditsReason, setGiftCreditsReason] = useState('');
+  const [resetTrialReason, setResetTrialReason] = useState('');
+  const [adminNote, setAdminNote] = useState('');
+  const [userNotes, setUserNotes] = useState<any[]>([]);
+  const [isActionLoading, setIsActionLoading] = useState(false);
+  const [showUserModal, setShowUserModal] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -300,6 +308,140 @@ const SopManagementTab: React.FC = () => {
     }
   };
 
+  // Select user for management actions
+  const handleSelectUserForAction = async (user: any) => {
+    setSelectedUserForAction(user);
+    setShowUserModal(true);
+    // Fetch user details and notes
+    try {
+      const token = await getToken();
+      if (!token) return;
+
+      const [detailsRes, notesRes] = await Promise.all([
+        axios.get(`${BASE_URL}/api/admin/users/${user.id}/details`, {
+          headers: { Authorization: `Bearer ${token}` }
+        }),
+        axios.get(`${BASE_URL}/api/admin/users/${user.id}/notes`, {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+      ]);
+
+      setSelectedUserForAction({ ...user, ...detailsRes.data.user, adminInfo: detailsRes.data.adminInfo });
+      setUserNotes(notesRes.data.notes || []);
+    } catch (error) {
+      console.error('Error fetching user details:', error);
+    }
+  };
+
+  // Gift Credits Function
+  const handleGiftCredits = async () => {
+    if (!selectedUserForAction || !giftCreditsAmount) {
+      Alert.alert('Error', 'Please enter credits amount');
+      return;
+    }
+
+    const credits = parseInt(giftCreditsAmount);
+    if (isNaN(credits) || credits <= 0 || credits > 100) {
+      Alert.alert('Error', 'Credits must be between 1 and 100');
+      return;
+    }
+
+    try {
+      setIsActionLoading(true);
+      const token = await getToken();
+      if (!token) return;
+
+      await axios.post(`${BASE_URL}/api/admin/users/${selectedUserForAction.id}/gift-credits`, {
+        credits,
+        reason: giftCreditsReason || undefined
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      Alert.alert('Success', `${credits} credits gifted to ${selectedUserForAction.name || selectedUserForAction.email}`);
+      setGiftCreditsAmount('5');
+      setGiftCreditsReason('');
+      // Refresh user details
+      handleSelectUserForAction(selectedUserForAction);
+    } catch (error: any) {
+      console.error('Error gifting credits:', error);
+      Alert.alert('Error', error.response?.data?.message || 'Failed to gift credits');
+    } finally {
+      setIsActionLoading(false);
+    }
+  };
+
+  // Reset Trial Function
+  const handleResetTrial = async () => {
+    if (!selectedUserForAction) return;
+
+    Alert.alert(
+      'Reset Trial',
+      `This will reset the usage counter for ${selectedUserForAction.name || selectedUserForAction.email}. Continue?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reset',
+          onPress: async () => {
+            try {
+              setIsActionLoading(true);
+              const token = await getToken();
+              if (!token) return;
+
+              await axios.post(`${BASE_URL}/api/admin/users/${selectedUserForAction.id}/reset-trial`, {
+                reason: resetTrialReason || undefined
+              }, {
+                headers: { Authorization: `Bearer ${token}` }
+              });
+
+              Alert.alert('Success', 'Trial usage reset successfully');
+              setResetTrialReason('');
+              handleSelectUserForAction(selectedUserForAction);
+            } catch (error: any) {
+              console.error('Error resetting trial:', error);
+              Alert.alert('Error', error.response?.data?.message || 'Failed to reset trial');
+            } finally {
+              setIsActionLoading(false);
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  // Add Admin Note Function
+  const handleAddNote = async () => {
+    if (!selectedUserForAction || !adminNote.trim()) {
+      Alert.alert('Error', 'Please enter a note');
+      return;
+    }
+
+    try {
+      setIsActionLoading(true);
+      const token = await getToken();
+      if (!token) return;
+
+      await axios.post(`${BASE_URL}/api/admin/users/${selectedUserForAction.id}/notes`, {
+        note: adminNote.trim()
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      Alert.alert('Success', 'Note added successfully');
+      setAdminNote('');
+      // Refresh notes
+      const notesRes = await axios.get(`${BASE_URL}/api/admin/users/${selectedUserForAction.id}/notes`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setUserNotes(notesRes.data.notes || []);
+    } catch (error: any) {
+      console.error('Error adding note:', error);
+      Alert.alert('Error', error.response?.data?.message || 'Failed to add note');
+    } finally {
+      setIsActionLoading(false);
+    }
+  };
+
   return (
     <ScrollView style={styles.container}>
       {/* Admin Diagnostics */}
@@ -493,18 +635,17 @@ const SopManagementTab: React.FC = () => {
 
       {/* User Search */}
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>User Search</Text>
-        <Text style={styles.cardSubtitle}>Find and manage user accounts</Text>
+        <Text style={styles.cardTitle}>User Management</Text>
+        <Text style={styles.cardSubtitle}>Find and manage user accounts, gift credits, reset trials</Text>
 
         <View style={styles.searchContainer}>
           <TextInput
             style={styles.searchInput}
-            placeholder="Enter user email..."
+            placeholder="Search by name or email..."
             value={userSearchEmail}
             onChangeText={setUserSearchEmail}
             placeholderTextColor={COLORS.textSecondary}
             autoCapitalize="none"
-            keyboardType="email-address"
           />
           <TouchableOpacity 
             style={styles.searchButton} 
@@ -519,21 +660,161 @@ const SopManagementTab: React.FC = () => {
           </TouchableOpacity>
         </View>
 
-        {searchedUser && (
-          <View style={styles.userCard}>
-            <Text style={styles.userName}>{searchedUser.name}</Text>
-            <Text style={styles.userEmail}>{searchedUser.email}</Text>
-            <View style={styles.userActions}>
-              <TouchableOpacity style={styles.userActionButton}>
-                <Text style={styles.userActionButtonText}>View Inspections</Text>
+        {/* Search Results */}
+        {searchResults.length > 0 && (
+          <View style={styles.searchResultsList}>
+            <Text style={styles.sectionTitle}>Search Results ({searchResults.length})</Text>
+            {searchResults.map((user) => (
+              <TouchableOpacity 
+                key={user.id} 
+                style={styles.userResultItem}
+                onPress={() => handleSelectUserForAction(user)}
+              >
+                <View style={styles.userResultInfo}>
+                  <Text style={styles.userResultName}>{user.name || 'No Name'}</Text>
+                  <Text style={styles.userResultEmail}>{user.email}</Text>
+                  <Text style={styles.userResultMeta}>
+                    Inspections: {user.inspectionCount || 0} | State: {user.state || 'N/A'}
+                  </Text>
+                </View>
+                <Text style={styles.manageButton}>Manage →</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.userActionButton}>
-                <Text style={styles.userActionButtonText}>Manage Subscription</Text>
-              </TouchableOpacity>
-            </View>
+            ))}
           </View>
         )}
       </View>
+
+      {/* User Management Modal */}
+      <Modal
+        visible={showUserModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowUserModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <ScrollView style={styles.modalScroll}>
+              {selectedUserForAction && (
+                <>
+                  {/* User Header */}
+                  <View style={styles.modalHeader}>
+                    <Text style={styles.modalTitle}>
+                      {selectedUserForAction.name || 'User'}
+                    </Text>
+                    <Text style={styles.modalSubtitle}>{selectedUserForAction.email}</Text>
+                    <TouchableOpacity 
+                      style={styles.modalCloseBtn}
+                      onPress={() => setShowUserModal(false)}
+                    >
+                      <X size={24} color={COLORS.textPrimary} />
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* User Stats */}
+                  <View style={styles.statsRow}>
+                    <View style={styles.statBox}>
+                      <Text style={styles.statValue}>{selectedUserForAction.statements_used || 0}</Text>
+                      <Text style={styles.statLabel}>Used</Text>
+                    </View>
+                    <View style={styles.statBox}>
+                      <Text style={styles.statValue}>{selectedUserForAction.statements_limit || 5}</Text>
+                      <Text style={styles.statLabel}>Limit</Text>
+                    </View>
+                    <View style={styles.statBox}>
+                      <Text style={styles.statValue}>{selectedUserForAction.plan_type || 'free'}</Text>
+                      <Text style={styles.statLabel}>Plan</Text>
+                    </View>
+                  </View>
+
+                  {/* Gift Credits */}
+                  <View style={styles.actionSection}>
+                    <Text style={styles.actionTitle}>Gift Credits</Text>
+                    <View style={styles.actionRow}>
+                      <TextInput
+                        style={[styles.input, { flex: 1 }]}
+                        placeholder="Amount (1-100)"
+                        value={giftCreditsAmount}
+                        onChangeText={setGiftCreditsAmount}
+                        keyboardType="numeric"
+                        placeholderTextColor={COLORS.textSecondary}
+                      />
+                    </View>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Reason (optional)"
+                      value={giftCreditsReason}
+                      onChangeText={setGiftCreditsReason}
+                      placeholderTextColor={COLORS.textSecondary}
+                    />
+                    <TouchableOpacity 
+                      style={[styles.actionBtn, styles.giftBtn]}
+                      onPress={handleGiftCredits}
+                      disabled={isActionLoading}
+                    >
+                      <Text style={styles.actionBtnText}>
+                        {isActionLoading ? 'Processing...' : 'Gift Credits'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Reset Trial */}
+                  <View style={styles.actionSection}>
+                    <Text style={styles.actionTitle}>Reset Trial</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Reason (optional)"
+                      value={resetTrialReason}
+                      onChangeText={setResetTrialReason}
+                      placeholderTextColor={COLORS.textSecondary}
+                    />
+                    <TouchableOpacity 
+                      style={[styles.actionBtn, styles.resetBtn]}
+                      onPress={handleResetTrial}
+                      disabled={isActionLoading}
+                    >
+                      <Text style={styles.actionBtnText}>Reset Usage to 0</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Admin Notes */}
+                  <View style={styles.actionSection}>
+                    <Text style={styles.actionTitle}>Admin Notes ({userNotes.length})</Text>
+                    <TextInput
+                      style={[styles.input, { height: 80, textAlignVertical: 'top' }]}
+                      placeholder="Add a note about this user..."
+                      value={adminNote}
+                      onChangeText={setAdminNote}
+                      multiline
+                      placeholderTextColor={COLORS.textSecondary}
+                    />
+                    <TouchableOpacity 
+                      style={[styles.actionBtn, styles.noteBtn]}
+                      onPress={handleAddNote}
+                      disabled={isActionLoading}
+                    >
+                      <Text style={styles.actionBtnText}>Add Note</Text>
+                    </TouchableOpacity>
+
+                    {/* Notes List */}
+                    {userNotes.length > 0 && (
+                      <View style={styles.notesList}>
+                        {userNotes.slice(0, 5).map((note: any) => (
+                          <View key={note.id} style={styles.noteItem}>
+                            <Text style={styles.noteText}>{note.note}</Text>
+                            <Text style={styles.noteMeta}>
+                              {note.admin_email} - {new Date(note.created_at).toLocaleDateString()}
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+                  </View>
+                </>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       {/* Admin Utilities */}
       <View style={styles.card}>
@@ -784,6 +1065,155 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '600',
+  },
+  // New styles for user management
+  searchResultsList: {
+    marginTop: 16,
+  },
+  userResultItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
+    backgroundColor: '#F9F9F9',
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  userResultInfo: {
+    flex: 1,
+  },
+  userResultName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+  },
+  userResultEmail: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+  },
+  userResultMeta: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    marginTop: 4,
+  },
+  manageButton: {
+    fontSize: 13,
+    color: COLORS.primary,
+    fontWeight: '600',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContainer: {
+    width: '90%',
+    maxWidth: 500,
+    maxHeight: '85%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  modalScroll: {
+    padding: 20,
+  },
+  modalHeader: {
+    marginBottom: 20,
+    position: 'relative',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    marginTop: 4,
+  },
+  modalCloseBtn: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    padding: 4,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 24,
+    paddingVertical: 16,
+    backgroundColor: '#F5F5F5',
+    borderRadius: 8,
+  },
+  statBox: {
+    alignItems: 'center',
+  },
+  statValue: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: COLORS.primary,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    marginTop: 4,
+  },
+  actionSection: {
+    marginBottom: 24,
+    paddingBottom: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+  },
+  actionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+    marginBottom: 12,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  actionBtn: {
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  actionBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  giftBtn: {
+    backgroundColor: '#28a745',
+  },
+  resetBtn: {
+    backgroundColor: '#dc3545',
+  },
+  noteBtn: {
+    backgroundColor: COLORS.primary,
+  },
+  notesList: {
+    marginTop: 16,
+  },
+  noteItem: {
+    padding: 12,
+    backgroundColor: '#F9F9F9',
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  noteText: {
+    fontSize: 13,
+    color: COLORS.textPrimary,
+    lineHeight: 18,
+  },
+  noteMeta: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    marginTop: 8,
+    fontStyle: 'italic',
   },
 });
 

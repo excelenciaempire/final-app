@@ -3,7 +3,7 @@ const router = express.Router();
 const { uploadImageController, uploadAudio } = require('../controllers/uploadController');
 const { requireAuth } = require('../middleware/clerkAuth');
 const { generatePreDescription } = require('../controllers/preDescriptionController');
-const { generateDdid } = require('../controllers/ddidController');
+const { generateDdid, generateStatementDirect } = require('../controllers/ddidController');
 const { transcribeAudio } = require('../controllers/transcriptionController');
 const { getInspectionHistory, createInspection, getPrimaryEmail, updatePrimaryEmail, getPresignedUrl } = require('../controllers/inspectionController');
 const userController = require('../controllers/userController');
@@ -24,8 +24,11 @@ router.post('/transcribe', transcribeAudio);
 // Route to generate preliminary description
 router.post('/generate-pre-description', generatePreDescription);
 
-// Route to generate DDID
+// Route to generate DDID (legacy - two-step flow)
 router.post('/generate-ddid', generateDdid);
+
+// Route to generate statement directly (new streamlined flow)
+router.post('/generate-statement', generateStatementDirect);
 
 // Route to get inspection history for the logged-in user
 router.get('/inspections', getInspectionHistory);
@@ -51,6 +54,8 @@ router.post('/user/subscription/increment', userController.incrementStatementUsa
 // SOP Routes
 router.get('/sop/active', sopController.getActiveSops);
 router.get('/sop/documents', sopController.getSopDocuments);
+router.get('/sop/text-context', sopController.getSopTextForContext);
+router.get('/sop/extraction-status', sopController.getExtractionStatus);
 
 // Ad Routes
 router.get('/ads/active', adController.getActiveAds);
