@@ -95,7 +95,7 @@ const SopScreen: React.FC = () => {
             style={styles.picker}
           >
             {US_STATES.map((state) => (
-              <Picker.Item key={state} label={state} value={state} />
+              <Picker.Item key={state.value} label={`${state.value} - ${state.label}`} value={state.value} />
             ))}
           </Picker>
         </View>

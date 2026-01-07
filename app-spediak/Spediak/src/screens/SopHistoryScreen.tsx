@@ -276,7 +276,7 @@ const SopHistoryScreen: React.FC = () => {
             >
               <Picker.Item label="All States" value="All" />
               {US_STATES.map((state) => (
-                <Picker.Item key={state} label={state} value={state} />
+                <Picker.Item key={state.value} label={`${state.value} - ${state.label}`} value={state.value} />
               ))}
             </Picker>
           </View>

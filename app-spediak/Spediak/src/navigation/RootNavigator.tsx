@@ -286,7 +286,7 @@ const RootNavigator: React.FC = () => {
     let CurrentScreenComponent: React.ComponentType<any> | null = null;
 
     if (activeScreen === 'Home' || activeScreen === 'NewStatement') {
-        CurrentScreenComponent = NewInspectionSimple; // Using simplified version for testing
+        CurrentScreenComponent = NewInspectionScreen; // Back to full version
     } else if (activeScreen === 'InspectionHistory') {
         CurrentScreenComponent = InspectionHistoryScreen;
     } else if (activeScreen === 'SOP') {
@@ -345,7 +345,7 @@ const RootNavigator: React.FC = () => {
         })}
         >
         {/* Regular Screens */}
-         <Drawer.Screen name="Home" component={NewInspectionSimple} options={{ title: 'Home' }} />
+         <Drawer.Screen name="Home" component={NewInspectionScreen} options={{ title: 'Home' }} />
          <Drawer.Screen name="InspectionHistory" component={InspectionHistoryScreen} options={{ title: 'Statement History' }} />
          <Drawer.Screen name="SOP" component={SopScreen} options={{ title: 'SOP' }} />
          <Drawer.Screen name="Discord" component={DiscordScreen} options={{ title: 'Discord' }} />
