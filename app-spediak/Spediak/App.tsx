@@ -14,9 +14,9 @@ import RootNavigatorDrawerTest from "./src/navigation/RootNavigatorDrawerTest";
 import { GlobalStateProvider } from "./src/context/GlobalStateContext";
 import { SubscriptionProvider } from "./src/context/SubscriptionContext";
 
-// Version: 2.0.7 - Back to simplified Home to isolate error
+// Version: 2.0.8 - Full RootNavigator with simplified Home
 // DEBUG MODES: 'simple' | 'intermediate' | 'navtest' | 'drawertest' | 'full'
-const DEBUG_MODE = 'drawertest' as const;
+const DEBUG_MODE = 'full' as const;
 
 // Error Boundary Component
 class ErrorBoundary extends React.Component<
