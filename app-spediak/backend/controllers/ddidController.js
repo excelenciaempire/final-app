@@ -281,19 +281,28 @@ const generateStatementDirect = async (req, res) => {
     // ============================================
     // PARALLEL DATA FETCHING (Speed Optimization #1)
     // ============================================
-    // Run ALL database queries in parallel instead of sequentially
-    const [subscriptionData, sopContext] = await Promise.all([
-      // Subscription check
+    // Fetch ALL 5 sources in parallel: Subscription, SOP, Knowledge, DDID Prompt
+    const [subscriptionData, sopContext, knowledge, ddidPrompt] = await Promise.all([
+      // 1. Subscription check
       clerkId ? pool.query(
         'SELECT plan_type, statements_used, statements_limit, last_reset_date FROM user_subscriptions WHERE clerk_id = $1',
         [clerkId]
       ) : Promise.resolve({ rows: [] }),
       
-      // SOP context (limited to 2000 chars for speed)
-      getSopContextFast(userState, organization)
+      // 2. SOP context (State + Organization) - 5000 chars each
+      getSopContextFast(userState, organization),
+      
+      // 3. Knowledge Base search (with 2s timeout for speed)
+      Promise.race([
+        searchKnowledgeBase(notes || userState),
+        new Promise(resolve => setTimeout(() => resolve(''), 2000))
+      ]).catch(() => ''),
+      
+      // 4. DDID Prompt from database (cached for 5 min)
+      getCachedPrompt()
     ]);
 
-    console.log(`[⚡ Fast Generate] Parallel fetch completed in ${Date.now() - startTime}ms`);
+    console.log(`[⚡ Fast Generate] Parallel fetch completed in ${Date.now() - startTime}ms (SOP: ${sopContext?.length || 0} chars, KB: ${knowledge?.length || 0} chars)`);
 
     // Check subscription limits
     if (clerkId && subscriptionData.rows.length > 0) {
@@ -324,15 +333,20 @@ const generateStatementDirect = async (req, res) => {
     }
 
     // ============================================
-    // OPTIMIZED PROMPT (Speed Optimization #2)
+    // UNIFIED PROMPT WITH ALL 5 SOURCES
     // ============================================
-    // Shorter prompt = fewer tokens = faster processing
+    // Sources: 1) State SOP, 2) Org SOP, 3) Knowledge Base, 4) DDID Prompt, 5) Image+Notes
     const hasSop = sopContext && sopContext.length > 0;
-    const prompt = `Inspection photo analysis. Write ONE professional paragraph.
+    const hasKnowledge = knowledge && knowledge.length > 0;
+    const basePrompt = ddidPrompt || 'You are a professional home inspector. Generate a DDID statement (Describe, Determine, Implication, Direction) for the inspection finding shown in the image.';
+    
+    const prompt = `${basePrompt}
 
-Location: ${userState}${organization && organization !== 'None' ? ` (${organization})` : ''}${notes ? `\nNotes: ${notes.substring(0, 200)}` : ''}${hasSop ? `\nStandards: ${sopContext}` : ''}
+=== INSPECTION CONTEXT ===
+State: ${userState}${organization && organization !== 'None' ? `\nOrganization: ${organization}` : ''}${notes ? `\nInspector Notes: ${notes.substring(0, 300)}` : ''}
 
-DDID format: Describe→Determine→Implication→Direction. 4-6 sentences, technical, no bullets.`;
+${hasSop ? `=== STANDARDS OF PRACTICE ===\n${sopContext}\n` : ''}${hasKnowledge ? `=== KNOWLEDGE BASE ===\n${knowledge.substring(0, 1500)}\n` : ''}
+Write ONE professional paragraph using DDID format: Describe the condition → Determine the issue → Implication if not addressed → Direction/recommendation. 4-6 sentences, technical language, no bullet points.`;
 
     console.log(`[⚡ Fast Generate] Calling OpenAI ${OPENAI_CONFIG.model}...`);
     const apiStart = Date.now();
@@ -404,27 +418,47 @@ DDID format: Describe→Determine→Implication→Direction. 4-6 sentences, tech
 
 /**
  * FAST SOP Context Fetcher
- * - Limited to 2000 chars total for speed
- * - Prioritizes state SOP only if both exist
+ * - Fetches both State and Organization SOP in parallel
+ * - Limited to 5000 chars each for balance of context vs speed
  */
 async function getSopContextFast(state, organization) {
   try {
-    // Only fetch state SOP for speed (most important)
-    const result = await pool.query(`
-      SELECT sd.extracted_text
-      FROM sop_assignments sa
-      JOIN sop_documents sd ON sa.sop_document_id = sd.id
-      WHERE sa.assignment_type = 'state' AND sa.assignment_value = $1
-      AND sd.extracted_text IS NOT NULL AND sd.extracted_text != ''
-      LIMIT 1
-    `, [state]);
+    const sopParts = [];
     
-    if (result.rows.length > 0 && result.rows[0].extracted_text) {
-      // Return only first 2000 chars for speed
-      return result.rows[0].extracted_text.substring(0, 2000);
+    // Fetch State and Organization SOP in parallel
+    const [stateResult, orgResult] = await Promise.all([
+      // State SOP (primary authority)
+      pool.query(`
+        SELECT sd.document_name, sd.extracted_text
+        FROM sop_assignments sa
+        JOIN sop_documents sd ON sa.sop_document_id = sd.id
+        WHERE sa.assignment_type = 'state' AND sa.assignment_value = $1
+        AND sd.extracted_text IS NOT NULL AND sd.extracted_text != ''
+        LIMIT 1
+      `, [state]),
+      
+      // Organization SOP (secondary authority)
+      organization && organization !== 'None' ? pool.query(`
+        SELECT sd.document_name, sd.extracted_text
+        FROM sop_assignments sa
+        JOIN sop_documents sd ON sa.sop_document_id = sd.id
+        WHERE sa.assignment_type = 'organization' AND sa.assignment_value = $1
+        AND sd.extracted_text IS NOT NULL AND sd.extracted_text != ''
+        LIMIT 1
+      `, [organization]) : Promise.resolve({ rows: [] })
+    ]);
+    
+    // Add State SOP (5000 chars max)
+    if (stateResult.rows.length > 0 && stateResult.rows[0].extracted_text) {
+      sopParts.push(`[STATE: ${state}]\n${stateResult.rows[0].extracted_text.substring(0, 5000)}`);
     }
     
-    return '';
+    // Add Organization SOP (5000 chars max)
+    if (orgResult.rows.length > 0 && orgResult.rows[0].extracted_text) {
+      sopParts.push(`[ORG: ${organization}]\n${orgResult.rows[0].extracted_text.substring(0, 5000)}`);
+    }
+    
+    return sopParts.join('\n\n');
   } catch (error) {
     console.warn('[Fast SOP] Error:', error.message);
     return '';
