@@ -24,8 +24,18 @@ const StatementUsageCard: React.FC = () => {
 
   const { plan_type, statements_used, statements_limit, statements_remaining, is_unlimited, is_admin } = subscription;
   const isFreePlan = plan_type === 'free';
+  const isTrial = plan_type === 'trial';
   const isPro = plan_type === 'pro';
   const isPlatinum = plan_type === 'platinum';
+  const isPaidUnlimited = isPro || isPlatinum;
+  
+  // Get display name for plan
+  const getPlanDisplayName = () => {
+    if (isPlatinum) return 'Platinum Plan';
+    if (isPro) return 'Pro Plan';
+    if (isTrial) return 'Free Trial';
+    return 'Free Plan';
+  };
 
   const handleUpgrade = () => {
     navigation.navigate('PlanSelection');
@@ -76,8 +86,8 @@ const StatementUsageCard: React.FC = () => {
     );
   }
 
-  // For paid plans
-  if (!isFreePlan) {
+  // For paid unlimited plans (Pro and Platinum)
+  if (isPaidUnlimited) {
     return (
       <View style={styles.card}>
         <View style={styles.headerRow}>
@@ -86,13 +96,49 @@ const StatementUsageCard: React.FC = () => {
           </View>
           <View style={styles.titleContainer}>
             <Text style={styles.title}>
-              Statements ({isPro ? 'Pro Plan' : 'Platinum Plan'})
+              Statements ({getPlanDisplayName()})
             </Text>
             <Text style={styles.subtitle}>Unlimited statements included</Text>
           </View>
           <View style={styles.badgeUnlimited}>
             <Text style={styles.badgeUnlimitedText}>∞ Unlimited</Text>
           </View>
+        </View>
+      </View>
+    );
+  }
+
+  // For trial plan - show usage like free plan but with different branding
+  if (isTrial) {
+    return (
+      <View style={[styles.card, styles.trialCard]}>
+        <View style={styles.headerRow}>
+          <View style={styles.iconBox}>
+            <FileText size={20} color={COLORS.primary} />
+          </View>
+          <View style={styles.titleContainer}>
+            <Text style={styles.title}>Statements (Free Trial)</Text>
+            <Text style={styles.subtitle}>
+              You have {statements_remaining} of {statements_limit} trial statements remaining.
+            </Text>
+          </View>
+          <View style={styles.trialBadge}>
+            <Text style={styles.trialBadgeText}>{statements_used} / {statements_limit} used</Text>
+          </View>
+        </View>
+
+        <Text style={styles.infoText}>
+          Enjoying your trial? Upgrade to Pro for{' '}
+          <Text style={styles.boldText}>unlimited statements</Text> and premium features.
+        </Text>
+
+        <View style={styles.buttonRow}>
+          <TouchableOpacity style={styles.upgradeButton} onPress={handleUpgrade}>
+            <Text style={styles.upgradeButtonText}>Upgrade to Pro</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.detailsButton} onPress={handleViewDetails}>
+            <Text style={styles.detailsButtonText}>View limits & details</Text>
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -195,6 +241,21 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#2E7D32',
   },
+  trialCard: {
+    backgroundColor: '#F0F9FF',
+    borderColor: '#BAE6FD',
+  },
+  trialBadge: {
+    backgroundColor: '#DBEAFE',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  trialBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#1D4ED8',
+  },
   infoText: {
     fontSize: 13,
     color: COLORS.textSecondary,
@@ -202,6 +263,10 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   boldText: {
+    fontWeight: '700',
+    color: COLORS.primary,
+  },
+  highlightText: {
     fontWeight: '700',
     color: COLORS.primary,
   },
