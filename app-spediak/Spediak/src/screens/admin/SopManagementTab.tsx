@@ -776,7 +776,7 @@ const SopManagementTab: React.FC = () => {
               <View style={styles.orgAssignmentActions}>
                 <TouchableOpacity 
                   style={styles.viewHistoryLink}
-                  onPress={() => Alert.alert('History', `View history for ${org}`)}
+                  onPress={handleViewHistory}
                 >
                   <Text style={styles.viewHistoryLinkText}>View history</Text>
                 </TouchableOpacity>

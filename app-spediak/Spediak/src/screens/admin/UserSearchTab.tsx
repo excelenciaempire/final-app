@@ -256,37 +256,41 @@ const UserSearchTab: React.FC = () => {
   const handleDeleteNote = async (noteId: number, noteType: string) => {
     if (!loadedUser) return;
 
-    Alert.alert('Confirm Delete', 'Are you sure you want to delete this note?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          setIsDeletingNote(noteId);
-          try {
-            const token = await getToken();
-            if (!token) return;
+    const doDelete = async () => {
+      setIsDeletingNote(noteId);
+      try {
+        const token = await getToken();
+        if (!token) return;
 
-            await axios.delete(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/notes/${noteId}`, {
-              headers: { Authorization: `Bearer ${token}` }
-            });
+        await axios.delete(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/notes/${noteId}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
 
-            // Remove from local state
-            if (noteType === 'admin' || !noteType) {
-              setAdminNotesList(prev => prev.filter(n => n.id !== noteId));
-            } else {
-              setSupportNotesList(prev => prev.filter(n => n.id !== noteId));
-            }
-
-            addLocalAuditEvent('Note deleted');
-          } catch (error) {
-            Alert.alert('Error', 'Failed to delete note');
-          } finally {
-            setIsDeletingNote(null);
-          }
+        // Remove from local state
+        if (noteType === 'admin' || !noteType) {
+          setAdminNotesList(prev => prev.filter(n => n.id !== noteId));
+        } else {
+          setSupportNotesList(prev => prev.filter(n => n.id !== noteId));
         }
+
+        addLocalAuditEvent('Note deleted');
+      } catch (error) {
+        Alert.alert('Error', 'Failed to delete note');
+      } finally {
+        setIsDeletingNote(null);
       }
-    ]);
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('Are you sure you want to delete this note?')) {
+        doDelete();
+      }
+    } else {
+      Alert.alert('Confirm Delete', 'Are you sure you want to delete this note?', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: doDelete }
+      ]);
+    }
   };
 
   // Load statement events
@@ -345,16 +349,24 @@ const UserSearchTab: React.FC = () => {
       const token = await getToken();
       if (!token) return;
 
-      await axios.post(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/notes`, 
+      const response = await axios.post(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/notes`, 
         { note: adminNotes, noteType: 'admin' },
         { headers: { Authorization: `Bearer ${token}` }}
       );
 
-      // Clear input and reload notes
-      setAdminNotes('');
-      loadUserNotes(loadedUser.clerk_id);
+      // Add the new note to the list immediately
+      const newNote = response.data.note || {
+        id: Date.now(),
+        note: adminNotes,
+        note_type: 'admin',
+        created_at: new Date().toISOString(),
+        admin_email: user?.primaryEmailAddress?.emailAddress || 'Admin'
+      };
+      setAdminNotesList(prev => [newNote, ...prev]);
       
-      Alert.alert('Success', 'Note added successfully');
+      // Clear input
+      setAdminNotes('');
+      
       addLocalAuditEvent('Admin note added');
     } catch (error) {
       Alert.alert('Error', 'Failed to save note');
@@ -894,7 +906,7 @@ const UserSearchTab: React.FC = () => {
               onPress={handleSaveNotes}
               disabled={isSavingNotes || !adminNotes.trim()}
             >
-              <Text style={styles.primaryButtonText}>
+              <Text style={styles.buttonText}>
                 {isSavingNotes ? 'Adding...' : 'Add Note'}
               </Text>
             </TouchableOpacity>
