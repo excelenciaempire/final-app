@@ -2,12 +2,14 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { useSubscription } from '../context/SubscriptionContext';
 import { useNavigation } from '@react-navigation/native';
+import { useAppNavigation } from '../context/AppNavigationContext';
 import { COLORS } from '../styles/colors';
 import { FileText } from 'lucide-react-native';
 
 const StatementUsageCard: React.FC = () => {
-  const { subscription, isLoading, adminPreviewMode } = useSubscription();
+  const { subscription, isLoading, adminPreviewMode, refreshSubscription } = useSubscription();
   const navigation = useNavigation<any>();
+  const { navigateTo, isWebDesktop } = useAppNavigation();
   const { width } = useWindowDimensions();
 
   if (isLoading) {
@@ -38,11 +40,20 @@ const StatementUsageCard: React.FC = () => {
   };
 
   const handleUpgrade = () => {
-    navigation.navigate('PlanSelection');
+    if (isWebDesktop) {
+      navigateTo('PlanSelection');
+    } else {
+      navigation.navigate('PlanSelection');
+    }
   };
 
   const handleViewDetails = () => {
-    navigation.navigate('Profile');
+    // Both buttons should go to plan selection
+    if (isWebDesktop) {
+      navigateTo('PlanSelection');
+    } else {
+      navigation.navigate('PlanSelection');
+    }
   };
 
   // Don't show for admins - unless preview mode is on

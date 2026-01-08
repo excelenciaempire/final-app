@@ -420,37 +420,52 @@ const addUserNote = async (req, res) => {
   const { note } = req.body;
   const adminClerkId = req.auth?.userId;
 
-  if (!userId || !note) {
-    return res.status(400).json({ message: 'User ID and note are required' });
+  if (!userId) {
+    return res.status(400).json({ message: 'User ID is required' });
   }
 
-  if (note.length > 2000) {
+  if (note && note.length > 2000) {
     return res.status(400).json({ message: 'Note must be less than 2000 characters' });
   }
 
   try {
-    const result = await pool.query(`
-      INSERT INTO admin_user_notes (user_clerk_id, admin_clerk_id, note)
-      VALUES ($1, $2, $3)
+    // Use UPSERT logic - update existing admin note or insert new one
+    // First try to update existing admin note
+    const updateResult = await pool.query(`
+      UPDATE admin_user_notes 
+      SET note = $2, admin_clerk_id = $3, updated_at = NOW()
+      WHERE user_clerk_id = $1 AND (note_type IS NULL OR note_type = 'admin')
       RETURNING *
-    `, [userId, adminClerkId, note]);
+    `, [userId, note || '', adminClerkId]);
+    
+    let result;
+    if (updateResult.rowCount === 0) {
+      // No existing admin note, insert new one
+      result = await pool.query(`
+        INSERT INTO admin_user_notes (user_clerk_id, admin_clerk_id, note, note_type)
+        VALUES ($1, $2, $3, 'admin')
+        RETURNING *
+      `, [userId, adminClerkId, note || '']);
+    } else {
+      result = updateResult;
+    }
 
     // Log to admin_audit_log
     await pool.query(`
-      INSERT INTO admin_audit_log (admin_clerk_id, action_type, target_type, target_id, action_details)
-      VALUES ($1, $2, $3, $4, $5)
-    `, [adminClerkId, 'add_note', 'user', userId, JSON.stringify({ note_id: result.rows[0].id, note_preview: note.substring(0, 100) })]);
+      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, action_details)
+      VALUES ($1, 'update_admin_notes', 'user_management', 'user', $2, $3)
+    `, [adminClerkId, userId, JSON.stringify({ note_preview: (note || '').substring(0, 100) })]);
 
-    console.log(`[Admin] Added note for user ${userId} by admin ${adminClerkId}`);
+    console.log(`[Admin] Saved admin note for user ${userId} by admin ${adminClerkId}`);
 
     res.json({
-      message: 'Note added successfully',
+      message: 'Notes saved successfully',
       note: result.rows[0]
     });
 
   } catch (error) {
-    console.error('[Admin] Error adding user note:', error);
-    res.status(500).json({ message: 'Failed to add user note', error: error.message });
+    console.error('[Admin] Error saving user note:', error);
+    res.status(500).json({ message: 'Failed to save user note', error: error.message });
   }
 };
 
@@ -1457,7 +1472,8 @@ const grantTrial = async (req, res) => {
       SET 
         plan_type = 'trial',
         trial_end_date = $2,
-        statements_limit = 50,
+        statements_limit = 5,
+        statements_used = 0,
         updated_at = NOW()
       WHERE clerk_id = $1
     `, [userId, trialEndDate]);

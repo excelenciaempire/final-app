@@ -297,6 +297,10 @@ const getSubscriptionStatus = async (req, res) => {
     const isSuspended = securityResult.rows.length > 0 && securityResult.rows[0].is_suspended;
     const isAdmin = securityResult.rows.length > 0 && securityResult.rows[0].is_admin;
 
+    // Update last_login timestamp (non-blocking)
+    pool.query('UPDATE users SET last_login = NOW() WHERE clerk_id = $1', [clerkId])
+      .catch(err => console.warn('[UserController] Error updating last_login:', err.message));
+
     // Admins always have unlimited access
     const isUnlimited = isAdmin || subscription.plan_type !== 'free' && subscription.plan_type !== 'trial';
     const statementsRemaining = isUnlimited 
