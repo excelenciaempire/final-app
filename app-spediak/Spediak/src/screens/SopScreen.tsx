@@ -49,7 +49,10 @@ const SopScreen: React.FC = () => {
   }, [user]);
 
   const fetchSopData = useCallback(async () => {
-    if (!selectedState) return;
+    if (!selectedState) {
+      setIsLoading(false);
+      return;
+    }
 
     try {
       setIsLoading(true);
@@ -74,12 +77,12 @@ const SopScreen: React.FC = () => {
 
       setActiveStateSop(response.data.stateSop);
       setActiveOrgSop(response.data.orgSop);
+      setIsLoading(false);
     } catch (err: any) {
       console.error('Error fetching SOP data:', err);
       // Don't show error - just set empty state
       setActiveStateSop(null);
       setActiveOrgSop(null);
-    } finally {
       setIsLoading(false);
     }
   }, [selectedState, organization, getToken]);
@@ -252,14 +255,6 @@ const SopScreen: React.FC = () => {
                   : `No ${organization} SOP assigned yet.`}
             </Text>
           </View>
-        </View>
-
-        {/* Quick Reference Sample */}
-        <View style={styles.quickReferenceSection}>
-          <Text style={styles.quickReferenceTitle}>Quick reference sample</Text>
-          <Text style={styles.quickReferenceText}>
-            No State SOP assigned yet for {selectedState || 'NC'}. Quick reference sample will use general guidance until a state SOP is configured.
-          </Text>
         </View>
 
         {/* Compliance Note */}

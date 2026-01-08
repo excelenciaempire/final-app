@@ -619,6 +619,58 @@ const SopManagementTab: React.FC = () => {
     }
   };
 
+  // Remove SOP assignment
+  const [removingAssignmentId, setRemovingAssignmentId] = useState<number | null>(null);
+  
+  const handleRemoveAssignment = async (assignmentId: number, assignmentValue: string) => {
+    const confirmMessage = Platform.OS === 'web' 
+      ? `Are you sure you want to remove the SOP assignment for ${assignmentValue}?`
+      : `Remove SOP assignment for ${assignmentValue}?`;
+
+    const doRemove = async () => {
+      try {
+        setRemovingAssignmentId(assignmentId);
+        const token = await getToken();
+        await axios.delete(`${BASE_URL}/admin/sop/assignments/${assignmentId}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        
+        // Refresh assignments
+        await fetchSopData();
+        
+        if (Platform.OS === 'web') {
+          alert('SOP assignment removed successfully');
+        } else {
+          Alert.alert('Success', 'SOP assignment removed successfully');
+        }
+      } catch (error) {
+        console.error('Error removing SOP assignment:', error);
+        if (Platform.OS === 'web') {
+          alert('Failed to remove SOP assignment');
+        } else {
+          Alert.alert('Error', 'Failed to remove SOP assignment');
+        }
+      } finally {
+        setRemovingAssignmentId(null);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm(confirmMessage)) {
+        await doRemove();
+      }
+    } else {
+      Alert.alert(
+        'Confirm Removal',
+        confirmMessage,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Remove', style: 'destructive', onPress: doRemove }
+        ]
+      );
+    }
+  };
+
   const currentStateAssignment = getStateAssignment(selectedState);
   const recentStateAssignments = getRecentStateAssignments();
 
@@ -790,11 +842,34 @@ const SopManagementTab: React.FC = () => {
         <Text style={styles.sectionTitle}>States with SOP assigned</Text>
         {recentStateAssignments.length > 0 ? (
           recentStateAssignments.map((assignment, idx) => (
-            <View key={idx} style={styles.assignmentItem}>
-              <Text style={styles.assignmentState}>{assignment.assignment_value}</Text>
-              <Text style={styles.assignmentDoc} numberOfLines={1}>
-                — {assignment.document_name || 'Document'}
-              </Text>
+            <View key={idx} style={styles.assignmentItemRow}>
+              <View style={styles.assignmentItemInfo}>
+                <Text style={styles.assignmentState}>{assignment.assignment_value}</Text>
+                <Text style={styles.assignmentDoc} numberOfLines={1}>
+                  — {assignment.document_name || 'Document'}
+                </Text>
+              </View>
+              <View style={styles.assignmentActions}>
+                {assignment.file_url && (
+                  <TouchableOpacity 
+                    style={styles.assignmentActionBtn}
+                    onPress={() => handleViewDocument(assignment.file_url!)}
+                  >
+                    <Eye size={16} color={COLORS.primary} />
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity 
+                  style={styles.assignmentActionBtn}
+                  onPress={() => handleRemoveAssignment(assignment.id, assignment.assignment_value)}
+                  disabled={removingAssignmentId === assignment.id}
+                >
+                  {removingAssignmentId === assignment.id ? (
+                    <ActivityIndicator size="small" color={COLORS.error} />
+                  ) : (
+                    <Trash2 size={16} color={COLORS.error} />
+                  )}
+                </TouchableOpacity>
+              </View>
             </View>
           ))
         ) : (
@@ -1174,6 +1249,30 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: '#F3F4F6',
+  },
+  assignmentItemRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  assignmentItemInfo: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+  },
+  assignmentActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  assignmentActionBtn: {
+    padding: 6,
+    borderRadius: 4,
+    backgroundColor: '#F3F4F6',
   },
   assignmentState: {
     fontSize: 14,

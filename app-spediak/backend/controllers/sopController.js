@@ -424,11 +424,10 @@ const getSopHistory = async (req, res) => {
       SELECT 
         sh.*,
         sd.document_name as sop_document_name,
-        COALESCE(u.email, u2.email) as changed_by_email
+        u.email as changed_by_email
       FROM sop_history sh
       LEFT JOIN sop_documents sd ON sh.sop_document_id = sd.id
       LEFT JOIN users u ON sh.changed_by = u.clerk_id
-      LEFT JOIN users u2 ON sh.action_by = u2.clerk_id
       WHERE 1=1
     `;
     const params = [];
@@ -494,7 +493,6 @@ const getSopHistory = async (req, res) => {
       FROM sop_history sh
       LEFT JOIN sop_documents sd ON sh.sop_document_id = sd.id
       LEFT JOIN users u ON sh.changed_by = u.clerk_id
-      LEFT JOIN users u2 ON sh.action_by = u2.clerk_id
       WHERE 1=1
     `;
     
@@ -602,14 +600,13 @@ const exportSopHistoryCsv = async (req, res) => {
         sd.document_name as sop_document_name,
         sh.assignment_type,
         sh.assignment_value,
-        COALESCE(sh.changed_by, sh.action_by) as changed_by,
-        COALESCE(u.email, u2.email) as changed_by_email,
-        COALESCE(sh.change_details, sh.action_details) as change_details,
+        sh.changed_by,
+        u.email as changed_by_email,
+        sh.change_details,
         sh.created_at
       FROM sop_history sh
       LEFT JOIN sop_documents sd ON sh.sop_document_id = sd.id
       LEFT JOIN users u ON sh.changed_by = u.clerk_id
-      LEFT JOIN users u2 ON sh.action_by = u2.clerk_id
       WHERE 1=1
     `;
     const params = [];
@@ -933,6 +930,72 @@ const deleteOrganization = async (req, res) => {
   }
 };
 
+/**
+ * Remove a SOP assignment (state or organization)
+ */
+const removeSopAssignment = async (req, res) => {
+  try {
+    const { assignmentId } = req.params;
+    const clerkId = req.auth?.userId;
+
+    if (!assignmentId) {
+      return res.status(400).json({ message: 'Assignment ID is required' });
+    }
+
+    // Get the assignment details before deleting for history logging
+    const assignmentResult = await pool.query(`
+      SELECT sa.*, sd.document_name
+      FROM sop_assignments sa
+      LEFT JOIN sop_documents sd ON sa.sop_document_id = sd.id
+      WHERE sa.id = $1
+    `, [assignmentId]);
+
+    if (assignmentResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Assignment not found' });
+    }
+
+    const assignment = assignmentResult.rows[0];
+
+    // Delete the assignment
+    await pool.query(`DELETE FROM sop_assignments WHERE id = $1`, [assignmentId]);
+
+    // Log to SOP history
+    await pool.query(`
+      INSERT INTO sop_history (
+        sop_document_id,
+        action_type,
+        assignment_type,
+        assignment_value,
+        changed_by,
+        change_details,
+        created_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, NOW())
+    `, [
+      assignment.sop_document_id,
+      'removed',
+      assignment.assignment_type,
+      assignment.assignment_value,
+      clerkId,
+      JSON.stringify({
+        document_name: assignment.document_name,
+        removed_by: clerkId
+      })
+    ]);
+
+    res.json({ 
+      message: 'SOP assignment removed successfully',
+      assignment: {
+        type: assignment.assignment_type,
+        value: assignment.assignment_value,
+        documentName: assignment.document_name
+      }
+    });
+  } catch (error) {
+    console.error('Error removing SOP assignment:', error);
+    res.status(500).json({ message: 'Failed to remove SOP assignment' });
+  }
+};
+
 module.exports = {
   uploadSopDocument,
   assignStateSop,
@@ -947,6 +1010,7 @@ module.exports = {
   getExtractionStatus,
   getOrganizations,
   createOrganization,
-  deleteOrganization
+  deleteOrganization,
+  removeSopAssignment
 };
 
