@@ -155,10 +155,11 @@ const assignStateSop = async (req, res) => {
           sop_document_id,
           assignment_type,
           assignment_value,
+          assigned_by,
           created_at,
           updated_at
-        ) VALUES ($1, $2, $3, NOW(), NOW())
-      `, [documentId, 'state', state]);
+        ) VALUES ($1, $2, $3, $4, NOW(), NOW())
+      `, [documentId, 'state', state, clerkId]);
     }
 
     // Log the change to sop_history
@@ -244,10 +245,11 @@ const assignOrgSop = async (req, res) => {
           sop_document_id,
           assignment_type,
           assignment_value,
+          assigned_by,
           created_at,
           updated_at
-        ) VALUES ($1, $2, $3, NOW(), NOW())
-      `, [documentId, 'organization', organization]);
+        ) VALUES ($1, $2, $3, $4, NOW(), NOW())
+      `, [documentId, 'organization', organization, clerkId]);
     }
 
     // Log the change to sop_history
