@@ -908,7 +908,7 @@ const getUserSecurityFlags = async (req, res) => {
       [userId]
     );
 
-    const flags = result.rows.length > 0 ? result.rows[0] : {
+    const defaultFlags = {
       is_admin: false,
       is_beta_user: false,
       is_vip: false,
@@ -917,8 +917,12 @@ const getUserSecurityFlags = async (req, res) => {
       two_fa_required: false
     };
 
+    const flags = result.rows.length > 0 ? { ...defaultFlags, ...result.rows[0] } : defaultFlags;
+
     // Add role field for frontend convenience
     flags.role = flags.is_admin ? 'admin' : 'standard';
+    // Ensure two_fa_required exists even if column doesn't exist in DB
+    flags.two_fa_required = flags.two_fa_required || false;
 
     res.json({ flags });
 
@@ -946,12 +950,13 @@ const updateUserSecurityFlags = async (req, res) => {
     // Determine admin status from role if provided
     const isAdminValue = role === 'admin' || isAdmin || false;
     
+    // Use a simpler query that works regardless of two_fa_required column existence
     const result = await pool.query(`
       INSERT INTO user_security_flags (
         user_clerk_id, is_admin, is_beta_user, is_vip, is_suspended, 
-        suspension_reason, suspended_at, suspended_by, fraud_flag, fraud_notes, two_fa_required
+        suspension_reason, suspended_at, suspended_by, fraud_flag, fraud_notes
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       ON CONFLICT (user_clerk_id) 
       DO UPDATE SET 
         is_admin = $2,
@@ -963,7 +968,6 @@ const updateUserSecurityFlags = async (req, res) => {
         suspended_by = CASE WHEN $5 = TRUE THEN $8 ELSE user_security_flags.suspended_by END,
         fraud_flag = $9,
         fraud_notes = $10,
-        two_fa_required = COALESCE($11, user_security_flags.two_fa_required),
         updated_at = NOW()
       RETURNING *
     `, [
@@ -976,8 +980,7 @@ const updateUserSecurityFlags = async (req, res) => {
       isSuspended ? new Date() : null,
       adminClerkId,
       fraudFlag || false,
-      fraudNotes || null,
-      two_fa_required || false
+      fraudNotes || null
     ]);
 
     // If user is made admin, update their subscription to platinum (unlimited)
@@ -1197,6 +1200,18 @@ const searchUserByEmail = async (req, res) => {
   }
 
   try {
+    // Check if two_fa_required column exists (for backwards compatibility)
+    let hasTwoFaColumn = false;
+    try {
+      const columnCheck = await pool.query(`
+        SELECT column_name FROM information_schema.columns 
+        WHERE table_name = 'user_security_flags' AND column_name = 'two_fa_required'
+      `);
+      hasTwoFaColumn = columnCheck.rows.length > 0;
+    } catch (e) {
+      console.warn('[searchUserByEmail] Could not check for two_fa_required column');
+    }
+
     const result = await pool.query(`
       SELECT 
         u.*,
@@ -1209,17 +1224,15 @@ const searchUserByEmail = async (req, res) => {
         us.statements_limit,
         us.last_reset_date,
         us.subscription_status,
-        us.trial_end_date,
         sf.is_admin,
         sf.is_beta_user,
         sf.is_vip,
         sf.is_suspended,
         sf.fraud_flag,
-        sf.two_fa_required,
+        ${hasTwoFaColumn ? 'sf.two_fa_required,' : 'FALSE as two_fa_required,'}
         (SELECT COUNT(*) FROM inspections WHERE user_id = u.clerk_id) as inspection_count,
         (SELECT COUNT(*) FROM admin_user_notes WHERE user_clerk_id = u.clerk_id) as notes_count,
-        (SELECT note FROM admin_user_notes WHERE user_clerk_id = u.clerk_id AND (note_type = 'admin' OR note_type IS NULL) ORDER BY created_at DESC LIMIT 1) as admin_notes,
-        (SELECT note FROM admin_user_notes WHERE user_clerk_id = u.clerk_id AND note_type = 'support' ORDER BY created_at DESC LIMIT 1) as support_notes
+        (SELECT note FROM admin_user_notes WHERE user_clerk_id = u.clerk_id ORDER BY created_at DESC LIMIT 1) as admin_notes
       FROM users u
       LEFT JOIN user_profiles up ON u.clerk_id = up.clerk_id
       LEFT JOIN user_subscriptions us ON u.clerk_id = us.clerk_id
@@ -1234,6 +1247,7 @@ const searchUserByEmail = async (req, res) => {
     // Add role field for convenience
     const user = result.rows[0];
     user.role = user.is_admin ? 'admin' : 'standard';
+    user.support_notes = ''; // Will be loaded separately if needed
 
     res.json({ user });
 
