@@ -647,14 +647,14 @@ const SopManagementTab: React.FC = () => {
         {/* Divider */}
         <View style={styles.divider} />
 
-        {/* Recent State Assignments */}
-        <Text style={styles.sectionTitle}>Most recent state SOP assignments (max 5)</Text>
+        {/* States with SOP Assigned */}
+        <Text style={styles.sectionTitle}>States with SOP assigned</Text>
         {recentStateAssignments.length > 0 ? (
           recentStateAssignments.map((assignment, idx) => (
             <View key={idx} style={styles.assignmentItem}>
               <Text style={styles.assignmentState}>{assignment.assignment_value}</Text>
               <Text style={styles.assignmentDoc} numberOfLines={1}>
-                {assignment.document_name || 'Document'}
+                — {assignment.document_name || 'Document'}
               </Text>
             </View>
           ))
@@ -761,37 +761,43 @@ const SopManagementTab: React.FC = () => {
         {/* Divider */}
         <View style={styles.divider} />
 
-        {/* Current Organization SOP Assignments */}
-        <Text style={styles.sectionTitle}>Current organization SOP assignments</Text>
-        {organizations.map((org) => {
-          const assignment = getOrgAssignment(org);
-          return (
-            <View key={org} style={styles.orgAssignmentItem}>
-              <View style={styles.orgAssignmentLeft}>
-                <Text style={styles.orgName}>{org}</Text>
-                <Text style={styles.orgStatus}>
-                  {assignment ? `— ${assignment.document_name || 'Document assigned'}` : '— (no SOP assigned)'}
-                </Text>
-              </View>
-              <View style={styles.orgAssignmentActions}>
-                <TouchableOpacity 
-                  style={styles.viewHistoryLink}
-                  onPress={handleViewHistory}
-                >
-                  <Text style={styles.viewHistoryLinkText}>View history</Text>
-                </TouchableOpacity>
-                {!DEFAULT_ORGANIZATIONS.includes(org) && (
+        {/* Only show organizations WITH documents assigned */}
+        <Text style={styles.sectionTitle}>Organizations with SOP assigned</Text>
+        {(() => {
+          const assignedOrgs = organizations.filter(org => getOrgAssignment(org));
+          if (assignedOrgs.length === 0) {
+            return <Text style={styles.noDataText}>No organization SOP assignments yet.</Text>;
+          }
+          return assignedOrgs.map((org) => {
+            const assignment = getOrgAssignment(org);
+            return (
+              <View key={org} style={styles.orgAssignmentItem}>
+                <View style={styles.orgAssignmentLeft}>
+                  <Text style={styles.orgName}>{org}</Text>
+                  <Text style={styles.orgStatus}>
+                    — {assignment?.document_name || 'Document assigned'}
+                  </Text>
+                </View>
+                <View style={styles.orgAssignmentActions}>
                   <TouchableOpacity 
-                    style={styles.deleteOrgButton}
-                    onPress={() => handleDeleteOrganization(org)}
+                    style={styles.viewHistoryLink}
+                    onPress={handleViewHistory}
                   >
-                    <Text style={styles.deleteOrgButtonText}>Delete org</Text>
+                    <Text style={styles.viewHistoryLinkText}>View history</Text>
                   </TouchableOpacity>
-                )}
+                  {!DEFAULT_ORGANIZATIONS.includes(org) && (
+                    <TouchableOpacity 
+                      style={styles.deleteOrgButton}
+                      onPress={() => handleDeleteOrganization(org)}
+                    >
+                      <Text style={styles.deleteOrgButtonText}>Delete org</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
               </View>
-            </View>
-          );
-        })}
+            );
+          });
+        })()}
       </View>
     </ScrollView>
   );
