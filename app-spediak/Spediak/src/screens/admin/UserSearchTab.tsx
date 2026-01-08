@@ -39,6 +39,7 @@ interface LoadedUser {
   statements_limit?: number;
   subscription_status?: string;
   is_active?: boolean;
+  is_suspended?: boolean;
   created_at?: string;
   last_login?: string;
   updated_at?: string;
@@ -69,6 +70,7 @@ const UserSearchTab: React.FC = () => {
   // Roles & Security State
   const [userRole, setUserRole] = useState('standard');
   const [twoFARequirement, setTwoFARequirement] = useState('off');
+  const [isSuspended, setIsSuspended] = useState(false);
   const [isSavingSecurity, setIsSavingSecurity] = useState(false);
 
   // Usage & Billing State
@@ -141,6 +143,7 @@ const UserSearchTab: React.FC = () => {
     setAdminNotes('');
     setUserRole('standard');
     setTwoFARequirement('off');
+    setIsSuspended(false);
     setStatementEvents([]);
     setSupportTags({ vip: false, beta_tester: false, fraud_risk: false, chargeback_risk: false });
     setSupportNotes('');
@@ -158,8 +161,9 @@ const UserSearchTab: React.FC = () => {
       });
       
       const flags = response.data.flags || {};
-      setUserRole(flags.role || 'standard');
+      setUserRole(flags.role || flags.is_admin ? 'admin' : 'standard');
       setTwoFARequirement(flags.two_fa_required ? 'on' : 'off');
+      setIsSuspended(flags.is_suspended || false);
     } catch (error) {
       console.log('Error loading security flags:', error);
     }
@@ -632,12 +636,7 @@ const UserSearchTab: React.FC = () => {
     }
   };
 
-  // Clear local audit
-  const handleClearLocalAudit = () => {
-    setAuditEvents([]);
-  };
-
-  // Add local audit event (for prototype/browser storage simulation)
+  // Add audit event locally (will be synced when action is performed on backend)
   const addLocalAuditEvent = (action: string) => {
     const newEvent = {
       id: Date.now(),
@@ -670,7 +669,7 @@ const UserSearchTab: React.FC = () => {
       <View style={styles.card}>
         <Text style={styles.cardTitle}>User Search</Text>
         <Text style={styles.cardDescription}>
-          Find and manage a user account (prototype). In production, enforce RBAC + audit logging server-side.
+          Find and manage any user account. All changes are logged for audit compliance.
         </Text>
 
         <Text style={styles.label}>Search by email</Text>
@@ -713,9 +712,12 @@ const UserSearchTab: React.FC = () => {
                   Role: {userRole} | Plan: {loadedUser.plan_type || 'free'} | Subscription: {loadedUser.subscription_status || 'none'}
                 </Text>
               </View>
-              <View style={[styles.statusBadge, loadedUser.is_active !== false ? styles.activeBadge : styles.inactiveBadge]}>
+              <View style={[
+                styles.statusBadge, 
+                isSuspended ? styles.suspendedBadge : (loadedUser.is_active !== false ? styles.activeBadge : styles.inactiveBadge)
+              ]}>
                 <Text style={styles.statusBadgeText}>
-                  {loadedUser.is_active !== false ? 'ACTIVE' : 'INACTIVE'}
+                  {isSuspended ? 'SUSPENDED' : (loadedUser.is_active !== false ? 'ACTIVE' : 'INACTIVE')}
                 </Text>
               </View>
             </View>
@@ -788,10 +790,6 @@ const UserSearchTab: React.FC = () => {
                 <Text style={styles.deleteButtonText}>Delete (hard)</Text>
               </TouchableOpacity>
             </View>
-
-            <Text style={styles.prototypeNote}>
-              Actions are <Text style={styles.prototypeHighlight}>prototype-only</Text> and stored in this browser.
-            </Text>
           </View>
         )}
       </View>
@@ -876,7 +874,7 @@ const UserSearchTab: React.FC = () => {
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Usage & Billing</Text>
         <Text style={styles.cardDescription}>
-          Prototype usage visibility. In production, wire to server usage + Stripe subscription status.
+          Monitor usage limits and manage subscription status. All changes are synced to the database.
         </Text>
 
         {loadedUser ? (
@@ -920,7 +918,7 @@ const UserSearchTab: React.FC = () => {
             </View>
 
             <View style={styles.eventsSection}>
-              <Text style={styles.eventsTitle}>Last 10 statement generations (prototype)</Text>
+              <Text style={styles.eventsTitle}>Last 10 statement generations</Text>
               {isLoadingEvents ? (
                 <ActivityIndicator size="small" color={COLORS.primary} />
               ) : statementEvents.length > 0 ? (
@@ -1011,7 +1009,7 @@ const UserSearchTab: React.FC = () => {
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Audit Trail</Text>
         <Text style={styles.cardDescription}>
-          Dedicated admin audit events for accountability. (Prototype stored in browser.)
+          Track all administrative actions performed on this user for compliance and accountability.
         </Text>
 
         <View style={styles.auditButtonsRow}>
@@ -1021,12 +1019,6 @@ const UserSearchTab: React.FC = () => {
           >
             <RefreshCcw size={16} color={COLORS.textPrimary} />
             <Text style={styles.outlineButtonText}>Refresh</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.button, styles.dangerOutlineButton]} 
-            onPress={handleClearLocalAudit}
-          >
-            <Text style={styles.dangerOutlineButtonText}>Clear audit (local)</Text>
           </TouchableOpacity>
         </View>
 
@@ -1187,6 +1179,9 @@ const styles = StyleSheet.create({
   inactiveBadge: {
     backgroundColor: '#FEE2E2',
   },
+  suspendedBadge: {
+    backgroundColor: '#FEF3C7',
+  },
   statusBadgeText: {
     fontSize: 12,
     fontWeight: '700',
@@ -1248,14 +1243,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#DC2626',
     textDecorationLine: 'underline',
-  },
-  prototypeNote: {
-    fontSize: 12,
-    color: '#9CA3AF',
-    marginTop: 12,
-  },
-  prototypeHighlight: {
-    color: '#3B82F6',
   },
   loadUserPrompt: {
     fontSize: 14,

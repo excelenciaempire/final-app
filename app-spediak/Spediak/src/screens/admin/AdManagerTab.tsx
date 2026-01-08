@@ -415,26 +415,6 @@ const AdManagerTab: React.FC = () => {
         </Text>
       </View>
 
-      {/* Dimensions Info */}
-      <View style={styles.infoCard}>
-        <View style={styles.infoHeader}>
-          <Info size={18} color="#3B82F6" />
-          <Text style={styles.infoTitle}>Recommended Ad Dimensions</Text>
-        </View>
-        <Text style={styles.infoText}>
-          For best results, use images with dimensions: <Text style={styles.infoBold}>{AD_WIDTH}px × {AD_HEIGHT}px</Text>
-        </Text>
-        <Text style={styles.infoText}>
-          Aspect ratio: <Text style={styles.infoBold}>{AD_ASPECT_RATIO.toFixed(2)}:1</Text> (wide banner format)
-        </Text>
-        <View style={styles.dimensionPreview}>
-          <View style={styles.dimensionBox}>
-            <Text style={styles.dimensionLabel}>{AD_WIDTH}px</Text>
-          </View>
-          <Text style={styles.dimensionHeight}>{AD_HEIGHT}px</Text>
-        </View>
-      </View>
-
       {/* Create New Ad */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Create New Ad</Text>
@@ -467,7 +447,6 @@ const AdManagerTab: React.FC = () => {
             <TouchableOpacity style={styles.uploadButton} onPress={pickImage}>
               <Upload size={24} color={COLORS.primary} />
               <Text style={styles.uploadButtonText}>Upload Ad Image</Text>
-              <Text style={styles.uploadHint}>Recommended: 500 × 120px</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -786,60 +765,6 @@ const styles = StyleSheet.create({
     color: '#92400E',
     lineHeight: 18,
   },
-  infoCard: {
-    backgroundColor: '#EFF6FF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#BFDBFE',
-  },
-  infoHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 8,
-  },
-  infoTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#1E40AF',
-  },
-  infoText: {
-    fontSize: 13,
-    color: '#3B82F6',
-    marginBottom: 4,
-  },
-  infoBold: {
-    fontWeight: '700',
-    color: '#1E40AF',
-  },
-  dimensionPreview: {
-    marginTop: 12,
-    alignItems: 'center',
-  },
-  dimensionBox: {
-    width: '100%',
-    maxWidth: 250,
-    height: 60,
-    backgroundColor: '#DBEAFE',
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: '#3B82F6',
-    borderStyle: 'dashed',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  dimensionLabel: {
-    fontSize: 12,
-    color: '#1E40AF',
-    fontWeight: '600',
-  },
-  dimensionHeight: {
-    fontSize: 11,
-    color: '#3B82F6',
-    marginTop: 4,
-  },
   card: {
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
@@ -886,11 +811,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.primary,
     marginTop: 8,
-  },
-  uploadHint: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    marginTop: 4,
   },
   imagePreviewContainer: {
     position: 'relative',

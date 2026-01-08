@@ -79,6 +79,7 @@ const SopHistoryScreen: React.FC = () => {
       
       if (!token) {
         setIsLoading(false);
+        setError('Authentication required');
         return;
       }
 
@@ -93,18 +94,22 @@ const SopHistoryScreen: React.FC = () => {
 
       const response = await axios.get(`${BASE_URL}/api/admin/sop/history`, {
         headers: { Authorization: `Bearer ${token}` },
-        params
+        params,
+        timeout: 15000
       });
 
       setHistory(response.data.history || []);
       setTotalCount(response.data.total || 0);
+      setError(null);
     } catch (err: any) {
       console.error('Error fetching SOP history:', err);
       setError(err.response?.data?.message || err.message || 'Failed to fetch history');
+      setHistory([]);
+      setTotalCount(0);
     } finally {
       setIsLoading(false);
     }
-  }, [getToken, scopeFilter, actionFilter, timeFilter, stateFilter, orgFilter, searchQuery, limit, offset]);
+  }, [scopeFilter, actionFilter, timeFilter, stateFilter, orgFilter, searchQuery, limit, offset]); // Removed getToken from dependencies
 
   useEffect(() => {
     loadOrganizations();

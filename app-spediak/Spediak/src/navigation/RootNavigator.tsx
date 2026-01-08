@@ -25,6 +25,7 @@ import SopScreen from '../screens/SopScreen';
 import DiscordScreen from '../screens/DiscordScreen';
 import PlanSelectionScreen from '../screens/PlanSelectionScreen';
 import SopHistoryScreen from '../screens/SopHistoryScreen';
+import AdminDashboardScreen from '../screens/AdminDashboardScreen';
 
 // Define Drawer Param List
 export type RootDrawerParamList = {
@@ -363,7 +364,6 @@ const RootNavigator: React.FC = () => {
     } else if (activeScreen === 'PlanSelection') {
         CurrentScreenComponent = PlanSelectionScreen;
     } else if (activeScreen === 'AdminDashboard') {
-        const AdminDashboardScreen = require('../screens/AdminDashboardScreen').default;
         CurrentScreenComponent = AdminDashboardScreen;
     } else if (activeScreen === 'SopHistory') {
         CurrentScreenComponent = SopHistoryScreen;
@@ -417,6 +417,8 @@ const RootNavigator: React.FC = () => {
          <Drawer.Screen name="Discord" component={DiscordScreen} options={{ title: 'Discord' }} />
          <Drawer.Screen name="ProfileSettings" component={ProfileSettingsScreen} options={{ title: 'Profile' }} />
          <Drawer.Screen name="PlanSelection" component={PlanSelectionScreen} options={{ title: 'Plans' }} />
+         <Drawer.Screen name="SopHistory" component={SopHistoryScreen} options={{ title: 'SOP History', drawerItemStyle: { display: 'none' } }} />
+         <Drawer.Screen name="AdminDashboard" component={AdminDashboardScreen} options={{ title: 'Admin', drawerItemStyle: { display: 'none' } }} />
     </Drawer.Navigator>
   );
 };

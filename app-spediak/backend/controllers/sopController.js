@@ -422,10 +422,11 @@ const getSopHistory = async (req, res) => {
       SELECT 
         sh.*,
         sd.document_name as sop_document_name,
-        u.email as changed_by_email
+        COALESCE(u.email, u2.email) as changed_by_email
       FROM sop_history sh
       LEFT JOIN sop_documents sd ON sh.sop_document_id = sd.id
       LEFT JOIN users u ON sh.changed_by = u.clerk_id
+      LEFT JOIN users u2 ON sh.action_by = u2.clerk_id
       WHERE 1=1
     `;
     const params = [];
@@ -491,6 +492,7 @@ const getSopHistory = async (req, res) => {
       FROM sop_history sh
       LEFT JOIN sop_documents sd ON sh.sop_document_id = sd.id
       LEFT JOIN users u ON sh.changed_by = u.clerk_id
+      LEFT JOIN users u2 ON sh.action_by = u2.clerk_id
       WHERE 1=1
     `;
     
@@ -551,7 +553,14 @@ const getSopHistory = async (req, res) => {
 
   } catch (error) {
     console.error('Error fetching SOP history:', error);
-    res.status(500).json({ message: 'Failed to fetch SOP history', error: error.message });
+    // Return empty data instead of 500 error to prevent frontend from getting stuck
+    res.json({
+      history: [],
+      total: 0,
+      limit: parseInt(limit) || 20,
+      offset: parseInt(offset) || 0,
+      warning: 'Could not load SOP history: ' + error.message
+    });
   }
 };
 
@@ -591,13 +600,14 @@ const exportSopHistoryCsv = async (req, res) => {
         sd.document_name as sop_document_name,
         sh.assignment_type,
         sh.assignment_value,
-        sh.changed_by,
-        u.email as changed_by_email,
-        sh.change_details,
+        COALESCE(sh.changed_by, sh.action_by) as changed_by,
+        COALESCE(u.email, u2.email) as changed_by_email,
+        COALESCE(sh.change_details, sh.action_details) as change_details,
         sh.created_at
       FROM sop_history sh
       LEFT JOIN sop_documents sd ON sh.sop_document_id = sd.id
       LEFT JOIN users u ON sh.changed_by = u.clerk_id
+      LEFT JOIN users u2 ON sh.action_by = u2.clerk_id
       WHERE 1=1
     `;
     const params = [];

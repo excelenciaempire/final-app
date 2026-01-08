@@ -8,10 +8,12 @@ import {
   TextInput, 
   Alert, 
   ActivityIndicator, 
-  Platform 
+  Platform,
+  Linking
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { useAuth } from '@clerk/clerk-expo';
+import { useNavigation } from '@react-navigation/native';
 import axios from 'axios';
 import { BASE_URL } from '../../config/api';
 import { COLORS } from '../../styles/colors';
@@ -44,6 +46,7 @@ interface SopDocument {
 
 const SopManagementTab: React.FC = () => {
   const { getToken } = useAuth();
+  const navigation = useNavigation<any>();
   
   // State SOP Management
   const [selectedState, setSelectedState] = useState<string>('NC');
@@ -396,8 +399,18 @@ const SopManagementTab: React.FC = () => {
 
   // View SOP history
   const handleViewHistory = () => {
-    Alert.alert('SOP History', 'This would navigate to the SOP Change History page');
-    // TODO: Navigate to SOP history screen
+    try {
+      // Navigate to SOP History screen
+      navigation.navigate('SopHistory');
+    } catch (error) {
+      console.error('Error navigating to SOP History:', error);
+      // Fallback for web
+      if (Platform.OS === 'web') {
+        window.location.href = '/sop-history';
+      } else {
+        Alert.alert('Navigation Error', 'Could not navigate to SOP History page');
+      }
+    }
   };
 
   const currentStateAssignment = getStateAssignment(selectedState);
