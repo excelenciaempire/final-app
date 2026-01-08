@@ -21,6 +21,38 @@ import { Upload, FileText, Check, Plus, Trash2, History, ChevronDown, X, File } 
 import { US_STATES } from '../../context/GlobalStateContext';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
+import { useAppNavigation } from '../../context/AppNavigationContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const CUSTOM_ORGS_STORAGE_KEY = '@spediak_custom_organizations';
+
+// Helper function to read file as base64 (works on both web and native)
+const readFileAsBase64 = async (fileUri: string, mimeType?: string): Promise<string> => {
+  if (Platform.OS === 'web') {
+    // On web, fetch the file and convert to base64
+    try {
+      const response = await fetch(fileUri);
+      const blob = await response.blob();
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64 = (reader.result as string).split(',')[1];
+          resolve(base64);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    } catch (error) {
+      console.error('Error reading file on web:', error);
+      throw error;
+    }
+  } else {
+    // On native, use expo-file-system
+    return await FileSystem.readAsStringAsync(fileUri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+  }
+};
 
 // Default organizations - can be extended by admin
 const DEFAULT_ORGANIZATIONS = ['ASHI', 'InterNACHI'];
@@ -47,6 +79,7 @@ interface SopDocument {
 const SopManagementTab: React.FC = () => {
   const { getToken } = useAuth();
   const navigation = useNavigation<any>();
+  const { navigateTo, isWebDesktop } = useAppNavigation();
   
   // State SOP Management
   const [selectedState, setSelectedState] = useState<string>('NC');
@@ -80,18 +113,47 @@ const SopManagementTab: React.FC = () => {
 
   const loadOrganizations = async () => {
     try {
-      // Load organizations from local storage or keep defaults
-      // In a real implementation, this would come from the database
-      const storedOrgs = await getStoredOrganizations();
-      if (storedOrgs.length > 0) {
-        setOrganizations([...new Set([...DEFAULT_ORGANIZATIONS, ...storedOrgs])]);
+      // Load custom organizations from AsyncStorage
+      const storedCustomOrgs = await getCustomOrgsFromStorage();
+      
+      // Also get organizations from assignments in the database
+      const dbOrgs = await getOrgsFromDatabase();
+      
+      // Merge all organizations (defaults + custom stored + from DB)
+      const allOrgs = [...new Set([...DEFAULT_ORGANIZATIONS, ...storedCustomOrgs, ...dbOrgs])];
+      setOrganizations(allOrgs);
+      
+      if (allOrgs.length > 0 && !allOrgs.includes(selectedOrg)) {
+        setSelectedOrg(allOrgs[0]);
       }
     } catch (error) {
       console.log('Using default organizations');
     }
   };
 
-  const getStoredOrganizations = async (): Promise<string[]> => {
+  const getCustomOrgsFromStorage = async (): Promise<string[]> => {
+    try {
+      const stored = await AsyncStorage.getItem(CUSTOM_ORGS_STORAGE_KEY);
+      if (stored) {
+        return JSON.parse(stored);
+      }
+    } catch (error) {
+      console.log('Error reading custom orgs from storage:', error);
+    }
+    return [];
+  };
+
+  const saveCustomOrgsToStorage = async (orgs: string[]) => {
+    try {
+      // Only save non-default organizations
+      const customOrgs = orgs.filter(o => !DEFAULT_ORGANIZATIONS.includes(o));
+      await AsyncStorage.setItem(CUSTOM_ORGS_STORAGE_KEY, JSON.stringify(customOrgs));
+    } catch (error) {
+      console.log('Error saving custom orgs to storage:', error);
+    }
+  };
+
+  const getOrgsFromDatabase = async (): Promise<string[]> => {
     // Get organizations from assignments in the database
     try {
       const token = await getToken();
@@ -203,9 +265,8 @@ const SopManagementTab: React.FC = () => {
       const token = await getToken();
       if (!token) return;
 
-      const base64 = await FileSystem.readAsStringAsync(stateDocumentFile.uri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
+      // Use platform-specific base64 reading
+      const base64 = await readFileAsBase64(stateDocumentFile.uri, stateDocumentFile.mimeType);
 
       const response = await axios.post(`${BASE_URL}/api/admin/sop/upload`, {
         documentName: stateDocumentName || stateDocumentFile.name,
@@ -218,12 +279,40 @@ const SopManagementTab: React.FC = () => {
       const uploadedDoc = response.data.document;
       setLastUploadedStateDocId(uploadedDoc.id);
       
-      Alert.alert('Success', 'Document uploaded successfully. Now you can assign it to the selected state.');
-      fetchSopDocuments();
+      // Auto-assign to the selected state
+      await handleAssignToStateInternal(uploadedDoc.id);
     } catch (error: any) {
       console.error('Error uploading document:', error);
       Alert.alert('Error', error.response?.data?.message || 'Failed to upload document');
+      setUploadingStateDoc(false);
+    }
+  };
+
+  // Internal function to assign to state (called after upload)
+  const handleAssignToStateInternal = async (documentId: number) => {
+    try {
+      setAssigningState(true);
+      const token = await getToken();
+      if (!token) return;
+
+      await axios.post(`${BASE_URL}/api/admin/sop/assign-state`, {
+        documentId: documentId,
+        state: selectedState
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      Alert.alert('Success', `SOP uploaded and assigned to ${selectedState} successfully`);
+      setStateDocumentFile(null);
+      setStateDocumentName('');
+      setLastUploadedStateDocId(null);
+      fetchSopAssignments();
+      fetchSopDocuments();
+    } catch (error: any) {
+      console.error('Error assigning SOP:', error);
+      Alert.alert('Error', error.response?.data?.message || 'Failed to assign SOP');
     } finally {
+      setAssigningState(false);
       setUploadingStateDoc(false);
     }
   };
@@ -261,7 +350,7 @@ const SopManagementTab: React.FC = () => {
   };
 
   // Add new organization
-  const handleAddOrganization = () => {
+  const handleAddOrganization = async () => {
     const trimmedName = newOrgName.trim();
     if (!trimmedName) {
       Alert.alert('Error', 'Please enter an organization name');
@@ -273,10 +362,15 @@ const SopManagementTab: React.FC = () => {
       return;
     }
 
-    setOrganizations([...organizations, trimmedName]);
+    const newOrgList = [...organizations, trimmedName];
+    setOrganizations(newOrgList);
     setSelectedOrg(trimmedName);
     setNewOrgName('');
-    Alert.alert('Success', `Organization "${trimmedName}" added successfully`);
+    
+    // Persist to storage
+    await saveCustomOrgsToStorage(newOrgList);
+    
+    Alert.alert('Success', `Organization "${trimmedName}" added. You can now upload a SOP document for it.`);
   };
 
   // Delete organization
@@ -296,11 +390,14 @@ const SopManagementTab: React.FC = () => {
           style: 'destructive',
           onPress: async () => {
             // Remove from local list
-            setOrganizations(organizations.filter(o => o !== orgName));
+            const newOrgList = organizations.filter(o => o !== orgName);
+            setOrganizations(newOrgList);
             if (selectedOrg === orgName) {
-              setSelectedOrg(organizations[0] || 'ASHI');
+              setSelectedOrg(newOrgList[0] || 'ASHI');
             }
-            // Note: In production, you'd also delete from database
+            
+            // Persist to storage
+            await saveCustomOrgsToStorage(newOrgList);
           }
         }
       ]
@@ -340,9 +437,8 @@ const SopManagementTab: React.FC = () => {
       const token = await getToken();
       if (!token) return;
 
-      const base64 = await FileSystem.readAsStringAsync(orgDocumentFile.uri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
+      // Use platform-specific base64 reading
+      const base64 = await readFileAsBase64(orgDocumentFile.uri, orgDocumentFile.mimeType);
 
       const response = await axios.post(`${BASE_URL}/api/admin/sop/upload`, {
         documentName: orgDocumentName || orgDocumentFile.name,
@@ -355,12 +451,40 @@ const SopManagementTab: React.FC = () => {
       const uploadedDoc = response.data.document;
       setLastUploadedOrgDocId(uploadedDoc.id);
       
-      Alert.alert('Success', 'Document uploaded successfully. Now you can assign it to the selected organization.');
-      fetchSopDocuments();
+      // Auto-assign to the selected organization
+      await handleAssignToOrgInternal(uploadedDoc.id);
     } catch (error: any) {
       console.error('Error uploading document:', error);
       Alert.alert('Error', error.response?.data?.message || 'Failed to upload document');
+      setUploadingOrgDoc(false);
+    }
+  };
+
+  // Internal function to assign to organization (called after upload)
+  const handleAssignToOrgInternal = async (documentId: number) => {
+    try {
+      setAssigningOrg(true);
+      const token = await getToken();
+      if (!token) return;
+
+      await axios.post(`${BASE_URL}/api/admin/sop/assign-org`, {
+        documentId: documentId,
+        organization: selectedOrg
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      Alert.alert('Success', `SOP uploaded and assigned to ${selectedOrg} successfully`);
+      setOrgDocumentFile(null);
+      setOrgDocumentName('');
+      setLastUploadedOrgDocId(null);
+      fetchSopAssignments();
+      fetchSopDocuments();
+    } catch (error: any) {
+      console.error('Error assigning SOP:', error);
+      Alert.alert('Error', error.response?.data?.message || 'Failed to assign SOP');
     } finally {
+      setAssigningOrg(false);
       setUploadingOrgDoc(false);
     }
   };
@@ -400,16 +524,11 @@ const SopManagementTab: React.FC = () => {
   // View SOP history
   const handleViewHistory = () => {
     try {
-      // Navigate to SOP History screen
-      navigation.navigate('SopHistory');
+      // Use AppNavigationContext for cross-platform navigation
+      navigateTo('SopHistory');
     } catch (error) {
       console.error('Error navigating to SOP History:', error);
-      // Fallback for web
-      if (Platform.OS === 'web') {
-        window.location.href = '/sop-history';
-      } else {
-        Alert.alert('Navigation Error', 'Could not navigate to SOP History page');
-      }
+      Alert.alert('Navigation Error', 'Could not navigate to SOP History page');
     }
   };
 
