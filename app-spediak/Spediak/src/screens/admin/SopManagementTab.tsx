@@ -102,6 +102,12 @@ const SopManagementTab: React.FC = () => {
   // Last uploaded document IDs for assignment
   const [lastUploadedStateDocId, setLastUploadedStateDocId] = useState<number | null>(null);
   const [lastUploadedOrgDocId, setLastUploadedOrgDocId] = useState<number | null>(null);
+  
+  // Assign existing document feature
+  const [selectedExistingDocForState, setSelectedExistingDocForState] = useState<number | null>(null);
+  const [selectedExistingDocForOrg, setSelectedExistingDocForOrg] = useState<number | null>(null);
+  const [assigningExistingState, setAssigningExistingState] = useState(false);
+  const [assigningExistingOrg, setAssigningExistingOrg] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -521,6 +527,66 @@ const SopManagementTab: React.FC = () => {
     }
   };
 
+  // Assign existing document to state
+  const handleAssignExistingToState = async () => {
+    if (!selectedExistingDocForState) {
+      Alert.alert('Error', 'Please select a document first');
+      return;
+    }
+
+    try {
+      setAssigningExistingState(true);
+      const token = await getToken();
+      if (!token) return;
+
+      await axios.post(`${BASE_URL}/api/admin/sop/assign-state`, {
+        documentId: selectedExistingDocForState,
+        state: selectedState
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      Alert.alert('Success', `Existing document assigned to ${selectedState} successfully`);
+      setSelectedExistingDocForState(null);
+      fetchSopAssignments();
+    } catch (error: any) {
+      console.error('Error assigning existing SOP to state:', error);
+      Alert.alert('Error', error.response?.data?.message || 'Failed to assign document');
+    } finally {
+      setAssigningExistingState(false);
+    }
+  };
+
+  // Assign existing document to organization
+  const handleAssignExistingToOrg = async () => {
+    if (!selectedExistingDocForOrg) {
+      Alert.alert('Error', 'Please select a document first');
+      return;
+    }
+
+    try {
+      setAssigningExistingOrg(true);
+      const token = await getToken();
+      if (!token) return;
+
+      await axios.post(`${BASE_URL}/api/admin/sop/assign-org`, {
+        documentId: selectedExistingDocForOrg,
+        organization: selectedOrg
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      Alert.alert('Success', `Existing document assigned to ${selectedOrg} successfully`);
+      setSelectedExistingDocForOrg(null);
+      fetchSopAssignments();
+    } catch (error: any) {
+      console.error('Error assigning existing SOP to org:', error);
+      Alert.alert('Error', error.response?.data?.message || 'Failed to assign document');
+    } finally {
+      setAssigningExistingOrg(false);
+    }
+  };
+
   // View SOP history
   const handleViewHistory = () => {
     try {
@@ -647,6 +713,49 @@ const SopManagementTab: React.FC = () => {
         {/* Divider */}
         <View style={styles.divider} />
 
+        {/* Assign Existing Document Section */}
+        <Text style={styles.stepLabel}>OR assign an existing document to {selectedState}</Text>
+        {sopDocuments.length > 0 ? (
+          <View>
+            <View style={styles.pickerContainer}>
+              <Picker
+                selectedValue={selectedExistingDocForState}
+                onValueChange={(value) => setSelectedExistingDocForState(value)}
+                style={styles.picker}
+              >
+                <Picker.Item label="Select existing document..." value={null} />
+                {sopDocuments.map((doc) => (
+                  <Picker.Item 
+                    key={doc.id} 
+                    label={`${doc.document_name} (${doc.document_type})`} 
+                    value={doc.id} 
+                  />
+                ))}
+              </Picker>
+              <ChevronDown size={20} color={COLORS.textSecondary} style={styles.pickerIcon} />
+            </View>
+            <TouchableOpacity 
+              style={[
+                styles.primaryButton,
+                !selectedExistingDocForState && styles.buttonDisabled
+              ]} 
+              onPress={handleAssignExistingToState}
+              disabled={!selectedExistingDocForState || assigningExistingState}
+            >
+              {assigningExistingState ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.primaryButtonText}>Assign to {selectedState}</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <Text style={styles.noDataText}>No documents uploaded yet. Upload one above.</Text>
+        )}
+
+        {/* Divider */}
+        <View style={styles.divider} />
+
         {/* States with SOP Assigned */}
         <Text style={styles.sectionTitle}>States with SOP assigned</Text>
         {recentStateAssignments.length > 0 ? (
@@ -757,6 +866,49 @@ const SopManagementTab: React.FC = () => {
             ? 'Document uploaded. Click "Assign to organization" to assign it.'
             : 'No organization document uploaded for assignment yet.'}
         </Text>
+
+        {/* Divider */}
+        <View style={styles.divider} />
+
+        {/* Assign Existing Document Section for Organizations */}
+        <Text style={styles.stepLabel}>OR assign an existing document to {selectedOrg}</Text>
+        {sopDocuments.length > 0 ? (
+          <View>
+            <View style={styles.pickerContainer}>
+              <Picker
+                selectedValue={selectedExistingDocForOrg}
+                onValueChange={(value) => setSelectedExistingDocForOrg(value)}
+                style={styles.picker}
+              >
+                <Picker.Item label="Select existing document..." value={null} />
+                {sopDocuments.map((doc) => (
+                  <Picker.Item 
+                    key={doc.id} 
+                    label={`${doc.document_name} (${doc.document_type})`} 
+                    value={doc.id} 
+                  />
+                ))}
+              </Picker>
+              <ChevronDown size={20} color={COLORS.textSecondary} style={styles.pickerIcon} />
+            </View>
+            <TouchableOpacity 
+              style={[
+                styles.primaryButton,
+                !selectedExistingDocForOrg && styles.buttonDisabled
+              ]} 
+              onPress={handleAssignExistingToOrg}
+              disabled={!selectedExistingDocForOrg || assigningExistingOrg}
+            >
+              {assigningExistingOrg ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.primaryButtonText}>Assign to {selectedOrg}</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <Text style={styles.noDataText}>No documents uploaded yet. Upload one above.</Text>
+        )}
 
         {/* Divider */}
         <View style={styles.divider} />

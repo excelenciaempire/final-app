@@ -520,6 +520,9 @@ const ProfileSettingsScreen: React.FC = () => {
                 {/* Change Email Section */}
                 <View style={styles.divider} />
                 <Text style={styles.sectionTitle}>Change Email</Text>
+                <Text style={styles.helperText}>
+                  Note: Changing your email requires verification. If you encounter "additional verification required" error, you may need to add a phone number to your account first, or disable this security feature in your Clerk settings.
+                </Text>
 
                 {!isVerifyingEmail ? (
                     <>
@@ -786,6 +789,13 @@ const styles = StyleSheet.create({
         fontSize: 13,
         marginTop: 8,
         textAlign: 'center',
+    },
+    helperText: {
+        color: '#64748B',
+        fontSize: 12,
+        marginTop: 4,
+        marginBottom: 12,
+        lineHeight: 18,
     },
     divider: {
         height: 1,

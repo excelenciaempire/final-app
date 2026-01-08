@@ -304,8 +304,8 @@ const giftCredits = async (req, res) => {
 
     // Log to admin_audit_log
     await pool.query(`
-      INSERT INTO admin_audit_log (admin_clerk_id, action_type, target_type, target_id, action_details)
-      VALUES ($1, $2, $3, $4, $5)
+      INSERT INTO admin_audit_log (admin_clerk_id, action_type, target_type, target_id, target_user_id, action_details)
+      VALUES ($1, $2, $3, $4, $4, $5)
     `, [adminClerkId, 'gift_credits', 'user', userId, JSON.stringify({ credits, reason, new_limit: updateResult.rows[0].statements_limit })]);
 
     console.log(`[Admin] Gifted ${credits} credits to user ${userId} by admin ${adminClerkId}`);
@@ -362,8 +362,8 @@ const resetTrial = async (req, res) => {
 
     // Log to admin_audit_log
     await pool.query(`
-      INSERT INTO admin_audit_log (admin_clerk_id, action_type, target_type, target_id, action_details)
-      VALUES ($1, $2, $3, $4, $5)
+      INSERT INTO admin_audit_log (admin_clerk_id, action_type, target_type, target_id, target_user_id, action_details)
+      VALUES ($1, $2, $3, $4, $4, $5)
     `, [adminClerkId, 'reset_trial', 'user', userId, JSON.stringify({ previous_usage: previousUsage, reason })]);
 
     console.log(`[Admin] Reset trial for user ${userId} by admin ${adminClerkId} (previous usage: ${previousUsage})`);
@@ -442,8 +442,8 @@ const addUserNote = async (req, res) => {
 
     // Log to admin_audit_log
     await pool.query(`
-      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, action_details)
-      VALUES ($1, 'add_note', 'user_management', 'user', $2, $3)
+      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, target_user_id, action_details)
+      VALUES ($1, 'add_note', 'user_management', 'user', $2, $2, $3)
     `, [adminClerkId, userId, JSON.stringify({ 
       note_type: noteType,
       note_preview: note.substring(0, 100) 
@@ -491,8 +491,8 @@ const deleteUserNote = async (req, res) => {
 
     // Log to audit
     await pool.query(`
-      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, action_details)
-      VALUES ($1, 'delete_note', 'user_management', 'user', $2, $3)
+      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, target_user_id, action_details)
+      VALUES ($1, 'delete_note', 'user_management', 'user', $2, $2, $3)
     `, [adminClerkId, userId, JSON.stringify({ 
       note_id: noteId,
       note_type: deletedNote.note_type,
@@ -755,8 +755,8 @@ const saveUserOverride = async (req, res) => {
 
     // Log to audit
     await pool.query(`
-      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, action_details)
-      VALUES ($1, $2, $3, $4, $5, $6)
+      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, target_user_id, action_details)
+      VALUES ($1, $2, $3, $4, $5, $5, $6)
     `, [adminClerkId, 'save_override', 'user_management', 'user', userClerkId || email, JSON.stringify({ email, statementAllowance, reason })]);
 
     res.json({
@@ -1079,8 +1079,8 @@ const updateUserSecurityFlags = async (req, res) => {
 
     // Log to audit
     await pool.query(`
-      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, action_details)
-      VALUES ($1, $2, $3, $4, $5, $6)
+      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, target_user_id, action_details)
+      VALUES ($1, $2, $3, $4, $5, $5, $6)
     `, [adminClerkId, 'update_security_flags', 'security', 'user', userId, JSON.stringify({ 
       role: isAdminValue ? 'admin' : 'standard',
       isAdmin: isAdminValue, 
@@ -1324,8 +1324,8 @@ const suspendUser = async (req, res) => {
 
     // Log audit
     await pool.query(`
-      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, action_details)
-      VALUES ($1, 'suspend_user', 'user_management', 'user', $2, '{"action": "User suspended"}')
+      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, target_user_id, action_details)
+      VALUES ($1, 'suspend_user', 'user_management', 'user', $2, $2, '{"action": "User suspended"}')
     `, [adminClerkId, userId]);
 
     res.json({ message: 'User suspended successfully' });
@@ -1351,8 +1351,8 @@ const reactivateUser = async (req, res) => {
 
     // Log audit
     await pool.query(`
-      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, action_details)
-      VALUES ($1, 'reactivate_user', 'user_management', 'user', $2, '{"action": "User reactivated"}')
+      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, target_user_id, action_details)
+      VALUES ($1, 'reactivate_user', 'user_management', 'user', $2, $2, '{"action": "User reactivated"}')
     `, [adminClerkId, userId]);
 
     res.json({ message: 'User reactivated successfully' });
@@ -1378,8 +1378,8 @@ const cancelSubscription = async (req, res) => {
 
     // Log audit
     await pool.query(`
-      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, action_details)
-      VALUES ($1, 'cancel_subscription', 'billing', 'user', $2, '{"action": "Subscription cancelled"}')
+      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, target_user_id, action_details)
+      VALUES ($1, 'cancel_subscription', 'billing', 'user', $2, $2, '{"action": "Subscription cancelled"}')
     `, [adminClerkId, userId]);
 
     res.json({ message: 'Subscription cancelled successfully' });
@@ -1405,8 +1405,8 @@ const softDeleteUser = async (req, res) => {
 
     // Log audit
     await pool.query(`
-      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, action_details)
-      VALUES ($1, 'soft_delete_user', 'user_management', 'user', $2, '{"action": "User soft deleted"}')
+      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, target_user_id, action_details)
+      VALUES ($1, 'soft_delete_user', 'user_management', 'user', $2, $2, '{"action": "User soft deleted"}')
     `, [adminClerkId, userId]);
 
     res.json({ message: 'User soft deleted successfully' });
@@ -1452,8 +1452,8 @@ const forceLogout = async (req, res) => {
 
     // Log audit with details
     await pool.query(`
-      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, action_details)
-      VALUES ($1, 'force_logout', 'security', 'user', $2, $3)
+      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, target_user_id, action_details)
+      VALUES ($1, 'force_logout', 'security', 'user', $2, $2, $3)
     `, [adminClerkId, userId, JSON.stringify({ 
       action: 'Force logout executed',
       sessions_revoked: sessionsRevoked 
@@ -1510,8 +1510,8 @@ const forcePasswordReset = async (req, res) => {
 
     // Log audit with details
     await pool.query(`
-      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, action_details)
-      VALUES ($1, 'force_password_reset', 'security', 'user', $2, $3)
+      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, target_user_id, action_details)
+      VALUES ($1, 'force_password_reset', 'security', 'user', $2, $2, $3)
     `, [adminClerkId, userId, JSON.stringify({ 
       action: 'Password reset requested',
       email: userEmail,
@@ -1551,8 +1551,8 @@ const resetUsage = async (req, res) => {
 
     // Log audit
     await pool.query(`
-      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, action_details)
-      VALUES ($1, 'reset_usage', 'billing', 'user', $2, '{"action": "Monthly usage reset"}')
+      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, target_user_id, action_details)
+      VALUES ($1, 'reset_usage', 'billing', 'user', $2, $2, '{"action": "Monthly usage reset"}')
     `, [adminClerkId, userId]);
 
     res.json({ message: 'Usage reset successfully' });
@@ -1588,8 +1588,8 @@ const grantTrial = async (req, res) => {
 
     // Log audit
     await pool.query(`
-      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, action_details)
-      VALUES ($1, 'grant_trial', 'billing', 'user', $2, $3)
+      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, target_user_id, action_details)
+      VALUES ($1, 'grant_trial', 'billing', 'user', $2, $2, $3)
     `, [adminClerkId, userId, JSON.stringify({ 
       days, 
       trialEndDate,
@@ -1627,14 +1627,70 @@ const revokeTrial = async (req, res) => {
 
     // Log audit
     await pool.query(`
-      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, action_details)
-      VALUES ($1, 'revoke_trial', 'billing', 'user', $2, '{"action": "Trial revoked, reverted to free plan"}')
+      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, target_user_id, action_details)
+      VALUES ($1, 'revoke_trial', 'billing', 'user', $2, $2, '{"action": "Trial revoked, reverted to free plan"}')
     `, [adminClerkId, userId]);
 
     res.json({ message: 'Trial revoked - user reverted to free plan (5 statements/month)' });
   } catch (error) {
     console.error('[Admin] Error revoking trial:', error);
     res.status(500).json({ message: 'Failed to revoke trial' });
+  }
+};
+
+/**
+ * Update user plan type (independent of admin role)
+ * Allows admin to set user's subscription plan to free, pro, or platinum
+ */
+const updateUserPlan = async (req, res) => {
+  const { userId } = req.params;
+  const { plan_type } = req.body;
+  const adminClerkId = req.auth?.userId;
+
+  // Validate plan type
+  const validPlans = ['free', 'pro', 'platinum'];
+  if (!validPlans.includes(plan_type)) {
+    return res.status(400).json({ message: 'Invalid plan type. Must be free, pro, or platinum.' });
+  }
+
+  // Define plan limits
+  const planLimits = {
+    free: 5,
+    pro: 100,
+    platinum: -1 // Unlimited
+  };
+
+  try {
+    // Update the subscription plan
+    await pool.query(`
+      UPDATE user_subscriptions 
+      SET 
+        plan_type = $1,
+        statements_limit = $2,
+        subscription_status = 'active',
+        updated_at = NOW()
+      WHERE clerk_id = $3
+    `, [plan_type, planLimits[plan_type], userId]);
+
+    // Log audit
+    await pool.query(`
+      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, target_user_id, action_details)
+      VALUES ($1, 'update_plan', 'billing', 'user', $2, $2, $3)
+    `, [adminClerkId, userId, JSON.stringify({ 
+      plan_type, 
+      statements_limit: planLimits[plan_type],
+      action: `Plan changed to ${plan_type}`
+    })]);
+
+    console.log(`[Admin] User ${userId} plan changed to ${plan_type} by ${adminClerkId}`);
+    res.json({ 
+      message: `User plan updated to ${plan_type}`,
+      plan_type,
+      statements_limit: planLimits[plan_type]
+    });
+  } catch (error) {
+    console.error('[Admin] Error updating user plan:', error);
+    res.status(500).json({ message: 'Failed to update user plan', error: error.message });
   }
 };
 
@@ -1654,8 +1710,8 @@ const recordStatementEvent = async (req, res) => {
 
     // Log audit
     await pool.query(`
-      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, action_details)
-      VALUES ($1, 'record_statement_event', 'billing', 'user', $2, '{"action": "Statement event recorded (+1)"}')
+      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, target_user_id, action_details)
+      VALUES ($1, 'record_statement_event', 'billing', 'user', $2, $2, '{"action": "Statement event recorded (+1)"}')
     `, [adminClerkId, userId]);
 
     res.json({ message: 'Statement event recorded' });
@@ -1736,8 +1792,8 @@ const saveSupportInfo = async (req, res) => {
 
     // Log audit
     await pool.query(`
-      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, action_details)
-      VALUES ($1, 'update_support_info', 'support', 'user', $2, $3)
+      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, target_user_id, action_details)
+      VALUES ($1, 'update_support_info', 'support', 'user', $2, $2, $3)
     `, [adminClerkId, userId, JSON.stringify({ tags, hasNotes: !!notes })]);
 
     res.json({ message: 'Support info saved successfully' });
@@ -1919,6 +1975,7 @@ module.exports = {
   resetUsage,
   grantTrial,
   revokeTrial,
+  updateUserPlan,
   recordStatementEvent,
   getStatementEvents,
   saveSupportInfo

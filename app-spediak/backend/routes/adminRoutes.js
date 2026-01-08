@@ -46,6 +46,7 @@ const {
   resetUsage,
   grantTrial,
   revokeTrial,
+  updateUserPlan,
   recordStatementEvent,
   getStatementEvents,
   saveSupportInfo
@@ -123,6 +124,7 @@ router.post('/users/:userId/force-password-reset', forcePasswordReset);
 router.post('/users/:userId/reset-usage', resetUsage);
 router.post('/users/:userId/grant-trial', grantTrial);
 router.post('/users/:userId/revoke-trial', revokeTrial);
+router.put('/users/:userId/plan', updateUserPlan);
 router.post('/users/:userId/record-statement', recordStatementEvent);
 router.get('/users/:userId/statement-events', getStatementEvents);
 router.post('/users/:userId/support-info', saveSupportInfo);

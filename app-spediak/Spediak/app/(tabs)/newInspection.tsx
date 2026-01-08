@@ -17,6 +17,7 @@ import SopAlignmentCard from '../../src/components/SopAlignmentCard';
 import StatementUsageCard from '../../src/components/StatementUsageCard';
 import LastStatementCard from '../../src/components/LastStatementCard';
 import ToolsAndCommunityCard from '../../src/components/ToolsAndCommunityCard';
+import StatementSkeleton from '../../src/components/StatementSkeleton';
 
 // --- API Response Interfaces ---
 interface UploadImageResponse {
@@ -1250,8 +1251,17 @@ export default function NewInspectionScreen() {
             >
                 <View style={styles.popupOverlay}>
                     <View style={styles.loadingPopupContainer}>
-                        <ActivityIndicator size="large" color={COLORS.primary} />
-                        <Text style={styles.loadingPopupText}>{loadingText}</Text>
+                        {isGeneratingFinalDdid ? (
+                            <>
+                                <Text style={styles.loadingPopupText}>Generating Statement...</Text>
+                                <StatementSkeleton lines={5} animate={true} />
+                            </>
+                        ) : (
+                            <>
+                                <ActivityIndicator size="large" color={COLORS.primary} />
+                                <Text style={styles.loadingPopupText}>{loadingText}</Text>
+                            </>
+                        )}
                     </View>
                 </View>
             </Modal>

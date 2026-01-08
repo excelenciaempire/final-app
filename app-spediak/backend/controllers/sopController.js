@@ -343,7 +343,7 @@ const getActiveSops = async (req, res) => {
       organization: organization || null,
       stateSop: stateSop ? {
         id: stateSop.id,
-        documentId: stateSop.document_id,
+        documentId: stateSop.sop_document_id,
         documentName: stateSop.document_name || 'Unknown Document',
         documentType: stateSop.document_type,
         fileUrl: stateSop.file_url,
@@ -351,7 +351,7 @@ const getActiveSops = async (req, res) => {
       } : null,
       orgSop: orgSop ? {
         id: orgSop.id,
-        documentId: orgSop.document_id,
+        documentId: orgSop.sop_document_id,
         documentName: orgSop.document_name || 'Unknown Document',
         documentType: orgSop.document_type,
         fileUrl: orgSop.file_url,

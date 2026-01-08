@@ -77,9 +77,11 @@ const UserSearchTab: React.FC = () => {
 
   // Roles & Security State
   const [userRole, setUserRole] = useState('standard');
+  const [userPlanType, setUserPlanType] = useState('free');
   const [twoFARequirement, setTwoFARequirement] = useState('off');
   const [isSuspended, setIsSuspended] = useState(false);
   const [isSavingSecurity, setIsSavingSecurity] = useState(false);
+  const [isSavingPlan, setIsSavingPlan] = useState(false);
 
   // Usage & Billing State
   const [statementEvents, setStatementEvents] = useState<any[]>([]);
@@ -125,6 +127,7 @@ const UserSearchTab: React.FC = () => {
         
         // Set initial values from search response
         setUserRole(user.role || (user.is_admin ? 'admin' : 'standard'));
+        setUserPlanType(user.plan_type || 'free');
         setAdminNotes(user.admin_notes || '');
         setSupportNotes(user.support_notes || '');
         setIsSuspended(user.is_suspended || false);
@@ -160,6 +163,7 @@ const UserSearchTab: React.FC = () => {
     setLoadedUser(null);
     setAdminNotes('');
     setUserRole('standard');
+    setUserPlanType('free');
     setTwoFARequirement('off');
     setIsSuspended(false);
     setStatementEvents([]);
@@ -567,6 +571,31 @@ const UserSearchTab: React.FC = () => {
       Alert.alert('Error', 'Failed to save role/security');
     } finally {
       setIsSavingSecurity(false);
+    }
+  };
+
+  // Save plan type (independent of admin role)
+  const handleSavePlanType = async () => {
+    if (!loadedUser) return;
+
+    setIsSavingPlan(true);
+    try {
+      const token = await getToken();
+      if (!token) return;
+
+      await axios.put(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/plan`, {
+        plan_type: userPlanType
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      Alert.alert('Success', `Plan changed to ${userPlanType}`);
+      addLocalAuditEvent(`Plan changed to ${userPlanType}`);
+      handleSearchUser(); // Refresh user data
+    } catch (error: any) {
+      Alert.alert('Error', error.response?.data?.message || 'Failed to change plan');
+    } finally {
+      setIsSavingPlan(false);
     }
   };
 
@@ -1029,6 +1058,38 @@ const UserSearchTab: React.FC = () => {
                 </View>
               </View>
             </View>
+
+            {/* Plan Type - Independent of Admin Role */}
+            <View style={styles.pickerRow}>
+              <View style={styles.pickerField}>
+                <Text style={styles.label}>Subscription Plan</Text>
+                <View style={styles.pickerContainer}>
+                  <Picker
+                    selectedValue={userPlanType}
+                    onValueChange={setUserPlanType}
+                    style={styles.picker}
+                  >
+                    <Picker.Item label="Free (5 statements/month)" value="free" />
+                    <Picker.Item label="Pro (100 statements/month)" value="pro" />
+                    <Picker.Item label="Platinum (Unlimited)" value="platinum" />
+                  </Picker>
+                  <ChevronDown size={18} color={COLORS.textSecondary} style={styles.pickerIcon} />
+                </View>
+              </View>
+              <TouchableOpacity 
+                style={[styles.button, styles.primaryButton, { flex: 0.5, marginTop: 24 }]} 
+                onPress={handleSavePlanType}
+                disabled={isSavingPlan}
+              >
+                <Text style={styles.buttonText}>
+                  {isSavingPlan ? 'Saving...' : 'Update Plan'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={[styles.hintText, { marginBottom: 12 }]}>
+              Note: Changing subscription plan is independent of admin role.
+            </Text>
 
             <View style={styles.securityButtonsRow}>
               <TouchableOpacity 
