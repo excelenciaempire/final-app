@@ -173,7 +173,7 @@ Generate the DDID statement now.
         },
       ],
       max_completion_tokens: 400, // GPT-5 uses max_completion_tokens
-      temperature: 0.3,
+      // Note: GPT-5 mini only supports default temperature (1), so we don't set it
     });
 
     let ddid = response.choices[0].message.content?.trim() || 'Error generating statement.';
@@ -320,7 +320,7 @@ RULES: One paragraph, 4-6 sentences, technical, no bullets, no intro phrases. If
         },
       ],
       max_completion_tokens: 400, // GPT-5 uses max_completion_tokens instead of max_tokens
-      temperature: 0.3, // Lower temperature for faster, more consistent results
+      // Note: GPT-5 mini only supports default temperature (1), so we don't set it
     });
 
     console.log(`[Generate Statement] OpenAI responded in ${Date.now() - startTime}ms`);
