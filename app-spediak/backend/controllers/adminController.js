@@ -1624,6 +1624,94 @@ const saveSupportInfo = async (req, res) => {
   }
 };
 
+/**
+ * Fix orphaned platinum subscriptions
+ * Users with platinum plan who are NOT admins should be reverted to free
+ */
+const fixOrphanedPlatinumUsers = async (req, res) => {
+  const adminClerkId = req.auth?.userId;
+
+  try {
+    // Find users with platinum subscription who are NOT admins
+    const orphanedUsers = await pool.query(`
+      SELECT 
+        us.clerk_id,
+        u.email,
+        us.plan_type,
+        sf.is_admin
+      FROM user_subscriptions us
+      LEFT JOIN users u ON us.clerk_id = u.clerk_id
+      LEFT JOIN user_security_flags sf ON us.clerk_id = sf.user_clerk_id
+      WHERE us.plan_type = 'platinum'
+      AND (sf.is_admin IS NULL OR sf.is_admin = FALSE)
+    `);
+
+    if (orphanedUsers.rows.length === 0) {
+      return res.json({ 
+        message: 'No orphaned platinum users found',
+        fixed: 0 
+      });
+    }
+
+    console.log(`[Admin] Found ${orphanedUsers.rows.length} orphaned platinum users:`, 
+      orphanedUsers.rows.map(u => u.email).join(', '));
+
+    // Fix each orphaned user
+    const result = await pool.query(`
+      UPDATE user_subscriptions us
+      SET 
+        plan_type = 'free',
+        statements_limit = 5,
+        subscription_status = 'active',
+        updated_at = NOW()
+      FROM user_security_flags sf
+      WHERE us.clerk_id = sf.user_clerk_id
+      AND us.plan_type = 'platinum'
+      AND (sf.is_admin IS NULL OR sf.is_admin = FALSE)
+      RETURNING us.clerk_id
+    `);
+
+    // Also fix users without security flags
+    const result2 = await pool.query(`
+      UPDATE user_subscriptions us
+      SET 
+        plan_type = 'free',
+        statements_limit = 5,
+        subscription_status = 'active',
+        updated_at = NOW()
+      WHERE us.plan_type = 'platinum'
+      AND NOT EXISTS (
+        SELECT 1 FROM user_security_flags sf 
+        WHERE sf.user_clerk_id = us.clerk_id AND sf.is_admin = TRUE
+      )
+      RETURNING us.clerk_id
+    `);
+
+    const totalFixed = result.rowCount + result2.rowCount;
+
+    // Log to audit
+    await pool.query(`
+      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, action_details)
+      VALUES ($1, 'fix_orphaned_platinum', 'system', 'subscription', $2)
+    `, [adminClerkId, JSON.stringify({ 
+      fixed_count: totalFixed,
+      users: orphanedUsers.rows.map(u => u.email)
+    })]);
+
+    console.log(`[Admin] Fixed ${totalFixed} orphaned platinum subscriptions`);
+
+    res.json({ 
+      message: `Fixed ${totalFixed} orphaned platinum subscriptions`,
+      fixed: totalFixed,
+      users: orphanedUsers.rows.map(u => ({ email: u.email, clerk_id: u.clerk_id }))
+    });
+
+  } catch (error) {
+    console.error('[Admin] Error fixing orphaned platinum users:', error);
+    res.status(500).json({ message: 'Failed to fix orphaned platinum users', error: error.message });
+  }
+};
+
 module.exports = {
   getAllInspections: getAllInspectionsWithUserDetails,
   getAllUsers,
@@ -1654,6 +1742,8 @@ module.exports = {
   getUserSupportTags,
   addUserSupportTag,
   removeUserSupportTag,
+  // System maintenance
+  fixOrphanedPlatinumUsers,
   // Audit trail
   getUserAuditTrail,
   // Extended user management
