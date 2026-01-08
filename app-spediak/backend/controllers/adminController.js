@@ -1653,11 +1653,11 @@ const updateUserPlan = async (req, res) => {
     return res.status(400).json({ message: 'Invalid plan type. Must be free, pro, or platinum.' });
   }
 
-  // Define plan limits
+  // Define plan limits (-1 = unlimited)
   const planLimits = {
     free: 5,
-    pro: 100,
-    platinum: -1 // Unlimited
+    pro: -1,      // Unlimited
+    platinum: -1  // Unlimited
   };
 
   try {

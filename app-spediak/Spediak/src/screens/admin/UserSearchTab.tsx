@@ -1070,7 +1070,7 @@ const UserSearchTab: React.FC = () => {
                     style={styles.picker}
                   >
                     <Picker.Item label="Free (5 statements/month)" value="free" />
-                    <Picker.Item label="Pro (100 statements/month)" value="pro" />
+                    <Picker.Item label="Pro (Unlimited)" value="pro" />
                     <Picker.Item label="Platinum (Unlimited)" value="platinum" />
                   </Picker>
                   <ChevronDown size={18} color={COLORS.textSecondary} style={styles.pickerIcon} />

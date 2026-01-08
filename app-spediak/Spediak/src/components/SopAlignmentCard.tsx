@@ -8,6 +8,7 @@ import { COLORS } from '../styles/colors';
 import { FileText, Info } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useAppNavigation } from '../context/AppNavigationContext';
+import { useSubscription } from '../context/SubscriptionContext';
 
 interface ActiveSop {
   stateSop: { 
@@ -26,8 +27,12 @@ const SopAlignmentCard: React.FC = () => {
   const { user } = useUser();
   const navigation = useNavigation<any>();
   const { navigateTo, isWebDesktop } = useAppNavigation();
+  const { subscription } = useSubscription();
   const [activeSops, setActiveSops] = useState<ActiveSop>({ stateSop: null, orgSop: null });
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Check if user is on a paid plan (Pro or Platinum)
+  const isPaidUser = subscription?.plan_type === 'pro' || subscription?.plan_type === 'platinum';
   const hasFetchedRef = useRef(false);
   const lastStateRef = useRef<string | null>(null);
   const lastOrgRef = useRef<string | null>(null);
@@ -142,7 +147,7 @@ const SopAlignmentCard: React.FC = () => {
           {/* Active SOP Sources Banner */}
           <View style={styles.sopBanner}>
             <View style={styles.sopBannerHeader}>
-              <View style={[styles.statusDot, hasAnySop ? styles.statusDotActive : styles.statusDotInactive]} />
+              <View style={[styles.statusDot, (hasAnySop || isPaidUser) ? styles.statusDotActive : styles.statusDotInactive]} />
               <Text style={styles.sopBannerTitle}>ACTIVE SOP SOURCES FOR STATEMENTS</Text>
             </View>
             
@@ -159,6 +164,10 @@ const SopAlignmentCard: React.FC = () => {
                   </Text>
                 )}
               </View>
+            ) : isPaidUser ? (
+              <Text style={styles.sopBannerText}>
+                Using Spediak's best-practice guidance for your statements.
+              </Text>
             ) : (
               <Text style={styles.sopBannerText}>
                 No State or Organization SOP is currently active. Statements will follow general best-practice guidance only.

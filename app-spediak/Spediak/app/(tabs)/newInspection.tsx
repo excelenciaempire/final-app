@@ -1252,10 +1252,7 @@ export default function NewInspectionScreen() {
                 <View style={styles.popupOverlay}>
                     <View style={styles.loadingPopupContainer}>
                         {isGeneratingFinalDdid ? (
-                            <>
-                                <Text style={styles.loadingPopupText}>Generating Statement...</Text>
-                                <StatementSkeleton lines={5} animate={true} />
-                            </>
+                            <StatementSkeleton animate={true} />
                         ) : (
                             <>
                                 <ActivityIndicator size="large" color={COLORS.primary} />
@@ -1443,16 +1440,17 @@ const styles = StyleSheet.create({
     },
     popupText: { marginTop: 15, fontSize: 16, color: '#333', },
     loadingPopupContainer: {
-        width: 200,
-        height: 150,
+        width: Platform.OS === 'web' ? 420 : '90%',
+        maxWidth: 420,
+        minHeight: 150,
         backgroundColor: '#fff',
-        borderRadius: 12,
-        padding: 20,
+        borderRadius: 16,
+        padding: 24,
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.25,
-        shadowRadius: 4,
-        elevation: 5,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.15,
+        shadowRadius: 12,
+        elevation: 8,
         justifyContent: 'center',
         alignItems: 'center',
     },
