@@ -15,6 +15,8 @@ import { useSubscription } from '../context/SubscriptionContext';
 import { Picker } from '@react-native-picker/picker';
 import SafeComponent from '../components/SafeComponent';
 import { AppNavigationProvider } from '../context/AppNavigationContext';
+import { ImpersonationProvider } from '../context/ImpersonationContext';
+import ImpersonationBanner from '../components/ImpersonationBanner';
 
 // Import Screens
 import NewInspectionScreen from '../../app/(tabs)/newInspection';
@@ -371,58 +373,68 @@ const RootNavigator: React.FC = () => {
     }
 
     return (
-        <AppNavigationProvider setActiveScreen={setActiveScreen} isWebDesktop={true}>
-            <View style={{ flex: 1, flexDirection: 'row' }}>
-                <View style={styles.webSidebar}>
-                     <SidebarContent onNavigate={setActiveScreen} activeScreen={activeScreen} isAdmin={isAdmin} />
+        <ImpersonationProvider>
+            <AppNavigationProvider setActiveScreen={setActiveScreen} isWebDesktop={true}>
+                <View style={{ flex: 1 }}>
+                    <ImpersonationBanner />
+                    <View style={{ flex: 1, flexDirection: 'row' }}>
+                        <View style={styles.webSidebar}>
+                             <SidebarContent onNavigate={setActiveScreen} activeScreen={activeScreen} isAdmin={isAdmin} />
+                        </View>
+                        <View style={styles.webContent}>
+                             {CurrentScreenComponent ? <CurrentScreenComponent /> : <Text>Select an option</Text>}
+                        </View>
+                    </View>
                 </View>
-                <View style={styles.webContent}>
-                     {CurrentScreenComponent ? <CurrentScreenComponent /> : <Text>Select an option</Text>}
-                </View>
-            </View>
-        </AppNavigationProvider>
+            </AppNavigationProvider>
+        </ImpersonationProvider>
     );
   }
 
   // --- Mobile/Small Web Drawer Layout ---
   return (
-    <Drawer.Navigator
-        initialRouteName="Home"
-        drawerContent={(props: DrawerContentComponentProps) => <CustomDrawerContent {...props} />}
-        screenOptions={({ navigation, route }) => ({
-            drawerPosition: 'right', // Open drawer from right side
-            headerStyle: { backgroundColor: COLORS.primary },
-            headerTintColor: COLORS.white,
-            headerTitleAlign: 'center',
-            headerLeft: () => (
-              <TouchableOpacity onPress={() => navigation.navigate('Home' as any)}>
-                <Image
-                  source={require('../../assets/logo_header.png')}
-                  style={styles.headerLeftLogo}
-                />
-              </TouchableOpacity>
-            ),
-            headerTitle: () => <CustomHeaderTitle />,
-            headerRight: () => (
-              <TouchableOpacity onPress={() => navigation.toggleDrawer()} style={{ marginRight: 15 }}>
-                <Ionicons name="menu" size={28} color={COLORS.white} />
-              </TouchableOpacity>
-            ),
-            drawerActiveTintColor: COLORS.primary,
-            drawerInactiveTintColor: COLORS.darkText,
-            drawerLabelStyle: { marginLeft: -20, fontSize: 16 }
-        })}
-        >
-        {/* Regular Screens */}
-         <Drawer.Screen name="Home" component={NewInspectionScreen} options={{ title: 'Home' }} />
-         <Drawer.Screen name="InspectionHistory" component={InspectionHistoryScreen} options={{ title: 'Statement History' }} />
-         <Drawer.Screen name="SOP" component={SopScreen} options={{ title: 'SOP' }} />
-         <Drawer.Screen name="Discord" component={DiscordScreen} options={{ title: 'Discord' }} />
-         <Drawer.Screen name="ProfileSettings" component={ProfileSettingsScreen} options={{ title: 'Profile' }} />
-         <Drawer.Screen name="PlanSelection" component={PlanSelectionScreen} options={{ title: 'Plans' }} />
-         <Drawer.Screen name="SopHistory" component={SopHistoryScreen} options={{ title: 'SOP History', drawerItemStyle: { display: 'none' } }} />
-         <Drawer.Screen name="AdminDashboard" component={AdminDashboardScreen} options={{ title: 'Admin', drawerItemStyle: { display: 'none' } }} />
-    </Drawer.Navigator>
+    <ImpersonationProvider>
+      <View style={{ flex: 1 }}>
+        <ImpersonationBanner />
+        <Drawer.Navigator
+            initialRouteName="Home"
+            drawerContent={(props: DrawerContentComponentProps) => <CustomDrawerContent {...props} />}
+            screenOptions={({ navigation, route }) => ({
+                drawerPosition: 'right', // Open drawer from right side
+                headerStyle: { backgroundColor: COLORS.primary },
+                headerTintColor: COLORS.white,
+                headerTitleAlign: 'center',
+                headerLeft: () => (
+                  <TouchableOpacity onPress={() => navigation.navigate('Home' as any)}>
+                    <Image
+                      source={require('../../assets/logo_header.png')}
+                      style={styles.headerLeftLogo}
+                    />
+                  </TouchableOpacity>
+                ),
+                headerTitle: () => <CustomHeaderTitle />,
+                headerRight: () => (
+                  <TouchableOpacity onPress={() => navigation.toggleDrawer()} style={{ marginRight: 15 }}>
+                    <Ionicons name="menu" size={28} color={COLORS.white} />
+                  </TouchableOpacity>
+                ),
+                drawerActiveTintColor: COLORS.primary,
+                drawerInactiveTintColor: COLORS.darkText,
+                drawerLabelStyle: { marginLeft: -20, fontSize: 16 }
+            })}
+            >
+            {/* Regular Screens */}
+             <Drawer.Screen name="Home" component={NewInspectionScreen} options={{ title: 'Home' }} />
+             <Drawer.Screen name="InspectionHistory" component={InspectionHistoryScreen} options={{ title: 'Statement History' }} />
+             <Drawer.Screen name="SOP" component={SopScreen} options={{ title: 'SOP' }} />
+             <Drawer.Screen name="Discord" component={DiscordScreen} options={{ title: 'Discord' }} />
+             <Drawer.Screen name="ProfileSettings" component={ProfileSettingsScreen} options={{ title: 'Profile' }} />
+             <Drawer.Screen name="PlanSelection" component={PlanSelectionScreen} options={{ title: 'Plans' }} />
+             <Drawer.Screen name="SopHistory" component={SopHistoryScreen} options={{ title: 'SOP History', drawerItemStyle: { display: 'none' } }} />
+             <Drawer.Screen name="AdminDashboard" component={AdminDashboardScreen} options={{ title: 'Admin', drawerItemStyle: { display: 'none' } }} />
+        </Drawer.Navigator>
+      </View>
+    </ImpersonationProvider>
   );
 };
 

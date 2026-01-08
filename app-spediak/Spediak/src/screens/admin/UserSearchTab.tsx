@@ -15,6 +15,8 @@ import { useAuth } from '@clerk/clerk-expo';
 import axios from 'axios';
 import { BASE_URL } from '../../config/api';
 import { COLORS } from '../../styles/colors';
+import { useImpersonation } from '../../context/ImpersonationContext';
+import { useAppNavigation } from '../../context/AppNavigationContext';
 import { 
   Search, 
   User, 
@@ -25,7 +27,8 @@ import {
   RefreshCcw,
   X,
   ChevronDown,
-  Check
+  Check,
+  Eye
 } from 'lucide-react-native';
 
 interface LoadedUser {
@@ -57,6 +60,8 @@ const UserSearchTab: React.FC = () => {
   const { getToken } = useAuth();
   const { width } = useWindowDimensions();
   const isLargeScreen = width > 768;
+  const { isImpersonating, impersonatedUser, startImpersonation, endImpersonation } = useImpersonation();
+  const { navigateTo, isWebDesktop } = useAppNavigation();
 
   // User Search State
   const [searchEmail, setSearchEmail] = useState('');
@@ -637,14 +642,61 @@ const UserSearchTab: React.FC = () => {
   // Enter read-only impersonation
   const handleEnterImpersonation = async () => {
     if (!loadedUser) return;
-    Alert.alert('Impersonation', 'Read-only impersonation mode would be activated here. (Feature in development)');
-    addLocalAuditEvent('Impersonation started');
+    
+    // Start impersonation mode
+    startImpersonation({
+      clerk_id: loadedUser.clerk_id,
+      email: loadedUser.email,
+      name: loadedUser.name,
+      plan_type: loadedUser.plan_type,
+    });
+    
+    // Log the action
+    try {
+      const token = await getToken();
+      if (token) {
+        await axios.post(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/support-info`, {
+          tags: supportTags,
+          notes: supportNotes
+        }, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+      }
+    } catch (error) {
+      console.log('Error logging impersonation:', error);
+    }
+    
+    addLocalAuditEvent(`Impersonation started for ${loadedUser.email}`);
+    
+    // Navigate to Home to see the user's view
+    Alert.alert(
+      'Impersonation Active', 
+      `You are now viewing the app as ${loadedUser.email} in READ-ONLY mode. A purple banner will appear at the top of the screen.`,
+      [
+        { 
+          text: 'Go to Home', 
+          onPress: () => {
+            if (isWebDesktop) {
+              navigateTo('Home');
+            }
+          }
+        },
+        { text: 'Stay Here', style: 'cancel' }
+      ]
+    );
   };
 
   // Exit impersonation
   const handleExitImpersonation = async () => {
-    Alert.alert('Info', 'Exiting impersonation mode. (Feature in development)');
-    addLocalAuditEvent('Impersonation ended');
+    if (!isImpersonating) {
+      Alert.alert('Info', 'You are not currently impersonating any user.');
+      return;
+    }
+    
+    const previousEmail = impersonatedUser?.email;
+    endImpersonation();
+    addLocalAuditEvent(`Impersonation ended for ${previousEmail}`);
+    Alert.alert('Success', 'Impersonation mode ended. You are now back to your admin view.');
   };
 
   // Refresh audit
@@ -732,14 +784,16 @@ const UserSearchTab: React.FC = () => {
               </View>
               <View style={[
                 styles.statusBadge, 
-                isSuspended ? styles.suspendedBadge : (loadedUser.is_active !== false ? styles.activeBadge : styles.inactiveBadge)
+                loadedUser.is_active === false ? styles.deletedBadge : 
+                isSuspended ? styles.suspendedBadge : styles.activeBadge
               ]}>
                 <Text style={[
                   styles.statusBadgeText,
-                  isSuspended && styles.suspendedBadgeText,
-                  loadedUser.is_active === false && !isSuspended && styles.inactiveBadgeText
+                  loadedUser.is_active === false && styles.deletedBadgeText,
+                  isSuspended && loadedUser.is_active !== false && styles.suspendedBadgeText
                 ]}>
-                  {isSuspended ? 'SUSPENDED' : (loadedUser.is_active !== false ? 'ACTIVE' : 'INACTIVE')}
+                  {loadedUser.is_active === false ? 'DELETED' : 
+                   isSuspended ? 'SUSPENDED' : 'ACTIVE'}
                 </Text>
               </View>
             </View>
@@ -1196,11 +1250,11 @@ const styles = StyleSheet.create({
   activeBadge: {
     backgroundColor: '#DCFCE7',
   },
-  inactiveBadge: {
-    backgroundColor: '#FEE2E2',
-  },
   suspendedBadge: {
     backgroundColor: '#FEF3C7',
+  },
+  deletedBadge: {
+    backgroundColor: '#E5E7EB',
   },
   statusBadgeText: {
     fontSize: 12,
@@ -1210,8 +1264,8 @@ const styles = StyleSheet.create({
   suspendedBadgeText: {
     color: '#92400E',
   },
-  inactiveBadgeText: {
-    color: '#DC2626',
+  deletedBadgeText: {
+    color: '#4B5563',
   },
   userDates: {
     marginBottom: 16,

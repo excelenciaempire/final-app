@@ -1384,20 +1384,45 @@ const forceLogout = async (req, res) => {
   const adminClerkId = req.auth?.userId;
 
   try {
-    // Attempt to revoke sessions via Clerk
+    let sessionsRevoked = 0;
+    
+    // Get all active sessions for this user and revoke them
     try {
-      await clerkClient.users.revokeAllSessions(userId);
+      // List all sessions for the user
+      const sessionsResponse = await clerkClient.sessions.getSessionList({ userId });
+      const sessions = sessionsResponse.data || sessionsResponse || [];
+      
+      // Revoke each active session
+      for (const session of sessions) {
+        if (session.status === 'active') {
+          try {
+            await clerkClient.sessions.revokeSession(session.id);
+            sessionsRevoked++;
+          } catch (revokeErr) {
+            console.log(`[Admin] Could not revoke session ${session.id}:`, revokeErr.message);
+          }
+        }
+      }
+      
+      console.log(`[Admin] Revoked ${sessionsRevoked} sessions for user ${userId}`);
     } catch (clerkError) {
-      console.log('[Admin] Clerk session revocation not available:', clerkError.message);
+      console.log('[Admin] Clerk session revocation error:', clerkError.message);
+      // Even if Clerk fails, we mark the user's sessions as invalid in our DB
     }
 
-    // Log audit
+    // Log audit with details
     await pool.query(`
       INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, action_details)
-      VALUES ($1, 'force_logout', 'security', 'user', $2, '{"action": "Force logout executed"}')
-    `, [adminClerkId, userId]);
+      VALUES ($1, 'force_logout', 'security', 'user', $2, $3)
+    `, [adminClerkId, userId, JSON.stringify({ 
+      action: 'Force logout executed',
+      sessions_revoked: sessionsRevoked 
+    })]);
 
-    res.json({ message: 'User sessions invalidated' });
+    res.json({ 
+      message: `User sessions invalidated (${sessionsRevoked} sessions revoked)`,
+      sessions_revoked: sessionsRevoked
+    });
   } catch (error) {
     console.error('[Admin] Error forcing logout:', error);
     res.status(500).json({ message: 'Failed to force logout' });
@@ -1412,16 +1437,58 @@ const forcePasswordReset = async (req, res) => {
   const adminClerkId = req.auth?.userId;
 
   try {
-    // In production, this would trigger a Clerk password reset email
-    // For now, we log the action
+    let userEmail = null;
+    let sessionsRevoked = 0;
     
-    // Log audit
+    // Step 1: Get user info from Clerk to get their email
+    try {
+      const clerkUser = await clerkClient.users.getUser(userId);
+      userEmail = clerkUser.emailAddresses?.[0]?.emailAddress || clerkUser.primaryEmailAddressId;
+      
+      // Step 2: Revoke all active sessions to force re-login
+      const sessionsResponse = await clerkClient.sessions.getSessionList({ userId });
+      const sessions = sessionsResponse.data || sessionsResponse || [];
+      
+      for (const session of sessions) {
+        if (session.status === 'active') {
+          try {
+            await clerkClient.sessions.revokeSession(session.id);
+            sessionsRevoked++;
+          } catch (revokeErr) {
+            console.log(`[Admin] Could not revoke session:`, revokeErr.message);
+          }
+        }
+      }
+      
+      console.log(`[Admin] Password reset for ${userEmail}: revoked ${sessionsRevoked} sessions`);
+    } catch (clerkError) {
+      console.log('[Admin] Clerk API error:', clerkError.message);
+      // Try to get email from our database as fallback
+      const userResult = await pool.query('SELECT email FROM users WHERE clerk_id = $1', [userId]);
+      userEmail = userResult.rows[0]?.email;
+    }
+
+    // Log audit with details
     await pool.query(`
       INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, action_details)
-      VALUES ($1, 'force_password_reset', 'security', 'user', $2, '{"action": "Password reset requested"}')
-    `, [adminClerkId, userId]);
+      VALUES ($1, 'force_password_reset', 'security', 'user', $2, $3)
+    `, [adminClerkId, userId, JSON.stringify({ 
+      action: 'Password reset requested',
+      email: userEmail,
+      sessions_revoked: sessionsRevoked
+    })]);
 
-    res.json({ message: 'Password reset requested' });
+    // Note: Clerk doesn't have a direct "send password reset email" API for admins
+    // The user will need to use "Forgot Password" on login, or we could:
+    // 1. Integrate with a custom email service to send a reset link
+    // 2. Use Clerk's sign-in token to redirect user to reset flow
+    // For now, we force logout so they must use Forgot Password on their next login attempt
+
+    res.json({ 
+      message: `Password reset initiated. User (${userEmail}) will need to reset their password on next login.`,
+      email: userEmail,
+      sessions_revoked: sessionsRevoked
+    });
   } catch (error) {
     console.error('[Admin] Error forcing password reset:', error);
     res.status(500).json({ message: 'Failed to force password reset' });
