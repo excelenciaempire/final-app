@@ -949,14 +949,15 @@ const updateUserSecurityFlags = async (req, res) => {
   try {
     // Determine admin status from role if provided
     const isAdminValue = role === 'admin' || isAdmin || false;
+    const twoFaValue = two_fa_required || false;
     
-    // Use a simpler query that works regardless of two_fa_required column existence
+    // Full query with two_fa_required support
     const result = await pool.query(`
       INSERT INTO user_security_flags (
         user_clerk_id, is_admin, is_beta_user, is_vip, is_suspended, 
-        suspension_reason, suspended_at, suspended_by, fraud_flag, fraud_notes
+        suspension_reason, suspended_at, suspended_by, fraud_flag, fraud_notes, two_fa_required
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       ON CONFLICT (user_clerk_id) 
       DO UPDATE SET 
         is_admin = $2,
@@ -968,6 +969,7 @@ const updateUserSecurityFlags = async (req, res) => {
         suspended_by = CASE WHEN $5 = TRUE THEN $8 ELSE user_security_flags.suspended_by END,
         fraud_flag = $9,
         fraud_notes = $10,
+        two_fa_required = $11,
         updated_at = NOW()
       RETURNING *
     `, [
@@ -980,7 +982,8 @@ const updateUserSecurityFlags = async (req, res) => {
       isSuspended ? new Date() : null,
       adminClerkId,
       fraudFlag || false,
-      fraudNotes || null
+      fraudNotes || null,
+      twoFaValue
     ]);
 
     // If user is made admin, update their subscription to platinum (unlimited)
@@ -1200,18 +1203,6 @@ const searchUserByEmail = async (req, res) => {
   }
 
   try {
-    // Check if two_fa_required column exists (for backwards compatibility)
-    let hasTwoFaColumn = false;
-    try {
-      const columnCheck = await pool.query(`
-        SELECT column_name FROM information_schema.columns 
-        WHERE table_name = 'user_security_flags' AND column_name = 'two_fa_required'
-      `);
-      hasTwoFaColumn = columnCheck.rows.length > 0;
-    } catch (e) {
-      console.warn('[searchUserByEmail] Could not check for two_fa_required column');
-    }
-
     const result = await pool.query(`
       SELECT 
         u.*,
@@ -1229,10 +1220,11 @@ const searchUserByEmail = async (req, res) => {
         sf.is_vip,
         sf.is_suspended,
         sf.fraud_flag,
-        ${hasTwoFaColumn ? 'sf.two_fa_required,' : 'FALSE as two_fa_required,'}
+        COALESCE(sf.two_fa_required, FALSE) as two_fa_required,
         (SELECT COUNT(*) FROM inspections WHERE user_id = u.clerk_id) as inspection_count,
         (SELECT COUNT(*) FROM admin_user_notes WHERE user_clerk_id = u.clerk_id) as notes_count,
-        (SELECT note FROM admin_user_notes WHERE user_clerk_id = u.clerk_id ORDER BY created_at DESC LIMIT 1) as admin_notes
+        (SELECT note FROM admin_user_notes WHERE user_clerk_id = u.clerk_id AND (note_type IS NULL OR note_type = 'admin') ORDER BY created_at DESC LIMIT 1) as admin_notes,
+        (SELECT note FROM admin_user_notes WHERE user_clerk_id = u.clerk_id AND note_type = 'support' ORDER BY created_at DESC LIMIT 1) as support_notes
       FROM users u
       LEFT JOIN user_profiles up ON u.clerk_id = up.clerk_id
       LEFT JOIN user_subscriptions us ON u.clerk_id = us.clerk_id
@@ -1247,7 +1239,6 @@ const searchUserByEmail = async (req, res) => {
     // Add role field for convenience
     const user = result.rows[0];
     user.role = user.is_admin ? 'admin' : 'standard';
-    user.support_notes = ''; // Will be loaded separately if needed
 
     res.json({ user });
 
@@ -1579,10 +1570,10 @@ const saveSupportInfo = async (req, res) => {
       // First try to update existing support note
       const updateResult = await pool.query(`
         UPDATE admin_user_notes 
-        SET note = $3, updated_at = NOW()
+        SET note = $2, admin_clerk_id = $3, updated_at = NOW()
         WHERE user_clerk_id = $1 AND note_type = 'support'
         RETURNING id
-      `, [userId, adminClerkId, notes]);
+      `, [userId, notes, adminClerkId]);
       
       // If no existing support note, insert new one
       if (updateResult.rowCount === 0) {
