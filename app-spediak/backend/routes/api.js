@@ -5,7 +5,7 @@ const { requireAuth } = require('../middleware/clerkAuth');
 const { generatePreDescription } = require('../controllers/preDescriptionController');
 const { generateDdid, generateStatementDirect } = require('../controllers/ddidController');
 const { transcribeAudio } = require('../controllers/transcriptionController');
-const { getInspectionHistory, createInspection, updateInspection, getPrimaryEmail, updatePrimaryEmail, getPresignedUrl } = require('../controllers/inspectionController');
+const { getInspectionHistory, createInspection, updateInspection, deleteInspection, getPrimaryEmail, updatePrimaryEmail, getPresignedUrl } = require('../controllers/inspectionController');
 const userController = require('../controllers/userController');
 const sopController = require('../controllers/sopController');
 const adController = require('../controllers/adController');
@@ -41,6 +41,9 @@ router.post('/inspections', createInspection);
 
 // Route to update an inspection (for edited statements)
 router.patch('/inspections/:id', updateInspection);
+
+// Route to delete an inspection
+router.delete('/inspections/:id', deleteInspection);
 
 // Route to get the primary email of the logged-in user
 router.get('/user-email', getPrimaryEmail);

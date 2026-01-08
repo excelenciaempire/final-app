@@ -300,30 +300,6 @@ const AdManagerTab: React.FC = () => {
     );
   };
 
-  const createTestAd = async () => {
-    try {
-      setIsSaving(true);
-      const token = await getToken();
-      if (!token) return;
-
-      await axios.post(`${BASE_URL}/api/admin/ads`, {
-        title: '🚀 Upgrade to Pro Today!',
-        subtitle: 'Get unlimited statements and remove all ads',
-        destination_url: 'https://spediak.com/upgrade',
-        image_url: 'https://res.cloudinary.com/demo/image/upload/v1/samples/landscapes/nature-mountains'
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-
-      Alert.alert('Success', 'Test ad created');
-      fetchAds();
-    } catch (error: any) {
-      Alert.alert('Error', 'Failed to create test ad');
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
   // Simple crop area adjustment
   const adjustCropArea = (direction: 'left' | 'right' | 'up' | 'down', amount: number = 20) => {
     setCropArea(prev => {
@@ -461,30 +437,20 @@ const AdManagerTab: React.FC = () => {
           keyboardType="url"
         />
 
-        <View style={styles.buttonRow}>
-          <TouchableOpacity 
-            style={[styles.createButton, isSaving && styles.buttonDisabled]} 
-            onPress={handleCreateAd}
-            disabled={isSaving}
-          >
-            {isSaving ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <>
-                <Plus size={18} color="#fff" />
-                <Text style={styles.createButtonText}>Create Ad</Text>
-              </>
-            )}
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.testButton} 
-            onPress={createTestAd}
-            disabled={isSaving}
-          >
-            <Text style={styles.testButtonText}>Create Test Ad</Text>
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity 
+          style={[styles.createButton, isSaving && styles.buttonDisabled]} 
+          onPress={handleCreateAd}
+          disabled={isSaving}
+        >
+          {isSaving ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <>
+              <Plus size={18} color="#fff" />
+              <Text style={styles.createButtonText}>Create Ad</Text>
+            </>
+          )}
+        </TouchableOpacity>
       </View>
 
       {/* Current Ads */}
@@ -881,19 +847,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 15,
     fontWeight: '700',
-  },
-  testButton: {
-    flex: 1,
-    backgroundColor: '#F0F4F8',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    borderRadius: 10,
-  },
-  testButtonText: {
-    color: COLORS.textPrimary,
-    fontSize: 15,
-    fontWeight: '600',
   },
   clearAllButton: {
     flexDirection: 'row',
