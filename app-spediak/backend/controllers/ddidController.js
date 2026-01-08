@@ -156,7 +156,7 @@ Generate the DDID statement now.
 `;
 
     const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini', // Fast and cost-effective model with vision
+      model: 'gpt-5-mini', // GPT-5 mini - fast, cost-effective with vision support
       messages: [
         {
           role: 'user',
@@ -172,8 +172,8 @@ Generate the DDID statement now.
           ],
         },
       ],
-      max_tokens: 400,
-      temperature: 0.3, // Lower temperature for consistent outputs
+      max_completion_tokens: 400, // GPT-5 uses max_completion_tokens
+      temperature: 1, // GPT-5 mini default temperature
     });
 
     let ddid = response.choices[0].message.content?.trim() || 'Error generating statement.';
@@ -299,11 +299,11 @@ FORMAT (DDID in one paragraph): Describe component → Determine issue → Impli
 
 RULES: One paragraph, 4-6 sentences, technical, no bullets, no intro phrases. If unclear, describe visible condition and recommend evaluation.`;
 
-    console.log('[Generate Statement] Sending request to OpenAI GPT-4o-mini...');
+    console.log('[Generate Statement] Sending request to OpenAI GPT-5-mini...');
     const startTime = Date.now();
 
     const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini', // Fast and cost-effective model with vision
+      model: 'gpt-5-mini', // GPT-5 mini - fast, cost-effective with vision support
       messages: [
         {
           role: 'user',
@@ -319,8 +319,8 @@ RULES: One paragraph, 4-6 sentences, technical, no bullets, no intro phrases. If
           ],
         },
       ],
-      max_tokens: 400,
-      temperature: 0.3, // Lower temperature for consistent outputs
+      max_completion_tokens: 400, // GPT-5 uses max_completion_tokens
+      temperature: 1, // GPT-5 mini default temperature
     });
 
     console.log(`[Generate Statement] OpenAI responded in ${Date.now() - startTime}ms`);
