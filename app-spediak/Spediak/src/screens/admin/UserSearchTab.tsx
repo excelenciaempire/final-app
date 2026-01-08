@@ -278,6 +278,10 @@ const UserSearchTab: React.FC = () => {
         }
 
         addLocalAuditEvent('Note deleted');
+        // Refresh notes from backend
+        if (loadedUser) {
+          loadUserNotes(loadedUser.clerk_id);
+        }
       } catch (error) {
         Alert.alert('Error', 'Failed to delete note');
       } finally {
@@ -372,6 +376,10 @@ const UserSearchTab: React.FC = () => {
       setAdminNotes('');
       
       addLocalAuditEvent('Admin note added');
+      // Refresh notes from backend
+      if (loadedUser) {
+        loadUserNotes(loadedUser.clerk_id);
+      }
     } catch (error) {
       Alert.alert('Error', 'Failed to save note');
     } finally {
@@ -403,7 +411,7 @@ const UserSearchTab: React.FC = () => {
             setLoadedUser(prev => prev ? { ...prev, is_suspended: true } : null);
             
             Alert.alert('Success', 'User suspended. They will be blocked on their next API request.');
-            addLocalAuditEvent('User suspended');
+            addLocalAuditEvent('User suspended', true);
           } catch (error: any) {
             console.error('Suspend error:', error);
             Alert.alert('Error', error.response?.data?.message || 'Failed to suspend user');
@@ -438,7 +446,7 @@ const UserSearchTab: React.FC = () => {
             setLoadedUser(prev => prev ? { ...prev, is_suspended: false } : null);
             
             Alert.alert('Success', 'User reactivated. They can now access the app again.');
-            addLocalAuditEvent('User reactivated');
+            addLocalAuditEvent('User reactivated', true);
           } catch (error: any) {
             console.error('Reactivate error:', error);
             Alert.alert('Error', error.response?.data?.message || 'Failed to reactivate user');
@@ -470,8 +478,7 @@ const UserSearchTab: React.FC = () => {
             });
 
             Alert.alert('Success', 'Subscription cancelled');
-            addLocalAuditEvent('Subscription cancelled');
-            handleSearchUser();
+            addLocalAuditEvent('Subscription cancelled', true);
           } catch (error) {
             Alert.alert('Error', 'Failed to cancel subscription');
           } finally {
@@ -566,7 +573,7 @@ const UserSearchTab: React.FC = () => {
       });
 
       Alert.alert('Success', 'Role & security saved');
-      addLocalAuditEvent(`Role changed to ${userRole}`);
+      addLocalAuditEvent(`Role changed to ${userRole}`, true);
     } catch (error) {
       Alert.alert('Error', 'Failed to save role/security');
     } finally {
@@ -590,8 +597,7 @@ const UserSearchTab: React.FC = () => {
       });
 
       Alert.alert('Success', `Plan changed to ${userPlanType}`);
-      addLocalAuditEvent(`Plan changed to ${userPlanType}`);
-      handleSearchUser(); // Refresh user data
+      addLocalAuditEvent(`Plan changed to ${userPlanType}`, true);
     } catch (error: any) {
       Alert.alert('Error', error.response?.data?.message || 'Failed to change plan');
     } finally {
@@ -657,8 +663,7 @@ const UserSearchTab: React.FC = () => {
       });
 
       Alert.alert('Success', 'Monthly usage reset');
-      addLocalAuditEvent('Monthly usage reset');
-      handleSearchUser();
+      addLocalAuditEvent('Monthly usage reset', true);
     } catch (error) {
       Alert.alert('Error', 'Failed to reset usage');
     } finally {
@@ -681,8 +686,7 @@ const UserSearchTab: React.FC = () => {
       );
 
       Alert.alert('Success', '30-day trial granted');
-      addLocalAuditEvent('Trial granted (30 days)');
-      handleSearchUser();
+      addLocalAuditEvent('Trial granted (30 days)', true);
     } catch (error) {
       Alert.alert('Error', 'Failed to grant trial');
     } finally {
@@ -704,8 +708,7 @@ const UserSearchTab: React.FC = () => {
       });
 
       Alert.alert('Success', 'Trial revoked');
-      addLocalAuditEvent('Trial revoked');
-      handleSearchUser();
+      addLocalAuditEvent('Trial revoked', true);
     } catch (error) {
       Alert.alert('Error', 'Failed to revoke trial');
     } finally {
@@ -727,8 +730,7 @@ const UserSearchTab: React.FC = () => {
       });
 
       Alert.alert('Success', 'Statement event recorded (+1)');
-      addLocalAuditEvent('Statement event recorded');
-      handleSearchUser();
+      addLocalAuditEvent('Statement event recorded', true);
       loadStatementEvents(loadedUser.clerk_id);
     } catch (error) {
       Alert.alert('Error', 'Failed to record event');
@@ -763,7 +765,7 @@ const UserSearchTab: React.FC = () => {
       });
 
       Alert.alert('Success', 'Support info saved');
-      addLocalAuditEvent('Support info updated');
+      addLocalAuditEvent('Support info updated', true);
     } catch (error) {
       Alert.alert('Error', 'Failed to save support info');
     } finally {
@@ -821,8 +823,9 @@ const UserSearchTab: React.FC = () => {
     }
   };
 
-  // Add audit event locally (will be synced when action is performed on backend)
-  const addLocalAuditEvent = (action: string) => {
+  // Add audit event locally and refresh from backend
+  const addLocalAuditEvent = (action: string, refreshUserData: boolean = false) => {
+    // Add optimistic local event immediately
     const newEvent = {
       id: Date.now(),
       action_type: action,
@@ -830,6 +833,16 @@ const UserSearchTab: React.FC = () => {
       admin_name: 'Current Admin'
     };
     setAuditEvents(prev => [newEvent, ...prev]);
+    
+    // Refresh audit trail from backend after a brief delay to ensure backend has saved
+    if (loadedUser) {
+      setTimeout(() => {
+        loadAuditTrail(loadedUser.clerk_id);
+        if (refreshUserData) {
+          handleSearchUser();
+        }
+      }, 500);
+    }
   };
 
   // Format date
