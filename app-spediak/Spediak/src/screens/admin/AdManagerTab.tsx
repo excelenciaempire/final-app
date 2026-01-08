@@ -79,6 +79,9 @@ const AdManagerTab: React.FC = () => {
 
   // Preview
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  
+  // Drag & Drop state (web only)
+  const [isDragging, setIsDragging] = useState(false);
 
   const fetchAds = useCallback(async () => {
     try {
@@ -151,6 +154,70 @@ const AdManagerTab: React.FC = () => {
     } catch (error) {
       console.error('Error picking image:', error);
       Alert.alert('Error', 'Failed to pick image');
+    }
+  };
+
+  // Handle image result from drag/drop or picker
+  const handleImageData = (base64: string, width: number, height: number) => {
+    setOriginalImage(`data:image/jpeg;base64,${base64}`);
+    setImageSize({ width, height });
+    
+    const maxDisplayWidth = Math.min(SCREEN_WIDTH - 60, 500);
+    const displayScale = maxDisplayWidth / width;
+    const displayWidth = width * displayScale;
+    const displayHeight = height * displayScale;
+    setDisplaySize({ width: displayWidth, height: displayHeight });
+    
+    const cropHeight = Math.min(height, width / AD_ASPECT_RATIO);
+    const cropWidth = cropHeight * AD_ASPECT_RATIO;
+    const cropX = (width - cropWidth) / 2;
+    const cropY = (height - cropHeight) / 2;
+    setCropArea({ x: cropX, y: cropY, width: cropWidth, height: cropHeight });
+    
+    setShowCropModal(true);
+  };
+
+  // Drag & Drop handlers (web only)
+  const handleDragOver = (event: any) => {
+    if (Platform.OS !== 'web') return;
+    event.preventDefault();
+    event.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (event: any) => {
+    if (Platform.OS !== 'web') return;
+    event.preventDefault();
+    event.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (event: any) => {
+    if (Platform.OS !== 'web') return;
+    event.preventDefault();
+    event.stopPropagation();
+    setIsDragging(false);
+
+    const files = event.dataTransfer?.files;
+    if (files && files.length > 0) {
+      const file = files[0];
+      if (file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const dataUrl = reader.result as string;
+          const base64 = dataUrl.split(',')[1];
+          
+          // Get image dimensions
+          const img = new (window as any).Image();
+          img.onload = () => {
+            handleImageData(base64, img.width, img.height);
+          };
+          img.src = dataUrl;
+        };
+        reader.readAsDataURL(file);
+      } else {
+        Alert.alert('Invalid File', 'Please drop an image file (JPG, PNG, etc.)');
+      }
     }
   };
 
@@ -447,6 +514,21 @@ const AdManagerTab: React.FC = () => {
                 }}
               >
                 <X size={16} color="#fff" />
+              </TouchableOpacity>
+            </View>
+          ) : Platform.OS === 'web' ? (
+            <View
+              // @ts-ignore - web-only drag/drop events  
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              style={[styles.uploadButton, isDragging && styles.uploadButtonDragging]}
+            >
+              <TouchableOpacity onPress={pickImage} style={styles.uploadButtonInner}>
+                <Upload size={24} color={isDragging ? '#fff' : COLORS.primary} />
+                <Text style={[styles.uploadButtonText, isDragging && styles.uploadButtonTextDragging]}>
+                  {isDragging ? 'Drop image here' : 'Drag & drop or click to upload'}
+                </Text>
               </TouchableOpacity>
             </View>
           ) : (
@@ -802,11 +884,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#FAFAFA',
   },
+  uploadButtonDragging: {
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.primary,
+    borderWidth: 3,
+  },
+  uploadButtonInner: {
+    alignItems: 'center',
+  },
   uploadButtonText: {
     fontSize: 15,
     fontWeight: '600',
     color: COLORS.primary,
     marginTop: 8,
+  },
+  uploadButtonTextDragging: {
+    color: '#fff',
   },
   imagePreviewContainer: {
     position: 'relative',

@@ -1267,14 +1267,23 @@ const webDropZoneStyleRN = {
     flexDirection: 'column' as const,
     alignItems: 'center' as const,
     borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#D1D5DB',
+    borderStyle: 'dashed' as const,
+    backgroundColor: '#FAFAFA',
+    padding: 4,
+    // @ts-ignore - web transition
     transition: 'all 0.2s ease',
+    cursor: 'pointer',
 };
 
 const webDropZoneDraggingStyle = {
     backgroundColor: '#E8F4FD',
     borderColor: COLORS.primary,
-    borderWidth: 2,
+    borderWidth: 3,
     borderStyle: 'dashed' as const,
+    // @ts-ignore - web transform
+    transform: [{ scale: 1.02 }],
 };
 
 const styles = StyleSheet.create({
