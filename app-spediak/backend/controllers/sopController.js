@@ -303,10 +303,10 @@ const getActiveSops = async (req, res) => {
     try {
       // Get state SOP - using LEFT JOIN to be more resilient
       const stateResult = await pool.query(`
-        SELECT sa.id, sa.document_id, sa.assignment_type, sa.assignment_value, sa.created_at,
+        SELECT sa.id, sa.sop_document_id, sa.assignment_type, sa.assignment_value, sa.created_at,
                sd.document_name, sd.document_type, sd.file_url
         FROM sop_assignments sa
-        LEFT JOIN sop_documents sd ON sa.document_id = sd.id
+        LEFT JOIN sop_documents sd ON sa.sop_document_id = sd.id
         WHERE sa.assignment_type = 'state' AND sa.assignment_value = $1
         LIMIT 1
       `, [state]);
@@ -322,10 +322,10 @@ const getActiveSops = async (req, res) => {
     if (organization && organization !== 'None') {
       try {
         const orgResult = await pool.query(`
-          SELECT sa.id, sa.document_id, sa.assignment_type, sa.assignment_value, sa.created_at,
+          SELECT sa.id, sa.sop_document_id, sa.assignment_type, sa.assignment_value, sa.created_at,
                  sd.document_name, sd.document_type, sd.file_url
           FROM sop_assignments sa
-          LEFT JOIN sop_documents sd ON sa.document_id = sd.id
+          LEFT JOIN sop_documents sd ON sa.sop_document_id = sd.id
           WHERE sa.assignment_type = 'organization' AND sa.assignment_value = $1
           LIMIT 1
         `, [organization]);
@@ -384,7 +384,7 @@ const getSopAssignments = async (req, res) => {
              sd.document_type, 
              sd.file_url
       FROM sop_assignments sa
-      LEFT JOIN sop_documents sd ON sa.document_id = sd.id
+      LEFT JOIN sop_documents sd ON sa.sop_document_id = sd.id
       ORDER BY sa.updated_at DESC NULLS LAST, sa.created_at DESC
     `);
 
@@ -743,7 +743,7 @@ const getSopTextForContext = async (req, res) => {
     const stateResult = await pool.query(`
       SELECT sd.document_name, sd.extracted_text, sd.extraction_status
       FROM sop_assignments sa
-      JOIN sop_documents sd ON sa.document_id = sd.id
+      JOIN sop_documents sd ON sa.sop_document_id = sd.id
       WHERE sa.assignment_type = 'state' AND sa.assignment_value = $1
       AND sd.extracted_text IS NOT NULL
     `, [state]);
@@ -761,7 +761,7 @@ const getSopTextForContext = async (req, res) => {
       const orgResult = await pool.query(`
         SELECT sd.document_name, sd.extracted_text, sd.extraction_status
         FROM sop_assignments sa
-        JOIN sop_documents sd ON sa.document_id = sd.id
+        JOIN sop_documents sd ON sa.sop_document_id = sd.id
         WHERE sa.assignment_type = 'organization' AND sa.assignment_value = $1
         AND sd.extracted_text IS NOT NULL
       `, [organization]);

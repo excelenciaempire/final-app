@@ -11,6 +11,7 @@ import { useAuth, useUser } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../styles/colors';
 import { useGlobalState, US_STATES } from '../context/GlobalStateContext';
+import { useSubscription } from '../context/SubscriptionContext';
 import { Picker } from '@react-native-picker/picker';
 import SafeComponent from '../components/SafeComponent';
 
@@ -245,7 +246,7 @@ const SidebarContent: React.FC<SidebarContentProps> = ({ onNavigate, activeScree
 
       {/* Navigation Items */}
       <View style={styles.drawerListContainer}>
-        {drawerItems.filter(item => !item.adminOnly || (Platform.OS === 'web' && isAdmin)).map((item) => (
+        {drawerItems.filter(item => !item.adminOnly || isAdmin).map((item) => (
           <TouchableOpacity
             key={item.name}
             style={[
@@ -283,22 +284,22 @@ const SidebarContent: React.FC<SidebarContentProps> = ({ onNavigate, activeScree
 const CustomDrawerContent: React.FC<DrawerContentComponentProps> = (props) => {
   // Extract active route name for potential highlighting (less critical in drawer)
   const activeRouteName = props.state?.routes[props.state.index]?.name as keyof RootDrawerParamList | undefined;
-  const { user } = useUser(); // Get user here to pass state if needed, or let CustomHeaderTitle fetch it
-  const isAdmin = useMemo(() => user?.unsafeMetadata?.role === 'admin', [user]);
+  const { user } = useUser();
+  const { subscription } = useSubscription();
+  
+  // Check both Clerk metadata AND subscription response for admin status
+  const isAdmin = useMemo(() => {
+    return user?.unsafeMetadata?.role === 'admin' || subscription?.is_admin === true;
+  }, [user, subscription]);
 
   return (
     <DrawerContentScrollView {...props}>
        <SidebarContent
          onNavigate={(screenName) => {
-            // For NewStatement, we might pass the userState, though CustomHeaderTitle can also fetch it
-            // if (screenName === 'NewStatement' && user?.unsafeMetadata?.inspectionState) {
-            //   props.navigation.navigate(screenName, { userState: user.unsafeMetadata.inspectionState as string });
-            // } else {
-            props.navigation.navigate(screenName as keyof RootDrawerParamList); // Type assertion
-            // }
+            props.navigation.navigate(screenName as keyof RootDrawerParamList);
          }}
          activeScreen={activeRouteName}
-         isAdmin={isAdmin} // Pass isAdmin to SidebarContent
+         isAdmin={isAdmin}
        />
     </DrawerContentScrollView>
   );
@@ -307,11 +308,14 @@ const CustomDrawerContent: React.FC<DrawerContentComponentProps> = (props) => {
 // --- Root Navigator Setup (Conditional Logic) ---
 const RootNavigator: React.FC = () => {
   const { user, isLoaded } = useUser();
+  const { subscription } = useSubscription();
   const { width } = useWindowDimensions(); // Use hook for dynamic width
   const [activeScreen, setActiveScreen] = useState<keyof RootDrawerParamList | 'AdminDashboard'>('NewStatement');
 
-  // Check for admin role using unsafeMetadata for frontend visibility
-  const isAdmin = useMemo(() => user?.unsafeMetadata?.role === 'admin', [user]);
+  // Check both Clerk metadata AND subscription response for admin status
+  const isAdmin = useMemo(() => {
+    return user?.unsafeMetadata?.role === 'admin' || subscription?.is_admin === true;
+  }, [user, subscription]);
 
   // Determine if it's a large web screen (desktop-like)
   const isWebLarge = useMemo(() => {

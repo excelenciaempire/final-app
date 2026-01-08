@@ -25,7 +25,7 @@ async function getSopContext(state, organization) {
     const stateResult = await pool.query(`
       SELECT sd.document_name, sd.extracted_text
       FROM sop_assignments sa
-      JOIN sop_documents sd ON sa.document_id = sd.id
+      JOIN sop_documents sd ON sa.sop_document_id = sd.id
       WHERE sa.assignment_type = 'state' AND sa.assignment_value = $1
       AND sd.extracted_text IS NOT NULL AND sd.extracted_text != ''
     `, [state]);
@@ -49,7 +49,7 @@ async function getSopContext(state, organization) {
       const orgResult = await pool.query(`
         SELECT sd.document_name, sd.extracted_text
         FROM sop_assignments sa
-        JOIN sop_documents sd ON sa.document_id = sd.id
+        JOIN sop_documents sd ON sa.sop_document_id = sd.id
         WHERE sa.assignment_type = 'organization' AND sa.assignment_value = $1
         AND sd.extracted_text IS NOT NULL AND sd.extracted_text != ''
       `, [organization]);

@@ -821,10 +821,20 @@ export default function NewInspectionScreen() {
         };
     }, []);
 
+    const [isDragging, setIsDragging] = useState(false);
+
     const handleDragOver = (event: any) => {
         if (Platform.OS !== 'web') return;
         event.preventDefault();
         event.stopPropagation();
+        setIsDragging(true);
+    };
+
+    const handleDragLeave = (event: any) => {
+        if (Platform.OS !== 'web') return;
+        event.preventDefault();
+        event.stopPropagation();
+        setIsDragging(false);
     };
 
     const handleDrop = async (event: any) => {
@@ -834,10 +844,12 @@ export default function NewInspectionScreen() {
         
         event.preventDefault();
         event.stopPropagation();
+        setIsDragging(false);
         console.log('File dropped!');
 
-        if (event.dataTransfer.files && event.dataTransfer.files.length > 0) {
-            const file = event.dataTransfer.files[0];
+        const files = event.dataTransfer?.files || event.nativeEvent?.dataTransfer?.files;
+        if (files && files.length > 0) {
+            const file = files[0];
             console.log('Dropped file:', file.name, file.type);
 
             if (file.type.startsWith('image/')) {
@@ -860,7 +872,9 @@ export default function NewInspectionScreen() {
             } else {
                 Alert.alert('Invalid File Type', 'Please drop an image file.');
             }
-            event.dataTransfer.clearData();
+            if (event.dataTransfer?.clearData) {
+                event.dataTransfer.clearData();
+            }
         }
     };
 
@@ -946,8 +960,9 @@ export default function NewInspectionScreen() {
                     <View 
                         // @ts-ignore - web-only drag/drop events
                         onDragOver={handleDragOver} 
+                        onDragLeave={handleDragLeave}
                         onDrop={handleDrop} 
-                        style={webDropZoneStyleRN}
+                        style={[webDropZoneStyleRN, isDragging && webDropZoneDraggingStyle]}
                     >
                         <TouchableOpacity 
                             style={[
@@ -1129,6 +1144,15 @@ const webDropZoneStyleRN = {
     alignSelf: 'center' as const,
     flexDirection: 'column' as const,
     alignItems: 'center' as const,
+    borderRadius: 12,
+    transition: 'all 0.2s ease',
+};
+
+const webDropZoneDraggingStyle = {
+    backgroundColor: '#E8F4FD',
+    borderColor: COLORS.primary,
+    borderWidth: 2,
+    borderStyle: 'dashed' as const,
 };
 
 const styles = StyleSheet.create({
