@@ -52,6 +52,72 @@ interface ApiError {
 const { width } = Dimensions.get('window'); // Get screen width
 // const imageSize = width * 0.9; // Keep this if still needed for native
 
+/**
+ * Compress image for AI analysis - reduces size while maintaining enough quality for visual analysis
+ * Original image is kept for display, this compressed version is only used for API calls
+ * Target: ~200-400KB for fast upload and analysis
+ */
+const compressImageForAI = async (base64Data: string, maxWidth: number = 1024, quality: number = 0.7): Promise<string> => {
+    if (Platform.OS !== 'web') {
+        // On native, return original (compression happens on upload)
+        return base64Data;
+    }
+
+    return new Promise((resolve) => {
+        try {
+            const img = new (window as any).Image();
+            img.onload = () => {
+                // Calculate new dimensions maintaining aspect ratio
+                let newWidth = img.width;
+                let newHeight = img.height;
+                
+                if (img.width > maxWidth) {
+                    newWidth = maxWidth;
+                    newHeight = (img.height * maxWidth) / img.width;
+                }
+
+                // Create canvas for compression
+                const canvas = document.createElement('canvas');
+                canvas.width = newWidth;
+                canvas.height = newHeight;
+                
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                    ctx.drawImage(img, 0, 0, newWidth, newHeight);
+                    
+                    // Convert to compressed JPEG
+                    const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
+                    const compressedBase64 = compressedDataUrl.split(',')[1];
+                    
+                    const originalSize = Math.round((base64Data.length * 3) / 4 / 1024);
+                    const compressedSize = Math.round((compressedBase64.length * 3) / 4 / 1024);
+                    console.log(`[Image Compression] ${originalSize}KB → ${compressedSize}KB (${Math.round((1 - compressedSize/originalSize) * 100)}% reduction)`);
+                    
+                    resolve(compressedBase64);
+                } else {
+                    console.warn('[Image Compression] Canvas context not available, using original');
+                    resolve(base64Data);
+                }
+            };
+            
+            img.onerror = () => {
+                console.warn('[Image Compression] Failed to load image, using original');
+                resolve(base64Data);
+            };
+            
+            // Handle both data URL and raw base64
+            if (base64Data.startsWith('data:')) {
+                img.src = base64Data;
+            } else {
+                img.src = `data:image/jpeg;base64,${base64Data}`;
+            }
+        } catch (error) {
+            console.warn('[Image Compression] Error during compression, using original:', error);
+            resolve(base64Data);
+        }
+    });
+};
+
 // --- New Component: PreDescriptionModal ---
 interface PreDescriptionModalProps {
   visible: boolean;
@@ -470,16 +536,25 @@ export default function NewInspectionScreen() {
             if (!token) throw new Error("Authentication token not found.");
 
             console.log(`[handleGenerateStatement] Generating statement for State: ${userState}, Organization: ${userOrganization}`);
+            
+            // Compress image for faster AI analysis (original kept for display)
+            console.log('[handleGenerateStatement] Compressing image for AI analysis...');
+            const compressedImage = await compressImageForAI(imageBase64, 1024, 0.7);
+            
             console.log(`[handleGenerateStatement] Calling POST ${BASE_URL}/api/generate-statement`);
+            const startTime = Date.now();
+            
             const response = await axios.post(`${BASE_URL}/api/generate-statement`, {
-                imageBase64,
+                imageBase64: compressedImage, // Use compressed image for faster AI processing
                 notes: initialDescription,
                 userState,
                 organization: userOrganization,
             }, {
                 headers: { Authorization: `Bearer ${token}` },
-                timeout: 60000, // 60 second timeout for AI generation
+                timeout: 45000, // Reduced timeout - should be faster now
             });
+            
+            console.log(`[handleGenerateStatement] Response received in ${Date.now() - startTime}ms`);
 
             const data = response.data as GenerateStatementResponse;
 

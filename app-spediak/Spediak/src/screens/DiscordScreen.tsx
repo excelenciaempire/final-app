@@ -6,7 +6,7 @@ import StatementUsageCard from '../components/StatementUsageCard';
 import AdBanner from '../components/AdBanner';
 
 // Discord invite link
-const DISCORD_INVITE_URL = 'https://discord.gg/2XEWBe64';
+const DISCORD_INVITE_URL = 'https://discord.gg/rmEd32mkA5';
 
 const DiscordScreen: React.FC = () => {
   const { width } = useWindowDimensions();

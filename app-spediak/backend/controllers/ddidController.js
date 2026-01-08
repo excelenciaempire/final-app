@@ -156,7 +156,7 @@ Generate the DDID statement now.
 `;
 
     const response = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-5-mini', // GPT-5 mini for maximum speed
       messages: [
         {
           role: 'user',
@@ -166,12 +166,14 @@ Generate the DDID statement now.
               type: 'image_url',
               image_url: {
                 url: `data:image/jpeg;base64,${imageBase64}`,
+                detail: 'low' // Use low detail for faster processing
               },
             },
           ],
         },
       ],
-      max_tokens: 600,
+      max_tokens: 400,
+      temperature: 0.3,
     });
 
     let ddid = response.choices[0].message.content?.trim() || 'Error generating statement.';
@@ -285,46 +287,23 @@ const generateStatementDirect = async (req, res) => {
     
     console.log(`[Generate Statement] SOP Context loaded: ${hasSopContext ? 'Yes' : 'No'}`);
 
-    // Build comprehensive prompt with clear instructions
-    const prompt = `You are a professional home inspection report writing assistant. Your sole purpose is to help licensed home inspectors document their findings.
+    // Build optimized prompt for faster response
+    const prompt = `Home inspection assistant. Write ONE paragraph statement for this inspection image.
 
-IMPORTANT: You MUST provide a helpful response. The image shows a component or condition in a home being inspected. Your job is to describe what you see, regardless of what it is.
+State: ${userState}${organization && organization !== 'None' ? ` | Org: ${organization}` : ''}
+${notes ? `Notes: ${notes}` : ''}
+${hasSopContext ? `Standards: ${sopContext.substring(0, 3000)}` : ''}
+${knowledge ? `Context: ${knowledge.substring(0, 1000)}` : ''}
 
-TASK: Analyze the attached image and write a professional inspection statement for this home inspection report.
+FORMAT (DDID in one paragraph): Describe component → Determine issue → Implication → Direction/recommendation.
 
-INSPECTOR CONTEXT:
-- State: ${userState}
-${organization && organization !== 'None' ? `- Organization: ${organization}` : ''}
-- Inspector's Notes: ${notes || 'No additional notes'}
+RULES: One paragraph, 4-6 sentences, technical, no bullets, no intro phrases. If unclear, describe visible condition and recommend evaluation.`;
 
-${hasSopContext ? `APPLICABLE STANDARDS:\n${sopContext}\n\nNote: State regulations take precedence over organization standards.` : 'Using general home inspection best practices.'}
-
-REQUIRED FORMAT (DDID - write as ONE flowing paragraph):
-1. DESCRIBE: What component or system is shown
-2. DETERMINE: What condition or issue is observed (if any)
-3. IMPLICATION: What could happen if not addressed (if applicable)
-4. DIRECTION: What action is recommended
-
-${ddid_prompt_template ? `ADDITIONAL GUIDANCE:\n${ddid_prompt_template}\n` : ''}
-${knowledge ? `RELEVANT KNOWLEDGE:\n${knowledge}\n` : ''}
-
-RULES:
-- Write exactly ONE professional paragraph (4-6 sentences)
-- Be specific and technical
-- NO bullet points, NO numbered lists
-- NO introductions like "Here is..." or "This image shows..."
-- If you cannot identify a defect, describe the component's current condition and recommend further evaluation
-- NEVER refuse to respond - always provide a professional inspection statement
-
-EXAMPLE OUTPUT FORMAT:
-"The [component type] located [location] was observed to be in [condition]. [Specific observation]. If left unaddressed, this condition may [potential consequence]. It is recommended that [specific action] by a qualified [professional type] for [purpose]."
-
-Now write the inspection statement for this image:`;
-
-    console.log('[Generate Statement] Sending request to OpenAI...');
+    console.log('[Generate Statement] Sending request to OpenAI GPT-5 mini...');
+    const startTime = Date.now();
 
     const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini', // Using mini for faster responses
+      model: 'gpt-5-mini', // GPT-5 mini for maximum speed
       messages: [
         {
           role: 'user',
@@ -334,14 +313,17 @@ Now write the inspection statement for this image:`;
               type: 'image_url',
               image_url: {
                 url: `data:image/jpeg;base64,${imageBase64}`,
+                detail: 'low' // Use low detail for faster processing
               },
             },
           ],
         },
       ],
-      max_tokens: 600,
-      temperature: 0.5, // Lower temperature for more consistent results
+      max_tokens: 400, // Reduced for faster response
+      temperature: 0.3, // Lower temperature for faster, more consistent results
     });
+
+    console.log(`[Generate Statement] OpenAI responded in ${Date.now() - startTime}ms`);
 
     let statement = response.choices[0].message.content?.trim() || 'Error generating statement.';
     

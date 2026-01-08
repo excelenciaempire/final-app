@@ -4,7 +4,7 @@ import { COLORS } from '../styles/colors';
 import { Book, MessageCircle } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 
-const DISCORD_INVITE_URL = 'https://discord.gg/2XEWBe64';
+const DISCORD_INVITE_URL = 'https://discord.gg/rmEd32mkA5';
 
 const ToolsAndCommunityCard: React.FC = () => {
   const navigation = useNavigation<any>();
