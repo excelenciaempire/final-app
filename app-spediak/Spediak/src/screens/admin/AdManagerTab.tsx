@@ -250,32 +250,36 @@ const AdManagerTab: React.FC = () => {
   };
 
   const handleDeleteAd = async (adId: number) => {
-    Alert.alert(
-      'Delete Ad',
-      'Are you sure you want to delete this ad?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const token = await getToken();
-              if (!token) return;
+    const deleteAction = async () => {
+      try {
+        const token = await getToken();
+        if (!token) return;
 
-              await axios.delete(`${BASE_URL}/api/admin/ads/${adId}`, {
-                headers: { Authorization: `Bearer ${token}` }
-              });
+        await axios.delete(`${BASE_URL}/api/admin/ads/${adId}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
 
-              Alert.alert('Success', 'Ad deleted successfully');
-              fetchAds();
-            } catch (error: any) {
-              Alert.alert('Error', 'Failed to delete ad');
-            }
-          }
-        }
-      ]
-    );
+        Alert.alert('Success', 'Ad deleted successfully');
+        fetchAds();
+      } catch (error: any) {
+        Alert.alert('Error', 'Failed to delete ad');
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('Are you sure you want to delete this ad?')) {
+        await deleteAction();
+      }
+    } else {
+      Alert.alert(
+        'Delete Ad',
+        'Are you sure you want to delete this ad?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Delete', style: 'destructive', onPress: deleteAction }
+        ]
+      );
+    }
   };
 
   const handleToggleAdStatus = async (adId: number, currentStatus: boolean) => {
