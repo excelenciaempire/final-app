@@ -91,14 +91,19 @@ const SopAlignmentCard: React.FC = () => {
   }, [selectedState, organization]);
 
   const handleConfigureClick = () => {
+    // For web, use direct URL navigation (more reliable)
+    if (Platform.OS === 'web') {
+      window.location.href = '/sop';
+      return;
+    }
+    
+    // For native, use React Navigation
     try {
-      navigation.navigate('SOP');
+      if (navigation && navigation.navigate) {
+        navigation.navigate('SOP');
+      }
     } catch (err) {
       console.error('Error navigating to SOP:', err);
-      // Fallback for web
-      if (Platform.OS === 'web') {
-        window.location.href = '/sop';
-      }
     }
   };
 

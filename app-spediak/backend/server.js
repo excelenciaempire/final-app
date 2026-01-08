@@ -12,27 +12,46 @@ const PORT = process.env.PORT || 5000;
 
 // Configuración de CORS
 const allowedOrigins = [
-  'https://app-spediak.vercel.app', // Add this domain
-  'https://spediak-approved.vercel.app', // Dominio de producción en Vercel
-  'http://localhost:8081', // Para desarrollo local con Expo Web
-  'http://localhost:19006', // Alternativa para desarrollo local con Expo
-  'http://localhost:3000', // Otra posible alternativa para desarrollo local
-  'https://www.spediak.com', // Added origin
-  'https://app.spediak.com' // New subdomain
+  'https://app-spediak.vercel.app',
+  'https://spediak-approved.vercel.app',
+  'http://localhost:8081',
+  'http://localhost:19006',
+  'http://localhost:3000',
+  'https://www.spediak.com',
+  'https://app.spediak.com',
+  'https://spediak.com'
 ];
 
+// CORS middleware with proper preflight handling
 app.use(cors({
   origin: function (origin, callback) {
-    // Permitir solicitudes sin origen (como aplicaciones móviles)
-    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      console.log('Origen bloqueado por CORS:', origin);
-      callback(new Error('No permitido por CORS'));
+    // Allow requests with no origin (mobile apps, curl, etc.)
+    if (!origin) {
+      return callback(null, true);
     }
+    
+    // Check if origin is in allowed list
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    
+    // Also allow any subdomain of spediak.com
+    if (origin.endsWith('.spediak.com') || origin.endsWith('.vercel.app') || origin.endsWith('.onrender.com')) {
+      return callback(null, true);
+    }
+    
+    console.log('Origen bloqueado por CORS:', origin);
+    callback(new Error('No permitido por CORS'));
   },
-  credentials: true // Permitir credenciales (cookies, headers de autenticación)
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+  exposedHeaders: ['Content-Range', 'X-Content-Range'],
+  maxAge: 86400 // Cache preflight for 24 hours
 }));
+
+// Explicit OPTIONS handling for preflight requests
+app.options('*', cors());
 
 // Webhook Route
 app.post('/api/webhooks/clerk', express.raw({ type: 'application/json' }), handleClerkWebhook);
