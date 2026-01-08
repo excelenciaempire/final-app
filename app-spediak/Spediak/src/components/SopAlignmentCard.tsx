@@ -5,7 +5,7 @@ import { useAuth, useUser } from '@clerk/clerk-expo';
 import axios from 'axios';
 import { BASE_URL } from '../config/api';
 import { COLORS } from '../styles/colors';
-import { FileText, Settings, Info } from 'lucide-react-native';
+import { FileText, Info } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 
 interface ActiveSop {
@@ -118,15 +118,7 @@ const SopAlignmentCard: React.FC = () => {
           <FileText size={20} color={COLORS.primary} />
           <Text style={styles.title}>SOP Alignment for Statements</Text>
         </View>
-        <TouchableOpacity 
-          onPress={handleConfigureClick}
-          style={Platform.OS === 'web' ? { cursor: 'pointer' } as any : undefined}
-          activeOpacity={0.7}
-          accessibilityRole="button"
-          accessibilityLabel="Configure SOP settings"
-        >
-          <Settings size={20} color={COLORS.textSecondary} />
-        </TouchableOpacity>
+        {/* Gear icon removed as per user request */}
       </View>
 
       <Text style={styles.subtitle}>

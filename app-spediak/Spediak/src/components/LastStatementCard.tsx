@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Platform } from 'react-native';
 import { useAuth } from '@clerk/clerk-expo';
 import axios from 'axios';
 import { BASE_URL } from '../config/api';
@@ -59,7 +59,20 @@ const LastStatementCard: React.FC = () => {
   }, []); // Only run once on mount
 
   const handleViewHistory = () => {
-    navigation.navigate('Statement History');
+    // For web, use direct URL navigation
+    if (Platform.OS === 'web') {
+      window.location.href = '/statement-history';
+      return;
+    }
+    
+    // For native, use React Navigation
+    try {
+      if (navigation && navigation.navigate) {
+        navigation.navigate('InspectionHistory');
+      }
+    } catch (err) {
+      console.error('Error navigating to statement history:', err);
+    }
   };
 
   const formatDate = (dateString: string) => {
@@ -118,7 +131,12 @@ const LastStatementCard: React.FC = () => {
         <Text style={styles.previewText}>{getPreview(lastStatement.ddid_text)}</Text>
       </View>
 
-      <TouchableOpacity style={styles.viewHistoryLink} onPress={handleViewHistory}>
+      <TouchableOpacity 
+        style={[styles.viewHistoryLink, Platform.OS === 'web' && { cursor: 'pointer' } as any]} 
+        onPress={handleViewHistory}
+        activeOpacity={0.7}
+        accessibilityRole="link"
+      >
         <Text style={styles.viewHistoryText}>View full statement history</Text>
         <ArrowRight size={16} color={COLORS.primary} />
       </TouchableOpacity>
