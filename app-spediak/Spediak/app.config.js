@@ -28,8 +28,7 @@ module.exports = {
       "shortName": "Spediak",
       "favicon": "./public/favicon.png",
       "bundler": "metro",
-      "output": "static",
-      "template": "./web-build/index.html"
+      "output": "static"
     },
     "extra": {
       "clerkPublishableKey": process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY,

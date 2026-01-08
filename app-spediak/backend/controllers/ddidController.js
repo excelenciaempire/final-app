@@ -172,7 +172,7 @@ Generate the DDID statement now.
           ],
         },
       ],
-      max_tokens: 400,
+      max_completion_tokens: 400, // GPT-5 uses max_completion_tokens
       temperature: 0.3,
     });
 
@@ -319,7 +319,7 @@ RULES: One paragraph, 4-6 sentences, technical, no bullets, no intro phrases. If
           ],
         },
       ],
-      max_tokens: 400, // Reduced for faster response
+      max_completion_tokens: 400, // GPT-5 uses max_completion_tokens instead of max_tokens
       temperature: 0.3, // Lower temperature for faster, more consistent results
     });
 
