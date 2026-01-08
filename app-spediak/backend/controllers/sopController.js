@@ -140,19 +140,19 @@ const assignStateSop = async (req, res) => {
 
     let oldDocumentId = null;
     if (existingAssignment.rows.length > 0) {
-      oldDocumentId = existingAssignment.rows[0].document_id;
+      oldDocumentId = existingAssignment.rows[0].sop_document_id;
       
       // Update existing assignment
       await pool.query(`
         UPDATE sop_assignments 
-        SET document_id = $1, updated_at = NOW()
+        SET sop_document_id = $1, updated_at = NOW()
         WHERE assignment_type = $2 AND assignment_value = $3
       `, [documentId, 'state', state]);
     } else {
       // Create new assignment
       await pool.query(`
         INSERT INTO sop_assignments (
-          document_id,
+          sop_document_id,
           assignment_type,
           assignment_value,
           created_at,
@@ -229,19 +229,19 @@ const assignOrgSop = async (req, res) => {
 
     let oldDocumentId = null;
     if (existingAssignment.rows.length > 0) {
-      oldDocumentId = existingAssignment.rows[0].document_id;
+      oldDocumentId = existingAssignment.rows[0].sop_document_id;
       
       // Update existing assignment
       await pool.query(`
         UPDATE sop_assignments 
-        SET document_id = $1, updated_at = NOW()
+        SET sop_document_id = $1, updated_at = NOW()
         WHERE assignment_type = $2 AND assignment_value = $3
       `, [documentId, 'organization', organization]);
     } else {
       // Create new assignment
       await pool.query(`
         INSERT INTO sop_assignments (
-          document_id,
+          sop_document_id,
           assignment_type,
           assignment_value,
           created_at,
@@ -832,6 +832,105 @@ const getExtractionStatus = async (req, res) => {
   }
 };
 
+/**
+ * Get all SOP organizations
+ */
+const getOrganizations = async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT id, name, created_at, created_by
+      FROM sop_organizations
+      ORDER BY name ASC
+    `);
+    res.json({ organizations: result.rows });
+  } catch (error) {
+    // If table doesn't exist, return empty array
+    if (error.code === '42P01') {
+      return res.json({ organizations: [] });
+    }
+    console.error('Error fetching organizations:', error);
+    res.status(500).json({ message: 'Failed to fetch organizations' });
+  }
+};
+
+/**
+ * Create a new SOP organization
+ */
+const createOrganization = async (req, res) => {
+  try {
+    const { name } = req.body;
+    const clerkId = req.auth.userId;
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({ message: 'Organization name is required' });
+    }
+
+    // Check if exists
+    const existing = await pool.query(
+      'SELECT id FROM sop_organizations WHERE LOWER(name) = LOWER($1)',
+      [name.trim()]
+    );
+    if (existing.rows.length > 0) {
+      return res.status(400).json({ message: 'Organization already exists' });
+    }
+
+    const result = await pool.query(`
+      INSERT INTO sop_organizations (name, created_by, created_at)
+      VALUES ($1, $2, NOW())
+      RETURNING *
+    `, [name.trim(), clerkId]);
+
+    // Log to history
+    await pool.query(`
+      INSERT INTO sop_history (action_type, assignment_type, assignment_value, changed_by, created_at)
+      VALUES ('org_created', 'organization', $1, $2, NOW())
+    `, [name.trim(), clerkId]);
+
+    res.json({ organization: result.rows[0], message: 'Organization created' });
+  } catch (error) {
+    console.error('Error creating organization:', error);
+    res.status(500).json({ message: 'Failed to create organization' });
+  }
+};
+
+/**
+ * Delete an SOP organization
+ */
+const deleteOrganization = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const clerkId = req.auth.userId;
+
+    // Get org name first
+    const org = await pool.query('SELECT name FROM sop_organizations WHERE id = $1', [id]);
+    if (org.rows.length === 0) {
+      return res.status(404).json({ message: 'Organization not found' });
+    }
+
+    const orgName = org.rows[0].name;
+
+    // Delete assignments first
+    await pool.query(
+      'DELETE FROM sop_assignments WHERE assignment_type = $1 AND assignment_value = $2',
+      ['organization', orgName]
+    );
+
+    // Delete org
+    await pool.query('DELETE FROM sop_organizations WHERE id = $1', [id]);
+
+    // Log to history
+    await pool.query(`
+      INSERT INTO sop_history (action_type, assignment_type, assignment_value, changed_by, created_at)
+      VALUES ('org_deleted', 'organization', $1, $2, NOW())
+    `, [orgName, clerkId]);
+
+    res.json({ message: 'Organization deleted' });
+  } catch (error) {
+    console.error('Error deleting organization:', error);
+    res.status(500).json({ message: 'Failed to delete organization' });
+  }
+};
+
 module.exports = {
   uploadSopDocument,
   assignStateSop,
@@ -843,6 +942,9 @@ module.exports = {
   exportSopHistoryCsv,
   retryPdfExtraction,
   getSopTextForContext,
-  getExtractionStatus
+  getExtractionStatus,
+  getOrganizations,
+  createOrganization,
+  deleteOrganization
 };
 

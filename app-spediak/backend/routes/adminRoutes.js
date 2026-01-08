@@ -142,6 +142,11 @@ router.get('/sop/history', sopController.getSopHistory);
 router.get('/sop/history/export-csv', sopController.exportSopHistoryCsv);
 router.post('/sop/:documentId/retry-extraction', sopController.retryPdfExtraction);
 
+// SOP Organization Management
+router.get('/sop/organizations', sopController.getOrganizations);
+router.post('/sop/organizations', sopController.createOrganization);
+router.delete('/sop/organizations/:id', sopController.deleteOrganization);
+
 // Ad Management Routes (Admin only)
 router.get('/ads', adController.getAllAds);
 router.post('/ads', adController.createAd);

@@ -22,9 +22,6 @@ import { US_STATES } from '../../context/GlobalStateContext';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 import { useAppNavigation } from '../../context/AppNavigationContext';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
-const CUSTOM_ORGS_STORAGE_KEY = '@spediak_custom_organizations';
 
 // Helper function to read file as base64 (works on both web and native)
 const readFileAsBase64 = async (fileUri: string, mimeType?: string): Promise<string> => {
@@ -113,14 +110,21 @@ const SopManagementTab: React.FC = () => {
 
   const loadOrganizations = async () => {
     try {
-      // Load custom organizations from AsyncStorage
-      const storedCustomOrgs = await getCustomOrgsFromStorage();
+      const token = await getToken();
+      if (!token) {
+        setOrganizations(DEFAULT_ORGANIZATIONS);
+        return;
+      }
       
-      // Also get organizations from assignments in the database
-      const dbOrgs = await getOrgsFromDatabase();
+      // Load organizations from backend
+      const response = await axios.get(`${BASE_URL}/api/admin/sop/organizations`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
       
-      // Merge all organizations (defaults + custom stored + from DB)
-      const allOrgs = [...new Set([...DEFAULT_ORGANIZATIONS, ...storedCustomOrgs, ...dbOrgs])];
+      const backendOrgs = (response.data.organizations || []).map((o: any) => o.name);
+      
+      // Merge with defaults in case backend fails
+      const allOrgs = [...new Set([...DEFAULT_ORGANIZATIONS, ...backendOrgs])];
       setOrganizations(allOrgs);
       
       if (allOrgs.length > 0 && !allOrgs.includes(selectedOrg)) {
@@ -128,49 +132,10 @@ const SopManagementTab: React.FC = () => {
       }
     } catch (error) {
       console.log('Using default organizations');
+      setOrganizations(DEFAULT_ORGANIZATIONS);
     }
   };
 
-  const getCustomOrgsFromStorage = async (): Promise<string[]> => {
-    try {
-      const stored = await AsyncStorage.getItem(CUSTOM_ORGS_STORAGE_KEY);
-      if (stored) {
-        return JSON.parse(stored);
-      }
-    } catch (error) {
-      console.log('Error reading custom orgs from storage:', error);
-    }
-    return [];
-  };
-
-  const saveCustomOrgsToStorage = async (orgs: string[]) => {
-    try {
-      // Only save non-default organizations
-      const customOrgs = orgs.filter(o => !DEFAULT_ORGANIZATIONS.includes(o));
-      await AsyncStorage.setItem(CUSTOM_ORGS_STORAGE_KEY, JSON.stringify(customOrgs));
-    } catch (error) {
-      console.log('Error saving custom orgs to storage:', error);
-    }
-  };
-
-  const getOrgsFromDatabase = async (): Promise<string[]> => {
-    // Get organizations from assignments in the database
-    try {
-      const token = await getToken();
-      if (!token) return [];
-      
-      const response = await axios.get(`${BASE_URL}/api/admin/sop/assignments`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      const assignments = response.data.assignments || [];
-      const orgAssignments = assignments.filter((a: any) => a.assignment_type === 'organization');
-      const uniqueOrgs = [...new Set(orgAssignments.map((a: any) => a.assignment_value))] as string[];
-      return uniqueOrgs;
-    } catch {
-      return [];
-    }
-  };
 
   const fetchData = async () => {
     setIsLoading(true);
@@ -362,15 +327,26 @@ const SopManagementTab: React.FC = () => {
       return;
     }
 
-    const newOrgList = [...organizations, trimmedName];
-    setOrganizations(newOrgList);
-    setSelectedOrg(trimmedName);
-    setNewOrgName('');
-    
-    // Persist to storage
-    await saveCustomOrgsToStorage(newOrgList);
-    
-    Alert.alert('Success', `Organization "${trimmedName}" added. You can now upload a SOP document for it.`);
+    try {
+      const token = await getToken();
+      if (!token) throw new Error('Not authenticated');
+      
+      // Save to backend
+      await axios.post(`${BASE_URL}/api/admin/sop/organizations`, 
+        { name: trimmedName },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      
+      const newOrgList = [...organizations, trimmedName];
+      setOrganizations(newOrgList);
+      setSelectedOrg(trimmedName);
+      setNewOrgName('');
+      
+      Alert.alert('Success', `Organization "${trimmedName}" added. You can now upload a SOP document for it.`);
+    } catch (error: any) {
+      console.error('Error adding organization:', error);
+      Alert.alert('Error', error.response?.data?.message || 'Failed to add organization');
+    }
   };
 
   // Delete organization
@@ -380,28 +356,52 @@ const SopManagementTab: React.FC = () => {
       return;
     }
 
-    Alert.alert(
-      'Delete Organization',
-      `Are you sure you want to delete "${orgName}"? This will also remove any SOP assignments.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            // Remove from local list
-            const newOrgList = organizations.filter(o => o !== orgName);
-            setOrganizations(newOrgList);
-            if (selectedOrg === orgName) {
-              setSelectedOrg(newOrgList[0] || 'ASHI');
-            }
-            
-            // Persist to storage
-            await saveCustomOrgsToStorage(newOrgList);
-          }
+    const doDelete = async () => {
+      try {
+        const token = await getToken();
+        if (!token) throw new Error('Not authenticated');
+        
+        // Find org ID from backend
+        const response = await axios.get(`${BASE_URL}/api/admin/sop/organizations`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const orgs = response.data.organizations || [];
+        const org = orgs.find((o: any) => o.name === orgName);
+        
+        if (org) {
+          await axios.delete(`${BASE_URL}/api/admin/sop/organizations/${org.id}`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
         }
-      ]
-    );
+        
+        // Update local state
+        const newOrgList = organizations.filter(o => o !== orgName);
+        setOrganizations(newOrgList);
+        if (selectedOrg === orgName) {
+          setSelectedOrg(newOrgList[0] || 'ASHI');
+        }
+        
+        Alert.alert('Success', 'Organization deleted');
+      } catch (error: any) {
+        console.error('Error deleting organization:', error);
+        Alert.alert('Error', error.response?.data?.message || 'Failed to delete organization');
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm(`Delete "${orgName}"? This will also remove any SOP assignments.`)) {
+        doDelete();
+      }
+    } else {
+      Alert.alert(
+        'Delete Organization',
+        `Are you sure you want to delete "${orgName}"? This will also remove any SOP assignments.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Delete', style: 'destructive', onPress: doDelete }
+        ]
+      );
+    }
   };
 
   // Pick document for organization SOP
