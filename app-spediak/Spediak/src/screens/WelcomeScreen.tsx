@@ -11,21 +11,14 @@ import {
     Platform,
     TextInput
 } from 'react-native';
-import { useUser } from '@clerk/clerk-expo';
+import { useUser, useAuth } from '@clerk/clerk-expo';
 import { Picker } from '@react-native-picker/picker';
 import * as ImagePicker from 'expo-image-picker';
+import axios from 'axios';
 import { Camera, CheckCircle } from 'lucide-react-native';
-import { COLORS } from '../styles/colors'; // Assuming you have a colors file
-
-// Define the states available for selection (Format for DropDownPicker)
-// Note: value cannot be null for DropDownPicker, use a placeholder object if needed
-// or handle initial null state carefully.
-const stateItems = [
-    // { label: 'Select State...', value: null }, // Placeholder can be handled by component prop
-    { label: 'North Carolina', value: 'NC' },
-    { label: 'South Carolina', value: 'SC' },
-    // Add other states as needed
-];
+import { COLORS } from '../styles/colors';
+import { US_STATES, ORGANIZATIONS } from '../context/GlobalStateContext';
+import { BASE_URL } from '../config/api';
 
 // Simple navigation prop type for reload logic
 // In a real app, you might use a more specific type or context/state management
@@ -35,11 +28,12 @@ type WelcomeScreenProps = {
 
 const WelcomeScreen: React.FC<WelcomeScreenProps> = () => {
     const { isLoaded, isSignedIn, user } = useUser();
+    const { getToken } = useAuth();
 
     // State for selections
     const [open, setOpen] = useState(false); // State for dropdown open/closed
     const [selectedState, setSelectedState] = useState<string | null>(null); // Keep this for the value
-    const [items, setItems] = useState(stateItems); // Items for the dropdown
+    const [items, setItems] = useState(US_STATES); // Items for the dropdown - all US states
     const [selectedOrganization, setSelectedOrganization] = useState<string | null>(null);
     const [companyName, setCompanyName] = useState<string>('');
 
@@ -173,7 +167,26 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = () => {
             });
             console.log("User metadata updated.");
 
-            // --- Step 3: Reload User & Trigger Navigation ---
+            // --- Step 3: Sync with Backend Database ---
+            try {
+                const token = await getToken();
+                if (token) {
+                    await axios.put(`${BASE_URL}/api/user/profile`, {
+                        primaryState: selectedState,
+                        organization: selectedOrganization || 'None',
+                        companyName: companyName.trim() || null
+                    }, {
+                        headers: { Authorization: `Bearer ${token}` },
+                        timeout: 10000
+                    });
+                    console.log("User profile synced with backend.");
+                }
+            } catch (syncErr: any) {
+                console.warn("Warning: Could not sync profile to backend:", syncErr.message);
+                // Don't block - Clerk is the source of truth, backend will sync on next webhook
+            }
+
+            // --- Step 4: Reload User & Trigger Navigation ---
             console.log("Reloading user data...");
             await user.reload();
             console.log("User data reloaded.");
@@ -224,8 +237,9 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = () => {
                     itemStyle={styles.pickerItem}
                 >
                     <Picker.Item label="Select State..." value={null} style={styles.pickerPlaceholder} />
-                    <Picker.Item label="North Carolina" value="NC" />
-                    <Picker.Item label="South Carolina" value="SC" />
+                    {US_STATES.map((state) => (
+                        <Picker.Item key={state.value} label={state.label} value={state.value} />
+                    ))}
                 </Picker>
             </View>
 
@@ -239,8 +253,9 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = () => {
                     itemStyle={styles.pickerItem}
                 >
                     <Picker.Item label="Select Organization..." value={null} style={styles.pickerPlaceholder} />
-                    <Picker.Item label="ASHI" value="ASHI" />
-                    <Picker.Item label="InterNACHI" value="InterNACHI" />
+                    {ORGANIZATIONS.map((org) => (
+                        <Picker.Item key={org.value} label={org.label} value={org.value} />
+                    ))}
                 </Picker>
             </View>
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Linking } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Linking, Platform } from 'react-native';
 import { useGlobalState } from '../context/GlobalStateContext';
 import { useAuth, useUser } from '@clerk/clerk-expo';
 import axios from 'axios';
@@ -91,7 +91,15 @@ const SopAlignmentCard: React.FC = () => {
   }, [selectedState, organization]);
 
   const handleConfigureClick = () => {
-    navigation.navigate('SOP');
+    try {
+      navigation.navigate('SOP');
+    } catch (err) {
+      console.error('Error navigating to SOP:', err);
+      // Fallback for web
+      if (Platform.OS === 'web') {
+        window.location.href = '/sop';
+      }
+    }
   };
 
   const hasStateSop = activeSops?.stateSop !== null;
@@ -105,7 +113,13 @@ const SopAlignmentCard: React.FC = () => {
           <FileText size={20} color={COLORS.primary} />
           <Text style={styles.title}>SOP Alignment for Statements</Text>
         </View>
-        <TouchableOpacity onPress={handleConfigureClick}>
+        <TouchableOpacity 
+          onPress={handleConfigureClick}
+          style={Platform.OS === 'web' ? { cursor: 'pointer' } as any : undefined}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Configure SOP settings"
+        >
           <Settings size={20} color={COLORS.textSecondary} />
         </TouchableOpacity>
       </View>
@@ -150,7 +164,11 @@ const SopAlignmentCard: React.FC = () => {
           {/* Configure Link */}
           <Text style={styles.configureHint}>
             To change this, adjust SOP settings on the{' '}
-            <Text style={styles.sopPageLink} onPress={handleConfigureClick}>
+            <Text 
+              style={[styles.sopPageLink, Platform.OS === 'web' && { cursor: 'pointer' } as any]} 
+              onPress={handleConfigureClick}
+              accessibilityRole="link"
+            >
               SOP page
             </Text>
             .
