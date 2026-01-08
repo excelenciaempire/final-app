@@ -7,6 +7,7 @@ import { BASE_URL } from '../config/api';
 import { COLORS } from '../styles/colors';
 import { FileText, Info } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useAppNavigation } from '../context/AppNavigationContext';
 
 interface ActiveSop {
   stateSop: { 
@@ -24,6 +25,7 @@ const SopAlignmentCard: React.FC = () => {
   const { getToken } = useAuth();
   const { user } = useUser();
   const navigation = useNavigation<any>();
+  const { navigateTo, isWebDesktop } = useAppNavigation();
   const [activeSops, setActiveSops] = useState<ActiveSop>({ stateSop: null, orgSop: null });
   const [isLoading, setIsLoading] = useState(false);
   const hasFetchedRef = useRef(false);
@@ -91,7 +93,13 @@ const SopAlignmentCard: React.FC = () => {
   }, [selectedState, organization]);
 
   const handleConfigureClick = () => {
-    // For web, use direct URL navigation (more reliable)
+    // For web desktop, use app navigation context
+    if (Platform.OS === 'web' && isWebDesktop) {
+      navigateTo('SOP');
+      return;
+    }
+    
+    // For web mobile or native, use navigation or URL
     if (Platform.OS === 'web') {
       window.location.href = '/sop';
       return;

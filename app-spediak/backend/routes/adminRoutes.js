@@ -123,6 +123,9 @@ router.post('/users/:userId/record-statement', recordStatementEvent);
 router.get('/users/:userId/statement-events', getStatementEvents);
 router.post('/users/:userId/support-info', saveSupportInfo);
 
+// Hard delete user (permanent - use with caution)
+router.delete('/users/:userId', deleteUser);
+
 // SOP Management Routes (Admin only)
 router.post('/sop/upload', sopController.uploadSopDocument);
 router.post('/sop/assign-state', sopController.assignStateSop);

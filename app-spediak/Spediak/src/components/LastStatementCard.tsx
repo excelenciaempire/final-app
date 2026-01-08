@@ -6,6 +6,7 @@ import { BASE_URL } from '../config/api';
 import { COLORS } from '../styles/colors';
 import { FileText, ArrowRight } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useAppNavigation } from '../context/AppNavigationContext';
 
 interface Statement {
   id: number;
@@ -17,6 +18,7 @@ interface Statement {
 const LastStatementCard: React.FC = () => {
   const { getToken } = useAuth();
   const navigation = useNavigation<any>();
+  const { navigateTo, isWebDesktop } = useAppNavigation();
   const [lastStatement, setLastStatement] = useState<Statement | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -59,7 +61,13 @@ const LastStatementCard: React.FC = () => {
   }, []); // Only run once on mount
 
   const handleViewHistory = () => {
-    // For web, use direct URL navigation
+    // For web desktop, use app navigation context
+    if (Platform.OS === 'web' && isWebDesktop) {
+      navigateTo('InspectionHistory');
+      return;
+    }
+    
+    // For web mobile, use direct URL navigation
     if (Platform.OS === 'web') {
       window.location.href = '/statement-history';
       return;

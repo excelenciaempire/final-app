@@ -3,14 +3,22 @@ import { View, Text, StyleSheet, TouchableOpacity, Linking, Platform } from 'rea
 import { COLORS } from '../styles/colors';
 import { Book, MessageCircle } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useAppNavigation } from '../context/AppNavigationContext';
 
 const DISCORD_INVITE_URL = 'https://discord.gg/rmEd32mkA5';
 
 const ToolsAndCommunityCard: React.FC = () => {
   const navigation = useNavigation<any>();
+  const { navigateTo, isWebDesktop } = useAppNavigation();
 
   const handleSopReference = () => {
-    // For web, use direct URL navigation (more reliable)
+    // For web desktop, use app navigation context
+    if (Platform.OS === 'web' && isWebDesktop) {
+      navigateTo('SOP');
+      return;
+    }
+    
+    // For web mobile, use direct URL navigation
     if (Platform.OS === 'web') {
       window.location.href = '/sop';
       return;

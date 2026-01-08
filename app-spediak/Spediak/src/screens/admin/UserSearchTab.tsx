@@ -115,16 +115,25 @@ const UserSearchTab: React.FC = () => {
         const user = response.data.user;
         setLoadedUser(user);
         
-        // Set initial values
-        setUserRole(user.role || 'standard');
+        // Set initial values from search response
+        setUserRole(user.role || (user.is_admin ? 'admin' : 'standard'));
         setAdminNotes(user.admin_notes || '');
         setSupportNotes(user.support_notes || '');
+        setIsSuspended(user.is_suspended || false);
+        setTwoFARequirement(user.two_fa_required ? 'on' : 'off');
         
         // Load related data
         loadUserSecurityFlags(user.clerk_id);
         loadStatementEvents(user.clerk_id);
         loadAuditTrail(user.clerk_id);
         loadSupportTags(user.clerk_id);
+        
+        console.log('[UserSearchTab] User loaded:', { 
+          email: user.email, 
+          role: user.role, 
+          plan: user.plan_type,
+          suspended: user.is_suspended 
+        });
       } else {
         Alert.alert('Not Found', 'No user found with that email address');
         handleClearUser();
@@ -157,15 +166,24 @@ const UserSearchTab: React.FC = () => {
       if (!token) return;
 
       const response = await axios.get(`${BASE_URL}/api/admin/users/${userId}/security-flags`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 10000
       });
       
       const flags = response.data.flags || {};
-      setUserRole(flags.role || flags.is_admin ? 'admin' : 'standard');
+      // Use the role field from backend, or derive from is_admin
+      const role = flags.role || (flags.is_admin ? 'admin' : 'standard');
+      setUserRole(role);
       setTwoFARequirement(flags.two_fa_required ? 'on' : 'off');
       setIsSuspended(flags.is_suspended || false);
+      
+      console.log('[UserSearchTab] Loaded security flags:', { role, twoFA: flags.two_fa_required, suspended: flags.is_suspended });
     } catch (error) {
       console.log('Error loading security flags:', error);
+      // Set defaults
+      setUserRole('standard');
+      setTwoFARequirement('off');
+      setIsSuspended(false);
     }
   };
 
@@ -716,7 +734,11 @@ const UserSearchTab: React.FC = () => {
                 styles.statusBadge, 
                 isSuspended ? styles.suspendedBadge : (loadedUser.is_active !== false ? styles.activeBadge : styles.inactiveBadge)
               ]}>
-                <Text style={styles.statusBadgeText}>
+                <Text style={[
+                  styles.statusBadgeText,
+                  isSuspended && styles.suspendedBadgeText,
+                  loadedUser.is_active === false && !isSuspended && styles.inactiveBadgeText
+                ]}>
                   {isSuspended ? 'SUSPENDED' : (loadedUser.is_active !== false ? 'ACTIVE' : 'INACTIVE')}
                 </Text>
               </View>
@@ -812,10 +834,8 @@ const UserSearchTab: React.FC = () => {
                     onValueChange={setUserRole}
                     style={styles.picker}
                   >
-                    <Picker.Item label="standard" value="standard" />
-                    <Picker.Item label="admin" value="admin" />
-                    <Picker.Item label="moderator" value="moderator" />
-                    <Picker.Item label="support" value="support" />
+                    <Picker.Item label="Standard" value="standard" />
+                    <Picker.Item label="Admin" value="admin" />
                   </Picker>
                   <ChevronDown size={18} color={COLORS.textSecondary} style={styles.pickerIcon} />
                 </View>
@@ -829,8 +849,8 @@ const UserSearchTab: React.FC = () => {
                     onValueChange={setTwoFARequirement}
                     style={styles.picker}
                   >
-                    <Picker.Item label="off" value="off" />
-                    <Picker.Item label="on" value="on" />
+                    <Picker.Item label="Off" value="off" />
+                    <Picker.Item label="On" value="on" />
                   </Picker>
                   <ChevronDown size={18} color={COLORS.textSecondary} style={styles.pickerIcon} />
                 </View>
@@ -1186,6 +1206,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: '#166534',
+  },
+  suspendedBadgeText: {
+    color: '#92400E',
+  },
+  inactiveBadgeText: {
+    color: '#DC2626',
   },
   userDates: {
     marginBottom: 16,

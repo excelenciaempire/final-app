@@ -189,7 +189,9 @@ const AdManagerTab: React.FC = () => {
   };
 
   const handleCreateAd = async () => {
-    if (!newAd.imageUrl && !previewUrl) {
+    const imageUrlToUse = newAd.imageUrl || previewUrl;
+    
+    if (!imageUrlToUse) {
       Alert.alert('Error', 'Please upload an ad image');
       return;
     }
@@ -198,26 +200,50 @@ const AdManagerTab: React.FC = () => {
       return;
     }
 
+    // Basic URL validation
+    const urlToUse = newAd.destinationUrl.trim();
+    if (!urlToUse.startsWith('http://') && !urlToUse.startsWith('https://')) {
+      Alert.alert('Error', 'Please enter a valid URL starting with http:// or https://');
+      return;
+    }
+
     try {
       setIsSaving(true);
       const token = await getToken();
-      if (!token) return;
+      if (!token) {
+        Alert.alert('Error', 'Authentication required');
+        return;
+      }
 
-      await axios.post(`${BASE_URL}/api/admin/ads`, {
-        title: 'Ad',  // Simple default title for internal use
-        destination_url: newAd.destinationUrl,
-        image_url: newAd.imageUrl || previewUrl
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
+      console.log('[AdManager] Creating ad with:', { 
+        title: 'Ad', 
+        destination_url: urlToUse, 
+        image_url: imageUrlToUse 
       });
 
-      Alert.alert('Success', 'Ad created successfully');
+      const response = await axios.post(`${BASE_URL}/api/admin/ads`, {
+        title: 'Ad',  // Simple default title for internal use
+        destination_url: urlToUse,
+        image_url: imageUrlToUse
+      }, {
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 15000
+      });
+
+      console.log('[AdManager] Ad created successfully:', response.data);
+
+      // Reset form
       setNewAd({ title: '', subtitle: '', destinationUrl: '', imageUrl: '' });
       setPreviewUrl(null);
-      fetchAds();
+      
+      // Refresh ads list
+      await fetchAds();
+      
+      Alert.alert('Success', 'Ad created successfully');
     } catch (error: any) {
-      console.error('Error creating ad:', error);
-      Alert.alert('Error', error.response?.data?.message || 'Failed to create ad');
+      console.error('[AdManager] Error creating ad:', error);
+      const errorMessage = error.response?.data?.message || error.message || 'Failed to create ad';
+      Alert.alert('Error', errorMessage);
     } finally {
       setIsSaving(false);
     }
@@ -831,7 +857,6 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   createButton: {
-    flex: 1,
     backgroundColor: COLORS.primary,
     flexDirection: 'row',
     alignItems: 'center',
@@ -839,6 +864,8 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 10,
     gap: 8,
+    marginTop: 16,
+    width: '100%',
   },
   buttonDisabled: {
     opacity: 0.6,

@@ -908,15 +908,19 @@ const getUserSecurityFlags = async (req, res) => {
       [userId]
     );
 
-    res.json({
-      flags: result.rows.length > 0 ? result.rows[0] : {
-        is_admin: false,
-        is_beta_user: false,
-        is_vip: false,
-        is_suspended: false,
-        fraud_flag: false
-      }
-    });
+    const flags = result.rows.length > 0 ? result.rows[0] : {
+      is_admin: false,
+      is_beta_user: false,
+      is_vip: false,
+      is_suspended: false,
+      fraud_flag: false,
+      two_fa_required: false
+    };
+
+    // Add role field for frontend convenience
+    flags.role = flags.is_admin ? 'admin' : 'standard';
+
+    res.json({ flags });
 
   } catch (error) {
     console.error('[Admin] Error fetching security flags:', error);
@@ -925,11 +929,13 @@ const getUserSecurityFlags = async (req, res) => {
 };
 
 /**
- * Update user security flags
+ * Update user security flags and role
+ * When a user is made admin, they get unlimited (platinum) access
+ * When a user is demoted from admin, they get free tier access
  */
 const updateUserSecurityFlags = async (req, res) => {
   const { userId } = req.params;
-  const { isAdmin, isBetaUser, isVip, isSuspended, suspensionReason, fraudFlag, fraudNotes } = req.body;
+  const { role, isAdmin, isBetaUser, isVip, isSuspended, suspensionReason, fraudFlag, fraudNotes, two_fa_required } = req.body;
   const adminClerkId = req.auth?.userId;
 
   if (!userId) {
@@ -937,12 +943,15 @@ const updateUserSecurityFlags = async (req, res) => {
   }
 
   try {
+    // Determine admin status from role if provided
+    const isAdminValue = role === 'admin' || isAdmin || false;
+    
     const result = await pool.query(`
       INSERT INTO user_security_flags (
         user_clerk_id, is_admin, is_beta_user, is_vip, is_suspended, 
-        suspension_reason, suspended_at, suspended_by, fraud_flag, fraud_notes
+        suspension_reason, suspended_at, suspended_by, fraud_flag, fraud_notes, two_fa_required
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       ON CONFLICT (user_clerk_id) 
       DO UPDATE SET 
         is_admin = $2,
@@ -954,11 +963,12 @@ const updateUserSecurityFlags = async (req, res) => {
         suspended_by = CASE WHEN $5 = TRUE THEN $8 ELSE user_security_flags.suspended_by END,
         fraud_flag = $9,
         fraud_notes = $10,
+        two_fa_required = COALESCE($11, user_security_flags.two_fa_required),
         updated_at = NOW()
       RETURNING *
     `, [
       userId, 
-      isAdmin || false, 
+      isAdminValue, 
       isBetaUser || false, 
       isVip || false, 
       isSuspended || false, 
@@ -966,14 +976,59 @@ const updateUserSecurityFlags = async (req, res) => {
       isSuspended ? new Date() : null,
       adminClerkId,
       fraudFlag || false,
-      fraudNotes || null
+      fraudNotes || null,
+      two_fa_required || false
     ]);
+
+    // If user is made admin, update their subscription to platinum (unlimited)
+    // If user is demoted from admin, set them back to free tier
+    if (isAdminValue) {
+      // Admin gets unlimited access (platinum)
+      await pool.query(`
+        UPDATE user_subscriptions 
+        SET 
+          plan_type = 'platinum',
+          statements_limit = -1,
+          subscription_status = 'active',
+          updated_at = NOW()
+        WHERE clerk_id = $1
+      `, [userId]);
+      console.log(`[Admin] User ${userId} promoted to admin - granted platinum (unlimited) access`);
+    } else {
+      // Check current plan - only demote if they were on platinum
+      const currentSub = await pool.query(
+        'SELECT plan_type FROM user_subscriptions WHERE clerk_id = $1',
+        [userId]
+      );
+      
+      if (currentSub.rows.length > 0 && currentSub.rows[0].plan_type === 'platinum') {
+        // Demoted from admin, set back to free tier
+        await pool.query(`
+          UPDATE user_subscriptions 
+          SET 
+            plan_type = 'free',
+            statements_limit = 5,
+            subscription_status = 'active',
+            updated_at = NOW()
+          WHERE clerk_id = $1
+        `, [userId]);
+        console.log(`[Admin] User ${userId} demoted from admin - set to free tier`);
+      }
+    }
 
     // Log to audit
     await pool.query(`
       INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, action_details)
       VALUES ($1, $2, $3, $4, $5, $6)
-    `, [adminClerkId, 'update_security_flags', 'security', 'user', userId, JSON.stringify({ isAdmin, isBetaUser, isVip, isSuspended, fraudFlag })]);
+    `, [adminClerkId, 'update_security_flags', 'security', 'user', userId, JSON.stringify({ 
+      role: isAdminValue ? 'admin' : 'standard',
+      isAdmin: isAdminValue, 
+      isBetaUser, 
+      isVip, 
+      isSuspended, 
+      fraudFlag,
+      two_fa_required 
+    })]);
 
     res.json({
       message: 'Security flags updated successfully',
@@ -1153,13 +1208,18 @@ const searchUserByEmail = async (req, res) => {
         us.statements_used,
         us.statements_limit,
         us.last_reset_date,
+        us.subscription_status,
+        us.trial_end_date,
         sf.is_admin,
         sf.is_beta_user,
         sf.is_vip,
         sf.is_suspended,
         sf.fraud_flag,
+        sf.two_fa_required,
         (SELECT COUNT(*) FROM inspections WHERE user_id = u.clerk_id) as inspection_count,
-        (SELECT COUNT(*) FROM admin_user_notes WHERE user_clerk_id = u.clerk_id) as notes_count
+        (SELECT COUNT(*) FROM admin_user_notes WHERE user_clerk_id = u.clerk_id) as notes_count,
+        (SELECT note FROM admin_user_notes WHERE user_clerk_id = u.clerk_id AND (note_type = 'admin' OR note_type IS NULL) ORDER BY created_at DESC LIMIT 1) as admin_notes,
+        (SELECT note FROM admin_user_notes WHERE user_clerk_id = u.clerk_id AND note_type = 'support' ORDER BY created_at DESC LIMIT 1) as support_notes
       FROM users u
       LEFT JOIN user_profiles up ON u.clerk_id = up.clerk_id
       LEFT JOIN user_subscriptions us ON u.clerk_id = us.clerk_id
@@ -1171,9 +1231,11 @@ const searchUserByEmail = async (req, res) => {
       return res.json({ user: null });
     }
 
-    res.json({
-      user: result.rows[0]
-    });
+    // Add role field for convenience
+    const user = result.rows[0];
+    user.role = user.is_admin ? 'admin' : 'standard';
+
+    res.json({ user });
 
   } catch (error) {
     console.error('[Admin] Error searching user:', error);
@@ -1500,12 +1562,21 @@ const saveSupportInfo = async (req, res) => {
   try {
     // Update or insert support notes
     if (notes !== undefined) {
-      await pool.query(`
-        INSERT INTO admin_user_notes (user_clerk_id, admin_clerk_id, note, note_type)
-        VALUES ($1, $2, $3, 'support')
-        ON CONFLICT (user_clerk_id, note_type) WHERE note_type = 'support'
-        DO UPDATE SET note = $3, updated_at = NOW()
+      // First try to update existing support note
+      const updateResult = await pool.query(`
+        UPDATE admin_user_notes 
+        SET note = $3, updated_at = NOW()
+        WHERE user_clerk_id = $1 AND note_type = 'support'
+        RETURNING id
       `, [userId, adminClerkId, notes]);
+      
+      // If no existing support note, insert new one
+      if (updateResult.rowCount === 0) {
+        await pool.query(`
+          INSERT INTO admin_user_notes (user_clerk_id, admin_clerk_id, note, note_type)
+          VALUES ($1, $2, $3, 'support')
+        `, [userId, adminClerkId, notes]);
+      }
     }
 
     // Update tags
@@ -1516,11 +1587,11 @@ const saveSupportInfo = async (req, res) => {
       // Insert new tags
       for (const [tagKey, isActive] of Object.entries(tags)) {
         if (isActive) {
-          const tagName = tagKey.replace('_', ' ');
+          const tagName = tagKey.replace(/_/g, ' ');
           await pool.query(`
-            INSERT INTO user_support_tags (user_clerk_id, tag_name, admin_clerk_id)
-            VALUES ($1, $2, $3)
-            ON CONFLICT DO NOTHING
+            INSERT INTO user_support_tags (user_clerk_id, tag_name, tag_color, added_by, admin_clerk_id)
+            VALUES ($1, $2, '#6366f1', $3, $3)
+            ON CONFLICT (user_clerk_id, tag_name) DO NOTHING
           `, [userId, tagName, adminClerkId]);
         }
       }

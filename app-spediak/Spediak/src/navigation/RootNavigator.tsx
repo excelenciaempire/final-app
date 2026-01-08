@@ -14,6 +14,7 @@ import { useGlobalState, US_STATES } from '../context/GlobalStateContext';
 import { useSubscription } from '../context/SubscriptionContext';
 import { Picker } from '@react-native-picker/picker';
 import SafeComponent from '../components/SafeComponent';
+import { AppNavigationProvider } from '../context/AppNavigationContext';
 
 // Import Screens
 import NewInspectionScreen from '../../app/(tabs)/newInspection';
@@ -370,14 +371,16 @@ const RootNavigator: React.FC = () => {
     }
 
     return (
-        <View style={{ flex: 1, flexDirection: 'row' }}>
-            <View style={styles.webSidebar}>
-                 <SidebarContent onNavigate={setActiveScreen} activeScreen={activeScreen} isAdmin={isAdmin} />
+        <AppNavigationProvider setActiveScreen={setActiveScreen} isWebDesktop={true}>
+            <View style={{ flex: 1, flexDirection: 'row' }}>
+                <View style={styles.webSidebar}>
+                     <SidebarContent onNavigate={setActiveScreen} activeScreen={activeScreen} isAdmin={isAdmin} />
+                </View>
+                <View style={styles.webContent}>
+                     {CurrentScreenComponent ? <CurrentScreenComponent /> : <Text>Select an option</Text>}
+                </View>
             </View>
-            <View style={styles.webContent}>
-                 {CurrentScreenComponent ? <CurrentScreenComponent /> : <Text>Select an option</Text>}
-            </View>
-        </View>
+        </AppNavigationProvider>
     );
   }
 
