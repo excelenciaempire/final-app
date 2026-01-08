@@ -69,13 +69,14 @@ const SopScreen: React.FC = () => {
       const response = await axios.get(`${BASE_URL}/api/sop/active`, {
         headers: { Authorization: `Bearer ${token}` },
         params,
-        timeout: 10000
+        timeout: 15000
       });
 
       setActiveStateSop(response.data.stateSop);
       setActiveOrgSop(response.data.orgSop);
     } catch (err: any) {
       console.error('Error fetching SOP data:', err);
+      // Don't show error - just set empty state
       setActiveStateSop(null);
       setActiveOrgSop(null);
     } finally {
@@ -87,8 +88,18 @@ const SopScreen: React.FC = () => {
     fetchSopData();
   }, [fetchSopData]);
 
-  const handleDownload = async (fileUrl: string, documentName: string) => {
+  // Open PDF in browser/viewer instead of downloading
+  const handleViewDocument = async (fileUrl: string, documentName: string) => {
     try {
+      // For web, open in new tab
+      if (Platform.OS === 'web') {
+        // Use Google Docs viewer for PDFs to view in-browser
+        const viewerUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(fileUrl)}&embedded=true`;
+        window.open(viewerUrl, '_blank');
+        return;
+      }
+      
+      // For native, open with system viewer
       const canOpen = await Linking.canOpenURL(fileUrl);
       if (canOpen) {
         await Linking.openURL(fileUrl);
@@ -209,9 +220,9 @@ const SopScreen: React.FC = () => {
               {hasStateSop && activeStateSop.fileUrl && (
                 <TouchableOpacity 
                   style={styles.downloadButton}
-                  onPress={() => handleDownload(activeStateSop.fileUrl, activeStateSop.documentName)}
+                  onPress={() => handleViewDocument(activeStateSop.fileUrl, activeStateSop.documentName)}
                 >
-                  <Download size={16} color={COLORS.primary} />
+                  <ExternalLink size={16} color={COLORS.primary} />
                 </TouchableOpacity>
               )}
             </View>
@@ -227,9 +238,9 @@ const SopScreen: React.FC = () => {
               {hasOrgSop && activeOrgSop.fileUrl && (
                 <TouchableOpacity 
                   style={styles.downloadButton}
-                  onPress={() => handleDownload(activeOrgSop.fileUrl, activeOrgSop.documentName)}
+                  onPress={() => handleViewDocument(activeOrgSop.fileUrl, activeOrgSop.documentName)}
                 >
-                  <Download size={16} color={COLORS.primary} />
+                  <ExternalLink size={16} color={COLORS.primary} />
                 </TouchableOpacity>
               )}
             </View>

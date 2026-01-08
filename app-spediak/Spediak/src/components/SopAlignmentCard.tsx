@@ -70,7 +70,7 @@ const SopAlignmentCard: React.FC = () => {
         const response = await axios.get(`${BASE_URL}/api/sop/active`, {
           headers: { Authorization: `Bearer ${token}` },
           params,
-          timeout: 5000
+          timeout: 15000
         });
 
         setActiveSops({

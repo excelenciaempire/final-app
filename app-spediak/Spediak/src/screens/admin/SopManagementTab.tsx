@@ -17,7 +17,7 @@ import { useNavigation } from '@react-navigation/native';
 import axios from 'axios';
 import { BASE_URL } from '../../config/api';
 import { COLORS } from '../../styles/colors';
-import { Upload, FileText, Check, Plus, Trash2, History, ChevronDown, X, File } from 'lucide-react-native';
+import { Upload, FileText, Check, Plus, Trash2, History, ChevronDown, X, File, Eye } from 'lucide-react-native';
 import { US_STATES } from '../../context/GlobalStateContext';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
@@ -598,6 +598,27 @@ const SopManagementTab: React.FC = () => {
     }
   };
 
+  // View document in browser
+  const handleViewDocument = async (fileUrl: string) => {
+    try {
+      if (Platform.OS === 'web') {
+        // Use Google Docs viewer for PDFs to view in-browser
+        const viewerUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(fileUrl)}&embedded=true`;
+        window.open(viewerUrl, '_blank');
+      } else {
+        const canOpen = await Linking.canOpenURL(fileUrl);
+        if (canOpen) {
+          await Linking.openURL(fileUrl);
+        } else {
+          Alert.alert('Error', 'Cannot open this file URL');
+        }
+      }
+    } catch (error) {
+      console.error('Error opening document:', error);
+      Alert.alert('Error', 'Failed to open document');
+    }
+  };
+
   const currentStateAssignment = getStateAssignment(selectedState);
   const recentStateAssignments = getRecentStateAssignments();
 
@@ -642,6 +663,15 @@ const SopManagementTab: React.FC = () => {
             <Text style={styles.currentAssignmentText}>
               Document assigned: {currentStateAssignment.document_name || 'SOP Document'}
             </Text>
+            {currentStateAssignment.file_url && (
+              <TouchableOpacity 
+                style={styles.viewButton}
+                onPress={() => handleViewDocument(currentStateAssignment.file_url)}
+              >
+                <Eye size={14} color={COLORS.primary} />
+                <Text style={styles.viewButtonText}>View</Text>
+              </TouchableOpacity>
+            )}
           </View>
         ) : (
           <View style={styles.noAssignmentBanner}>
@@ -1249,6 +1279,21 @@ const styles = StyleSheet.create({
   deleteOrgButtonText: {
     fontSize: 12,
     color: '#DC2626',
+    fontWeight: '500',
+  },
+  viewButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EFF6FF',
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 4,
+    marginLeft: 'auto',
+    gap: 4,
+  },
+  viewButtonText: {
+    fontSize: 12,
+    color: COLORS.primary,
     fontWeight: '500',
   },
 });
