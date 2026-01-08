@@ -18,7 +18,7 @@ import { COLORS } from '../styles/colors';
 
 interface DdidModalProps {
     visible: boolean;
-    onClose: () => void;
+    onClose: (editedText?: string) => void;
     ddidText: string;
     imageUri?: string;
 }
@@ -69,12 +69,22 @@ const DdidModal: React.FC<DdidModalProps> = ({
         }
     };
 
+    // Close modal and pass edited text back
+    const handleClose = () => {
+        // If text was edited, pass it back
+        if (editableText !== ddidText) {
+            onClose(editableText);
+        } else {
+            onClose();
+        }
+    };
+
     return (
         <Modal
             animationType="fade"
             transparent={true}
             visible={visible}
-            onRequestClose={onClose}
+            onRequestClose={handleClose}
         >
             <KeyboardAvoidingView 
                 behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -84,7 +94,7 @@ const DdidModal: React.FC<DdidModalProps> = ({
                     <View style={styles.modalView}>
                         <View style={styles.modalHeader}>
                             <Text style={styles.headerTitle}>Generated Statement</Text>
-                            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+                            <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
                                 <X size={24} color="#6c757d" />
                             </TouchableOpacity>
                         </View>

@@ -82,6 +82,53 @@ const createInspection = async (req, res) => {
   }
 };
 
+const updateInspection = async (req, res) => {
+  const userId = req.auth.userId;
+  if (!userId) {
+    return res.status(401).json({ message: 'Not authorized' });
+  }
+
+  const { id } = req.params;
+  const { ddid, description } = req.body;
+
+  if (!ddid && !description) {
+    return res.status(400).json({ message: 'Nothing to update' });
+  }
+
+  try {
+    // Build dynamic update query
+    const updates = [];
+    const values = [];
+    let paramIndex = 1;
+
+    if (ddid !== undefined) {
+      updates.push(`ddid = $${paramIndex++}`);
+      values.push(ddid);
+    }
+    if (description !== undefined) {
+      updates.push(`description = $${paramIndex++}`);
+      values.push(description);
+    }
+
+    values.push(id, userId);
+
+    const result = await pool.query(
+      `UPDATE inspections SET ${updates.join(', ')} WHERE id = $${paramIndex++} AND user_id = $${paramIndex} RETURNING *`,
+      values
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: 'Inspection not found or not authorized' });
+    }
+
+    console.log(`[updateInspection] Updated inspection ${id} for user ${userId}`);
+    return res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating inspection:', err);
+    return res.status(500).json({ message: 'Error updating inspection', error: err.message });
+  }
+};
+
 const deleteInspection = async (req, res) => {
   const userId = req.auth.userId; // Obtener userId del middleware
   if (!userId) {
@@ -135,6 +182,7 @@ const getPresignedUrl = async (req, res) => {
 module.exports = {
   getInspectionHistory: getInspections,
   createInspection,
+  updateInspection,
   deleteInspection,
   // --- Adding all the missing exports ---
   getPrimaryEmail,

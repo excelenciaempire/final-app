@@ -374,8 +374,11 @@ export default function NewInspectionScreen() {
     };
     // --- END NEW FUNCTION ---
 
-    // Modify saveInspection to accept Cloudinary URL
-    const saveInspection = async (ddid: string, cloudinaryImageUrl: string | null) => {
+    // State to track the last saved inspection ID for updates
+    const [lastSavedInspectionId, setLastSavedInspectionId] = useState<string | null>(null);
+
+    // Modify saveInspection to accept Cloudinary URL and return the ID
+    const saveInspection = async (ddid: string, cloudinaryImageUrl: string | null): Promise<string | null> => {
         console.log("[saveInspection] Attempting to save inspection with Cloudinary URL:", cloudinaryImageUrl);
         try {
             const token = await getToken();
@@ -390,11 +393,19 @@ export default function NewInspectionScreen() {
             };
             console.log(`[saveInspection] Preparing to POST to ${BASE_URL}/api/inspections with payload:`, JSON.stringify(payload));
 
-            await axios.post(`${BASE_URL}/api/inspections`, payload, {
+            const response = await axios.post(`${BASE_URL}/api/inspections`, payload, {
                 headers: { Authorization: `Bearer ${token}` },
                 timeout: 15000
             });
             console.log("[saveInspection] Inspection saved successfully via API.");
+            
+            // Store the saved inspection ID
+            const savedId = response.data?.inspection?.id || response.data?.id;
+            if (savedId) {
+                setLastSavedInspectionId(savedId);
+                return savedId;
+            }
+            return null;
 
         } catch (err: any) {
             console.error("[saveInspection] Error caught during save attempt:", err);
@@ -405,6 +416,34 @@ export default function NewInspectionScreen() {
             const errorMessage = err.response?.data?.message || err.message || "Could not save the inspection.";
             // Don't show alert for save failures - the statement was still generated successfully
             console.warn("[saveInspection] Save failed but statement was generated:", errorMessage);
+            return null;
+        }
+    };
+
+    // Update an already saved statement with edited text
+    const updateSavedStatement = async (editedText: string) => {
+        if (!lastSavedInspectionId) {
+            console.log("[updateSavedStatement] No saved inspection ID, skipping update");
+            return;
+        }
+        
+        try {
+            const token = await getToken();
+            if (!token) throw new Error("User not authenticated");
+
+            console.log(`[updateSavedStatement] Updating inspection ${lastSavedInspectionId} with edited statement`);
+            
+            await axios.patch(`${BASE_URL}/api/inspections/${lastSavedInspectionId}`, {
+                ddid: editedText
+            }, {
+                headers: { Authorization: `Bearer ${token}` },
+                timeout: 10000
+            });
+            
+            console.log("[updateSavedStatement] Statement updated successfully");
+        } catch (err: any) {
+            console.error("[updateSavedStatement] Error updating statement:", err);
+            // Silent fail - don't disrupt user experience
         }
     };
 
@@ -1115,7 +1154,15 @@ export default function NewInspectionScreen() {
 
             <DdidModal
                 visible={showDdidModal}
-                onClose={() => setShowDdidModal(false)}
+                onClose={(editedText) => {
+                    setShowDdidModal(false);
+                    // If user edited the statement, update the saved statement
+                    if (editedText && editedText !== generatedDdid) {
+                        setGeneratedDdid(editedText);
+                        // Update the saved inspection with the edited statement
+                        updateSavedStatement(editedText);
+                    }
+                }}
                 ddidText={generatedDdid || ''}
                 imageUri={cloudinaryUrl || undefined}
              />
