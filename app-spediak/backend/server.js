@@ -75,7 +75,28 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log('Orígenes CORS permitidos:', allowedOrigins);
 });
 
-// Global error handler (optional but good practice)
+// Global error handler
 app.use((err, req, res, next) => {
-  // ... existing code ...
+  console.error('Global error handler:', err.message);
+  
+  // Handle CORS errors
+  if (err.message === 'No permitido por CORS') {
+    return res.status(403).json({ message: 'CORS not allowed' });
+  }
+  
+  // Handle other errors
+  res.status(err.status || 500).json({
+    message: err.message || 'Internal server error',
+    error: process.env.NODE_ENV === 'development' ? err.stack : undefined
+  });
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+});
+
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });

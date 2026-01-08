@@ -557,8 +557,8 @@ const getSopHistory = async (req, res) => {
     res.json({
       history: [],
       total: 0,
-      limit: parseInt(limit) || 20,
-      offset: parseInt(offset) || 0,
+      limit: parseInt(req.query.limit) || 20,
+      offset: parseInt(req.query.offset) || 0,
       warning: 'Could not load SOP history: ' + error.message
     });
   }
