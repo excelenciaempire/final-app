@@ -70,7 +70,10 @@ const UserSearchTab: React.FC = () => {
 
   // Admin Notes State
   const [adminNotes, setAdminNotes] = useState('');
+  const [adminNotesList, setAdminNotesList] = useState<any[]>([]);
+  const [supportNotesList, setSupportNotesList] = useState<any[]>([]);
   const [isSavingNotes, setIsSavingNotes] = useState(false);
+  const [isDeletingNote, setIsDeletingNote] = useState<number | null>(null);
 
   // Roles & Security State
   const [userRole, setUserRole] = useState('standard');
@@ -132,6 +135,7 @@ const UserSearchTab: React.FC = () => {
         loadStatementEvents(user.clerk_id);
         loadAuditTrail(user.clerk_id);
         loadSupportTags(user.clerk_id);
+        loadUserNotes(user.clerk_id);
         
         console.log('[UserSearchTab] User loaded:', { 
           email: user.email, 
@@ -223,6 +227,68 @@ const UserSearchTab: React.FC = () => {
     }
   };
 
+  // Load user notes (admin and support)
+  const loadUserNotes = async (userId: string) => {
+    try {
+      const token = await getToken();
+      if (!token) return;
+
+      const response = await axios.get(`${BASE_URL}/api/admin/users/${userId}/notes`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      const allNotes = response.data.notes || [];
+      
+      // Separate admin and support notes
+      const adminNotes = allNotes.filter((n: any) => n.note_type === 'admin' || !n.note_type);
+      const supportNotes = allNotes.filter((n: any) => n.note_type === 'support');
+      
+      setAdminNotesList(adminNotes);
+      setSupportNotesList(supportNotes);
+    } catch (error) {
+      console.log('Error loading user notes:', error);
+      setAdminNotesList([]);
+      setSupportNotesList([]);
+    }
+  };
+
+  // Delete a note
+  const handleDeleteNote = async (noteId: number, noteType: string) => {
+    if (!loadedUser) return;
+
+    Alert.alert('Confirm Delete', 'Are you sure you want to delete this note?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          setIsDeletingNote(noteId);
+          try {
+            const token = await getToken();
+            if (!token) return;
+
+            await axios.delete(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/notes/${noteId}`, {
+              headers: { Authorization: `Bearer ${token}` }
+            });
+
+            // Remove from local state
+            if (noteType === 'admin' || !noteType) {
+              setAdminNotesList(prev => prev.filter(n => n.id !== noteId));
+            } else {
+              setSupportNotesList(prev => prev.filter(n => n.id !== noteId));
+            }
+
+            addLocalAuditEvent('Note deleted');
+          } catch (error) {
+            Alert.alert('Error', 'Failed to delete note');
+          } finally {
+            setIsDeletingNote(null);
+          }
+        }
+      }
+    ]);
+  };
+
   // Load statement events
   const loadStatementEvents = async (userId: string) => {
     setIsLoadingEvents(true);
@@ -268,6 +334,11 @@ const UserSearchTab: React.FC = () => {
   // Save admin notes
   const handleSaveNotes = async () => {
     if (!loadedUser) return;
+    
+    if (!adminNotes.trim()) {
+      Alert.alert('Error', 'Please enter a note');
+      return;
+    }
 
     setIsSavingNotes(true);
     try {
@@ -275,14 +346,18 @@ const UserSearchTab: React.FC = () => {
       if (!token) return;
 
       await axios.post(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/notes`, 
-        { note: adminNotes },
+        { note: adminNotes, noteType: 'admin' },
         { headers: { Authorization: `Bearer ${token}` }}
       );
 
-      Alert.alert('Success', 'Notes saved successfully');
-      addLocalAuditEvent('Notes updated');
+      // Clear input and reload notes
+      setAdminNotes('');
+      loadUserNotes(loadedUser.clerk_id);
+      
+      Alert.alert('Success', 'Note added successfully');
+      addLocalAuditEvent('Admin note added');
     } catch (error) {
-      Alert.alert('Error', 'Failed to save notes');
+      Alert.alert('Error', 'Failed to save note');
     } finally {
       setIsSavingNotes(false);
     }
@@ -292,7 +367,7 @@ const UserSearchTab: React.FC = () => {
   const handleSuspendUser = async () => {
     if (!loadedUser) return;
 
-    Alert.alert('Confirm Suspend', 'Are you sure you want to suspend this user?', [
+    Alert.alert('Confirm Suspend', 'Are you sure you want to suspend this user? They will be blocked from accessing the app.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Suspend',
@@ -307,11 +382,15 @@ const UserSearchTab: React.FC = () => {
               headers: { Authorization: `Bearer ${token}` }
             });
 
-            Alert.alert('Success', 'User suspended');
+            // Update local state immediately
+            setIsSuspended(true);
+            setLoadedUser(prev => prev ? { ...prev, is_suspended: true } : null);
+            
+            Alert.alert('Success', 'User suspended. They will be blocked on their next API request.');
             addLocalAuditEvent('User suspended');
-            handleSearchUser();
-          } catch (error) {
-            Alert.alert('Error', 'Failed to suspend user');
+          } catch (error: any) {
+            console.error('Suspend error:', error);
+            Alert.alert('Error', error.response?.data?.message || 'Failed to suspend user');
           } finally {
             setActionLoading(null);
           }
@@ -324,23 +403,35 @@ const UserSearchTab: React.FC = () => {
   const handleReactivateUser = async () => {
     if (!loadedUser) return;
 
-    setActionLoading('reactivate');
-    try {
-      const token = await getToken();
-      if (!token) return;
+    Alert.alert('Confirm Reactivate', 'Are you sure you want to reactivate this user?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Reactivate',
+        onPress: async () => {
+          setActionLoading('reactivate');
+          try {
+            const token = await getToken();
+            if (!token) return;
 
-      await axios.post(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/reactivate`, {}, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+            await axios.post(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/reactivate`, {}, {
+              headers: { Authorization: `Bearer ${token}` }
+            });
 
-      Alert.alert('Success', 'User reactivated');
-      addLocalAuditEvent('User reactivated');
-      handleSearchUser();
-    } catch (error) {
-      Alert.alert('Error', 'Failed to reactivate user');
-    } finally {
-      setActionLoading(null);
-    }
+            // Update local state immediately
+            setIsSuspended(false);
+            setLoadedUser(prev => prev ? { ...prev, is_suspended: false } : null);
+            
+            Alert.alert('Success', 'User reactivated. They can now access the app again.');
+            addLocalAuditEvent('User reactivated');
+          } catch (error: any) {
+            console.error('Reactivate error:', error);
+            Alert.alert('Error', error.response?.data?.message || 'Failed to reactivate user');
+          } finally {
+            setActionLoading(null);
+          }
+        }
+      }
+    ]);
   };
 
   // Cancel subscription
@@ -639,7 +730,7 @@ const UserSearchTab: React.FC = () => {
     }
   };
 
-  // Enter read-only impersonation
+  // Enter read-only impersonation - view user's statement history
   const handleEnterImpersonation = async () => {
     if (!loadedUser) return;
     
@@ -651,37 +742,20 @@ const UserSearchTab: React.FC = () => {
       plan_type: loadedUser.plan_type,
     });
     
-    // Log the action
-    try {
-      const token = await getToken();
-      if (token) {
-        await axios.post(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/support-info`, {
-          tags: supportTags,
-          notes: supportNotes
-        }, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-      }
-    } catch (error) {
-      console.log('Error logging impersonation:', error);
-    }
+    addLocalAuditEvent(`Viewing statement history for ${loadedUser.email}`);
     
-    addLocalAuditEvent(`Impersonation started for ${loadedUser.email}`);
-    
-    // Navigate to Home to see the user's view
+    // Navigate to Statement History to see the user's statements
     Alert.alert(
-      'Impersonation Active', 
-      `You are now viewing the app as ${loadedUser.email} in READ-ONLY mode. A purple banner will appear at the top of the screen.`,
+      'View User Statements', 
+      `You are now viewing the statement history of ${loadedUser.email}. The purple banner at the top indicates READ-ONLY mode.`,
       [
         { 
-          text: 'Go to Home', 
+          text: 'View Statement History', 
           onPress: () => {
-            if (isWebDesktop) {
-              navigateTo('Home');
-            }
+            navigateTo('InspectionHistory');
           }
         },
-        { text: 'Stay Here', style: 'cancel' }
+        { text: 'Cancel', style: 'cancel', onPress: () => endImpersonation() }
       ]
     );
   };
@@ -804,42 +878,75 @@ const UserSearchTab: React.FC = () => {
               <Text style={styles.userDateRow}>Updated: {formatDate(loadedUser.updated_at)}</Text>
             </View>
 
-            {/* Admin Notes */}
-            <Text style={styles.label}>Admin notes</Text>
+            {/* Admin Notes - Add new note */}
+            <Text style={styles.label}>Add admin note</Text>
             <TextInput
               style={[styles.input, styles.textArea]}
-              placeholder="Internal notes (support context, billing notes, policy flags, etc.)"
+              placeholder="Add a new internal note (support context, billing notes, policy flags, etc.)"
               value={adminNotes}
               onChangeText={setAdminNotes}
               multiline
-              numberOfLines={4}
+              numberOfLines={3}
               placeholderTextColor="#9CA3AF"
             />
+            <TouchableOpacity 
+              style={[styles.button, styles.primaryButton, { marginBottom: 16 }]} 
+              onPress={handleSaveNotes}
+              disabled={isSavingNotes || !adminNotes.trim()}
+            >
+              <Text style={styles.primaryButtonText}>
+                {isSavingNotes ? 'Adding...' : 'Add Note'}
+              </Text>
+            </TouchableOpacity>
 
-            {/* Action Buttons */}
+            {/* Admin Notes List */}
+            {adminNotesList.length > 0 && (
+              <View style={styles.notesList}>
+                <Text style={styles.notesListTitle}>Admin Notes ({adminNotesList.length})</Text>
+                {adminNotesList.map((note: any) => (
+                  <View key={note.id} style={styles.noteItem}>
+                    <View style={styles.noteContent}>
+                      <Text style={styles.noteText}>{note.note}</Text>
+                      <Text style={styles.noteMeta}>
+                        {note.admin_email || 'Admin'} • {formatDate(note.created_at)}
+                      </Text>
+                    </View>
+                    <TouchableOpacity 
+                      style={styles.noteDeleteButton}
+                      onPress={() => handleDeleteNote(note.id, 'admin')}
+                      disabled={isDeletingNote === note.id}
+                    >
+                      {isDeletingNote === note.id ? (
+                        <ActivityIndicator size="small" color="#EF4444" />
+                      ) : (
+                        <X size={16} color="#EF4444" />
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {/* Lifecycle Action Buttons */}
+            <Text style={[styles.label, { marginTop: 16 }]}>Lifecycle Actions</Text>
             <View style={styles.actionButtonsRow}>
               <TouchableOpacity 
-                style={[styles.actionButton, styles.underlineButton]} 
-                onPress={handleSaveNotes}
-                disabled={isSavingNotes}
+                style={[styles.actionButton, styles.underlineButton, isSuspended && styles.disabledButton]} 
+                onPress={handleSuspendUser}
+                disabled={actionLoading === 'suspend' || isSuspended}
               >
-                <Text style={styles.underlineButtonText}>
-                  {isSavingNotes ? 'Saving...' : 'Save notes'}
+                <Text style={[styles.underlineButtonText, isSuspended && styles.disabledButtonText]}>
+                  {actionLoading === 'suspend' ? 'Suspending...' : 'Suspend'}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity 
-                style={[styles.actionButton, styles.underlineButton]} 
-                onPress={handleSuspendUser}
-                disabled={actionLoading === 'suspend'}
-              >
-                <Text style={styles.underlineButtonText}>Suspend</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.actionButton, styles.underlineButton]} 
+                style={[styles.actionButton, styles.underlineButton, !isSuspended && styles.disabledButton]} 
                 onPress={handleReactivateUser}
-                disabled={actionLoading === 'reactivate'}
+                disabled={actionLoading === 'reactivate' || !isSuspended}
               >
-                <Text style={styles.underlineButtonText}>Reactivate</Text>
+                <Text style={[styles.underlineButtonText, !isSuspended && styles.disabledButtonText]}>
+                  {actionLoading === 'reactivate' ? 'Reactivating...' : 'Reactivate'}
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity 
                 style={[styles.actionButton, styles.underlineButton]} 
@@ -1036,15 +1143,15 @@ const UserSearchTab: React.FC = () => {
               ))}
             </View>
 
-            {/* Support Notes */}
-            <Text style={styles.label}>Support notes</Text>
+            {/* Support Notes - Add new */}
+            <Text style={styles.label}>Add support note</Text>
             <TextInput
               style={[styles.input, styles.textArea]}
               placeholder="Support context, timeline, billing notes, escalation reasons..."
               value={supportNotes}
               onChangeText={setSupportNotes}
               multiline
-              numberOfLines={4}
+              numberOfLines={3}
               placeholderTextColor="#9CA3AF"
             />
 
@@ -1058,18 +1165,54 @@ const UserSearchTab: React.FC = () => {
                   {isSavingSupport ? 'Saving...' : 'Save support info'}
                 </Text>
               </TouchableOpacity>
+            </View>
+
+            {/* Support Notes List */}
+            {supportNotesList.length > 0 && (
+              <View style={styles.notesList}>
+                <Text style={styles.notesListTitle}>Support Notes ({supportNotesList.length})</Text>
+                {supportNotesList.map((note: any) => (
+                  <View key={note.id} style={styles.noteItem}>
+                    <View style={styles.noteContent}>
+                      <Text style={styles.noteText}>{note.note}</Text>
+                      <Text style={styles.noteMeta}>
+                        {note.admin_email || 'Support'} • {formatDate(note.created_at)}
+                      </Text>
+                    </View>
+                    <TouchableOpacity 
+                      style={styles.noteDeleteButton}
+                      onPress={() => handleDeleteNote(note.id, 'support')}
+                      disabled={isDeletingNote === note.id}
+                    >
+                      {isDeletingNote === note.id ? (
+                        <ActivityIndicator size="small" color="#EF4444" />
+                      ) : (
+                        <X size={16} color="#EF4444" />
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {/* Impersonation Buttons */}
+            <Text style={[styles.label, { marginTop: 16 }]}>Impersonation</Text>
+            <View style={styles.supportButtonsRow}>
               <TouchableOpacity 
                 style={[styles.button, styles.outlineButton]} 
                 onPress={handleEnterImpersonation}
               >
-                <Text style={styles.outlineButtonText}>Enter read-only impersonation</Text>
+                <Eye size={16} color={COLORS.primary} style={{ marginRight: 8 }} />
+                <Text style={styles.outlineButtonText}>View Statement History</Text>
               </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.button, styles.outlineButton]} 
-                onPress={handleExitImpersonation}
-              >
-                <Text style={styles.outlineButtonText}>Exit impersonation</Text>
-              </TouchableOpacity>
+              {isImpersonating && (
+                <TouchableOpacity 
+                  style={[styles.button, styles.dangerOutlineButton]} 
+                  onPress={handleExitImpersonation}
+                >
+                  <Text style={styles.dangerOutlineButtonText}>Exit Impersonation</Text>
+                </TouchableOpacity>
+              )}
             </View>
 
             <Text style={styles.statusText}>No changes yet.</Text>
@@ -1472,6 +1615,67 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#9CA3AF',
     fontStyle: 'italic',
+  },
+  // Notes List Styles
+  notesList: {
+    marginTop: 16,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 8,
+    padding: 12,
+  },
+  notesListTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 12,
+  },
+  noteItem: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 6,
+    padding: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  noteContent: {
+    flex: 1,
+  },
+  noteText: {
+    fontSize: 14,
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  noteMeta: {
+    fontSize: 12,
+    color: '#9CA3AF',
+  },
+  noteDeleteButton: {
+    padding: 8,
+    marginLeft: 8,
+  },
+  // Disabled button styles
+  disabledButton: {
+    opacity: 0.5,
+  },
+  disabledButtonText: {
+    color: '#9CA3AF',
+  },
+  // Danger outline button
+  dangerOutlineButton: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#EF4444',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  dangerOutlineButtonText: {
+    color: '#EF4444',
+    fontSize: 14,
+    fontWeight: '500',
   },
 });
 

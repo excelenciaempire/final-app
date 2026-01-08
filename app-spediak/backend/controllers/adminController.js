@@ -417,55 +417,95 @@ const getUserNotes = async (req, res) => {
  */
 const addUserNote = async (req, res) => {
   const { userId } = req.params;
-  const { note } = req.body;
+  const { note, noteType = 'admin' } = req.body;
   const adminClerkId = req.auth?.userId;
 
   if (!userId) {
     return res.status(400).json({ message: 'User ID is required' });
   }
 
-  if (note && note.length > 2000) {
+  if (!note || note.trim().length === 0) {
+    return res.status(400).json({ message: 'Note content is required' });
+  }
+
+  if (note.length > 2000) {
     return res.status(400).json({ message: 'Note must be less than 2000 characters' });
   }
 
   try {
-    // Use UPSERT logic - update existing admin note or insert new one
-    // First try to update existing admin note
-    const updateResult = await pool.query(`
-      UPDATE admin_user_notes 
-      SET note = $2, admin_clerk_id = $3, updated_at = NOW()
-      WHERE user_clerk_id = $1 AND (note_type IS NULL OR note_type = 'admin')
+    // Always insert a new note (notes are now a list, not a single entry)
+    const result = await pool.query(`
+      INSERT INTO admin_user_notes (user_clerk_id, admin_clerk_id, note, note_type)
+      VALUES ($1, $2, $3, $4)
       RETURNING *
-    `, [userId, note || '', adminClerkId]);
-    
-    let result;
-    if (updateResult.rowCount === 0) {
-      // No existing admin note, insert new one
-      result = await pool.query(`
-        INSERT INTO admin_user_notes (user_clerk_id, admin_clerk_id, note, note_type)
-        VALUES ($1, $2, $3, 'admin')
-        RETURNING *
-      `, [userId, adminClerkId, note || '']);
-    } else {
-      result = updateResult;
-    }
+    `, [userId, adminClerkId, note.trim(), noteType]);
 
     // Log to admin_audit_log
     await pool.query(`
       INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, action_details)
-      VALUES ($1, 'update_admin_notes', 'user_management', 'user', $2, $3)
-    `, [adminClerkId, userId, JSON.stringify({ note_preview: (note || '').substring(0, 100) })]);
+      VALUES ($1, 'add_note', 'user_management', 'user', $2, $3)
+    `, [adminClerkId, userId, JSON.stringify({ 
+      note_type: noteType,
+      note_preview: note.substring(0, 100) 
+    })]);
 
-    console.log(`[Admin] Saved admin note for user ${userId} by admin ${adminClerkId}`);
+    console.log(`[Admin] Added ${noteType} note for user ${userId} by admin ${adminClerkId}`);
 
     res.json({
-      message: 'Notes saved successfully',
+      message: 'Note added successfully',
       note: result.rows[0]
     });
 
   } catch (error) {
     console.error('[Admin] Error saving user note:', error);
     res.status(500).json({ message: 'Failed to save user note', error: error.message });
+  }
+};
+
+/**
+ * Delete a specific note
+ */
+const deleteUserNote = async (req, res) => {
+  const { userId, noteId } = req.params;
+  const adminClerkId = req.auth?.userId;
+
+  if (!userId || !noteId) {
+    return res.status(400).json({ message: 'User ID and Note ID are required' });
+  }
+
+  try {
+    // Verify the note exists and belongs to this user
+    const noteCheck = await pool.query(
+      'SELECT * FROM admin_user_notes WHERE id = $1 AND user_clerk_id = $2',
+      [noteId, userId]
+    );
+
+    if (noteCheck.rowCount === 0) {
+      return res.status(404).json({ message: 'Note not found' });
+    }
+
+    const deletedNote = noteCheck.rows[0];
+
+    // Delete the note
+    await pool.query('DELETE FROM admin_user_notes WHERE id = $1', [noteId]);
+
+    // Log to audit
+    await pool.query(`
+      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, action_details)
+      VALUES ($1, 'delete_note', 'user_management', 'user', $2, $3)
+    `, [adminClerkId, userId, JSON.stringify({ 
+      note_id: noteId,
+      note_type: deletedNote.note_type,
+      note_preview: (deletedNote.note || '').substring(0, 100)
+    })]);
+
+    console.log(`[Admin] Deleted note ${noteId} for user ${userId} by admin ${adminClerkId}`);
+
+    res.json({ message: 'Note deleted successfully' });
+
+  } catch (error) {
+    console.error('[Admin] Error deleting note:', error);
+    res.status(500).json({ message: 'Failed to delete note', error: error.message });
   }
 };
 
@@ -1534,13 +1574,14 @@ const grantTrial = async (req, res) => {
     const trialEndDate = new Date();
     trialEndDate.setDate(trialEndDate.getDate() + days);
 
+    // Grant platinum unlimited access for trial period
     await pool.query(`
       UPDATE user_subscriptions 
       SET 
-        plan_type = 'trial',
+        plan_type = 'platinum',
         trial_end_date = $2,
-        statements_limit = 5,
-        statements_used = 0,
+        statements_limit = -1,
+        subscription_status = 'trial',
         updated_at = NOW()
       WHERE clerk_id = $1
     `, [userId, trialEndDate]);
@@ -1549,9 +1590,14 @@ const grantTrial = async (req, res) => {
     await pool.query(`
       INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, action_details)
       VALUES ($1, 'grant_trial', 'billing', 'user', $2, $3)
-    `, [adminClerkId, userId, JSON.stringify({ days, trialEndDate })]);
+    `, [adminClerkId, userId, JSON.stringify({ 
+      days, 
+      trialEndDate,
+      plan: 'platinum',
+      access: 'unlimited'
+    })]);
 
-    res.json({ message: `${days}-day trial granted successfully` });
+    res.json({ message: `${days}-day platinum trial granted (unlimited access until ${trialEndDate.toLocaleDateString()})` });
   } catch (error) {
     console.error('[Admin] Error granting trial:', error);
     res.status(500).json({ message: 'Failed to grant trial' });
@@ -1566,12 +1612,15 @@ const revokeTrial = async (req, res) => {
   const adminClerkId = req.auth?.userId;
 
   try {
+    // Revert user back to free plan with standard limits
     await pool.query(`
       UPDATE user_subscriptions 
       SET 
         plan_type = 'free',
         trial_end_date = NULL,
         statements_limit = 5,
+        statements_used = 0,
+        subscription_status = 'active',
         updated_at = NOW()
       WHERE clerk_id = $1
     `, [userId]);
@@ -1579,10 +1628,10 @@ const revokeTrial = async (req, res) => {
     // Log audit
     await pool.query(`
       INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, action_details)
-      VALUES ($1, 'revoke_trial', 'billing', 'user', $2, '{"action": "Trial revoked"}')
+      VALUES ($1, 'revoke_trial', 'billing', 'user', $2, '{"action": "Trial revoked, reverted to free plan"}')
     `, [adminClerkId, userId]);
 
-    res.json({ message: 'Trial revoked successfully' });
+    res.json({ message: 'Trial revoked - user reverted to free plan (5 statements/month)' });
   } catch (error) {
     console.error('[Admin] Error revoking trial:', error);
     res.status(500).json({ message: 'Failed to revoke trial' });
@@ -1786,8 +1835,47 @@ const fixOrphanedPlatinumUsers = async (req, res) => {
   }
 };
 
+/**
+ * Get inspections for a specific user (admin impersonation)
+ */
+const getUserInspections = async (req, res) => {
+  const { userId } = req.params;
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 10;
+  const offset = (page - 1) * limit;
+
+  try {
+    // Get paginated inspections for this user
+    const itemsResult = await pool.query(
+      'SELECT * FROM inspections WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3',
+      [userId, limit, offset]
+    );
+
+    // Get total count
+    const totalResult = await pool.query(
+      'SELECT COUNT(*) FROM inspections WHERE user_id = $1',
+      [userId]
+    );
+
+    const totalItems = parseInt(totalResult.rows[0].count, 10);
+    const totalPages = Math.ceil(totalItems / limit);
+
+    res.json({
+      items: itemsResult.rows,
+      currentPage: page,
+      totalPages,
+      totalItems
+    });
+
+  } catch (error) {
+    console.error('[Admin] Error fetching user inspections:', error);
+    res.status(500).json({ message: 'Failed to fetch inspections', error: error.message });
+  }
+};
+
 module.exports = {
   getAllInspections: getAllInspectionsWithUserDetails,
+  getUserInspections,
   getAllUsers,
   exportUsersCsv,
   deleteUser,
@@ -1796,6 +1884,7 @@ module.exports = {
   resetTrial,
   getUserNotes,
   addUserNote,
+  deleteUserNote,
   getGiftHistory,
   getTrialResetHistory,
   getUserDetails,

@@ -4,7 +4,8 @@ const { requireAuth } = require('../middleware/clerkAuth');
 const { requireAdmin } = require('../middleware/adminAuth');
 const { getPrompts, updatePrompts, lockPrompt, unlockPrompt, getPromptHistory, restorePromptVersion } = require('../controllers/promptController');
 const { 
-  getAllInspections, 
+  getAllInspections,
+  getUserInspections,
   getAllUsers, 
   exportUsersCsv, 
   deleteUser,
@@ -12,6 +13,7 @@ const {
   resetTrial,
   getUserNotes,
   addUserNote,
+  deleteUserNote,
   getGiftHistory,
   getTrialResetHistory,
   getUserDetails,
@@ -68,6 +70,7 @@ router.post('/prompts/restore', restorePromptVersion);
 
 // Admin-specific routes for inspections and user management
 router.get('/all-inspections', getAllInspections);
+router.get('/users/:userId/inspections', getUserInspections);
 router.get('/all-users', getAllUsers);
 router.get('/export-users-csv', exportUsersCsv);
 router.delete('/delete-user/:userId', deleteUser);
@@ -78,6 +81,7 @@ router.post('/users/:userId/gift-credits', giftCredits);
 router.post('/users/:userId/reset-trial', resetTrial);
 router.get('/users/:userId/notes', getUserNotes);
 router.post('/users/:userId/notes', addUserNote);
+router.delete('/users/:userId/notes/:noteId', deleteUserNote);
 
 // Admin history logs
 router.get('/gift-history', getGiftHistory);

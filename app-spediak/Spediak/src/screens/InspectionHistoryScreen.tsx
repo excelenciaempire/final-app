@@ -27,6 +27,8 @@ import * as FileSystem from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library';
 import StatementUsageCard from '../components/StatementUsageCard';
 import AdBanner from '../components/AdBanner';
+import { useImpersonation } from '../context/ImpersonationContext';
+import ImpersonationBanner from '../components/ImpersonationBanner';
 
 interface Inspection {
   id: string;
@@ -257,6 +259,9 @@ export default function InspectionHistoryScreen() {
   const { getToken } = useAuth();
   const navigation = useNavigation();
   const [mediaLibraryPermission, requestMediaLibraryPermission] = MediaLibrary.usePermissions();
+  
+  // Impersonation context - for admin viewing user's history
+  const { isImpersonating, impersonatedUser } = useImpersonation();
 
   // Request Media Library permission on mount if not granted
   useEffect(() => {
@@ -265,7 +270,7 @@ export default function InspectionHistoryScreen() {
     }
   }, [mediaLibraryPermission]);
 
-  // Fetch inspections
+  // Fetch inspections (or impersonated user's inspections)
   const fetchInspections = useCallback(async (pageToFetch = 1, isRefreshingData = false) => {
     if (pageToFetch === 1) {
       setIsLoading(true);
@@ -281,8 +286,15 @@ export default function InspectionHistoryScreen() {
       const token = await getToken();
       if (!token) throw new Error("User not authenticated");
 
+      // If impersonating, use admin endpoint to fetch user's inspections
+      let apiUrl = `${BASE_URL}/api/inspections?page=${pageToFetch}&limit=${ITEMS_PER_PAGE}`;
+      
+      if (isImpersonating && impersonatedUser?.clerk_id) {
+        apiUrl = `${BASE_URL}/api/admin/users/${impersonatedUser.clerk_id}/inspections?page=${pageToFetch}&limit=${ITEMS_PER_PAGE}`;
+      }
+
       const response = await axios.get<{ items: Inspection[], totalPages: number, currentPage: number }>(
-        `${BASE_URL}/api/inspections?page=${pageToFetch}&limit=${ITEMS_PER_PAGE}`, 
+        apiUrl, 
         { headers: { Authorization: `Bearer ${token}` } }
       );
       
@@ -308,9 +320,9 @@ export default function InspectionHistoryScreen() {
       setIsLoadingMore(false);
       if (isRefreshingData) setIsRefreshing(false);
     }
-  }, [getToken, ITEMS_PER_PAGE]);
+  }, [getToken, ITEMS_PER_PAGE, isImpersonating, impersonatedUser]);
 
-  // Fetch data on mount and focus
+  // Fetch data on mount, focus, and impersonation change
   useEffect(() => {
     fetchInspections(1, true);
 
@@ -320,7 +332,7 @@ export default function InspectionHistoryScreen() {
     });
 
     return unsubscribe;
-  }, [navigation]);
+  }, [navigation, isImpersonating, impersonatedUser?.clerk_id]);
 
   // Pull to refresh
   const onRefresh = useCallback(async () => {
@@ -336,8 +348,14 @@ export default function InspectionHistoryScreen() {
     }
   };
 
-  // Delete inspection
+  // Delete inspection (disabled in impersonation mode)
   const handleDeleteInspection = async (id: string) => {
+    // Prevent deletion in impersonation mode (read-only)
+    if (isImpersonating) {
+      Alert.alert("Read-Only Mode", "You cannot delete statements while in impersonation mode.");
+      return;
+    }
+
     const deleteConfirmedAction = async () => {
       try {
         const token = await getToken();
@@ -503,7 +521,20 @@ export default function InspectionHistoryScreen() {
   return (
     <View style={styles.container}>
       <View style={[styles.contentWrapper, { maxWidth: contentMaxWidth, alignSelf: 'center', width: '100%' }]}>
-        <Text style={styles.headerTitle}>Statement History</Text>
+        <Text style={styles.headerTitle}>
+          {isImpersonating && impersonatedUser 
+            ? `Statement History - ${impersonatedUser.email}` 
+            : 'Statement History'}
+        </Text>
+        
+        {/* Impersonation indicator */}
+        {isImpersonating && impersonatedUser && (
+          <View style={styles.impersonationIndicator}>
+            <Text style={styles.impersonationText}>
+              👁️ Viewing as: {impersonatedUser.email} (Read-Only)
+            </Text>
+          </View>
+        )}
         
         {/* Usage & Ad Banner for free users */}
         <View style={styles.promoContainer}>
@@ -588,6 +619,16 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
+  },
+  impersonationIndicator: {
+    backgroundColor: '#7C3AED',
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+  },
+  impersonationText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '500',
   },
   searchContainer: {
     flexDirection: 'row',
