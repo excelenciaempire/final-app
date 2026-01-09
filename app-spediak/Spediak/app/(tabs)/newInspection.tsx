@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useLayoutEffect } from 'react';
 import { View, Text, Button, Image, TextInput, StyleSheet, Alert, ScrollView, ActivityIndicator, TouchableOpacity, Platform, Dimensions, Modal, KeyboardAvoidingView, useWindowDimensions, Linking } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuth, useUser } from "@clerk/clerk-expo";
@@ -255,6 +255,13 @@ const PreDescriptionModal: React.FC<PreDescriptionModalProps> = ({
 
 // Revert to standard function declaration
 export default function NewInspectionScreen() {
+    // Set document title for web
+    useLayoutEffect(() => {
+      if (Platform.OS === 'web' && typeof document !== 'undefined') {
+        document.title = 'Spediak';
+      }
+    }, []);
+
     const [imageUri, setImageUri] = useState<string | null>(null);
     const [imageBase64, setImageBase64] = useState<string | null>(null);
     const [initialDescription, setInitialDescription] = useState<string>('');

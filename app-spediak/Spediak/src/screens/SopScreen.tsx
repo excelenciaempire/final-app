@@ -34,14 +34,16 @@ const SopScreen: React.FC = () => {
   ]);
   const [activeStateSop, setActiveStateSop] = useState<any>(null);
   const [activeOrgSop, setActiveOrgSop] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingSop, setIsLoadingSop] = useState(false);
   const [isLoadingOrgs, setIsLoadingOrgs] = useState(true);
   const [loadingMessage, setLoadingMessage] = useState('Loading...');
+  const [dataReady, setDataReady] = useState(false);
 
-  // Refs to prevent infinite loops
+  // Refs to prevent infinite loops and track state
   const initialLoadDone = useRef(false);
   const isInitializing = useRef(true);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const lastFetchParams = useRef<string>('');
 
   // Initialize organization from user metadata (only once)
   useEffect(() => {
@@ -122,7 +124,13 @@ const SopScreen: React.FC = () => {
   // Fetch SOP data - memoized without organization in dependencies to prevent loops
   const fetchSopData = useCallback(async (state: string | null, org: string, retryCount = 0) => {
     if (!state) {
-      setIsLoading(false);
+      setDataReady(true);
+      return;
+    }
+
+    // Check if params are the same as last fetch to prevent duplicate calls
+    const fetchKey = `${state}-${org}`;
+    if (fetchKey === lastFetchParams.current && dataReady) {
       return;
     }
 
@@ -133,7 +141,7 @@ const SopScreen: React.FC = () => {
     abortControllerRef.current = new AbortController();
 
     try {
-      setIsLoading(true);
+      setIsLoadingSop(true);
       setLoadingMessage('Loading SOP data...');
       
       // Show "server starting" message after 5 seconds
@@ -145,7 +153,8 @@ const SopScreen: React.FC = () => {
       
       if (!token) {
         clearTimeout(slowLoadTimer);
-        setIsLoading(false);
+        setIsLoadingSop(false);
+        setDataReady(true);
         return;
       }
 
@@ -162,8 +171,10 @@ const SopScreen: React.FC = () => {
       });
 
       clearTimeout(slowLoadTimer);
+      lastFetchParams.current = fetchKey;
       setActiveStateSop(response.data.stateSop);
       setActiveOrgSop(response.data.orgSop);
+      setDataReady(true);
     } catch (err: any) {
       // Ignore abort errors
       if (err?.name === 'AbortError' || err?.code === 'ERR_CANCELED') return;
@@ -177,34 +188,40 @@ const SopScreen: React.FC = () => {
       }
       setActiveStateSop(null);
       setActiveOrgSop(null);
+      setDataReady(true);
     } finally {
-      setIsLoading(false);
+      setIsLoadingSop(false);
       setLoadingMessage('Loading...');
     }
-  }, [getToken]);
+  }, [getToken, dataReady]);
 
-  // Fetch SOP data when state or organization changes
+  // Fetch SOP data when state or organization changes (debounced)
   useEffect(() => {
-    // Skip initial render until initialization is complete
+    // Skip if still initializing
     if (isInitializing.current) return;
     
-    fetchSopData(selectedState, organization);
+    // Debounce the fetch to prevent rapid re-renders
+    const debounceTimer = setTimeout(() => {
+      fetchSopData(selectedState, organization);
+    }, 100);
     
     return () => {
+      clearTimeout(debounceTimer);
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
     };
-  }, [selectedState, organization, fetchSopData]);
+  }, [selectedState, organization]);
 
   // Initial load after component mounts
   useEffect(() => {
     if (!initialLoadDone.current && selectedState) {
       initialLoadDone.current = true;
-      // Small delay to ensure user metadata is loaded
+      // Delay to ensure user metadata is loaded
       const timer = setTimeout(() => {
+        isInitializing.current = false;
         fetchSopData(selectedState, organization);
-      }, 500);
+      }, 300);
       return () => clearTimeout(timer);
     }
   }, [selectedState]);
@@ -309,7 +326,7 @@ const SopScreen: React.FC = () => {
             <Text style={styles.sectionTitle}>Active SOP Documents</Text>
           </View>
           
-          {isLoading ? (
+          {isLoadingSop ? (
             <View style={styles.loadingRow}>
               <ActivityIndicator size="small" color={COLORS.primary} />
               <Text style={styles.loadingText}>{loadingMessage}</Text>
@@ -399,7 +416,7 @@ const SopScreen: React.FC = () => {
         </View>
 
         {/* Status Summary */}
-        {!isLoading && (
+        {!isLoadingSop && dataReady && (
           <View style={[
             styles.statusSummary,
             (hasStateSop || hasOrgSop) ? styles.statusSummaryActive : styles.statusSummaryInactive
