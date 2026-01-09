@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   View, 
   Text, 
@@ -38,28 +38,38 @@ const SopScreen: React.FC = () => {
   const [isLoadingOrgs, setIsLoadingOrgs] = useState(true);
   const [loadingMessage, setLoadingMessage] = useState('Loading...');
 
-  // Initialize organization from user metadata
+  // Refs to prevent infinite loops
+  const initialLoadDone = useRef(false);
+  const isInitializing = useRef(true);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Initialize organization from user metadata (only once)
   useEffect(() => {
-    if (user?.unsafeMetadata?.organization) {
+    if (user?.unsafeMetadata?.organization && isInitializing.current) {
       setOrganization(user.unsafeMetadata.organization as string);
     }
-  }, [user]);
+    isInitializing.current = false;
+  }, [user?.unsafeMetadata?.organization]);
 
-  // Fetch organizations from backend with retry
+  // Fetch organizations from backend (only once on mount)
   useEffect(() => {
+    let isMounted = true;
+    
     const fetchOrganizations = async (retryCount = 0) => {
       try {
         setIsLoadingOrgs(true);
         const token = await getToken();
-        if (!token) {
+        if (!token || !isMounted) {
           setIsLoadingOrgs(false);
           return;
         }
         
         const response = await axios.get(`${BASE_URL}/api/sop/organizations`, {
           headers: { Authorization: `Bearer ${token}` },
-          timeout: 45000 // 45 seconds for cold start
+          timeout: 30000
         });
+        
+        if (!isMounted) return;
         
         const backendOrgs = response.data.organizations || [];
         const orgOptions = [
@@ -71,20 +81,24 @@ const SopScreen: React.FC = () => {
         ];
         setOrganizations(orgOptions);
       } catch (err: any) {
+        if (!isMounted) return;
         console.log('Could not fetch organizations:', err?.message);
         // Retry once if timeout (server cold start)
         if (retryCount < 1 && err?.code === 'ECONNABORTED') {
           console.log('Retrying organizations fetch...');
-          setTimeout(() => fetchOrganizations(retryCount + 1), 2000);
+          setTimeout(() => fetchOrganizations(retryCount + 1), 3000);
           return;
         }
         // Keep default option
       } finally {
-        setIsLoadingOrgs(false);
+        if (isMounted) setIsLoadingOrgs(false);
       }
     };
+    
     fetchOrganizations();
-  }, [getToken]);
+    
+    return () => { isMounted = false; };
+  }, []); // Empty dependency - only run once on mount
 
   // Save organization selection to user metadata
   const handleOrganizationChange = async (value: string) => {
@@ -105,11 +119,18 @@ const SopScreen: React.FC = () => {
     }
   };
 
-  const fetchSopData = useCallback(async (retryCount = 0) => {
-    if (!selectedState) {
+  // Fetch SOP data - memoized without organization in dependencies to prevent loops
+  const fetchSopData = useCallback(async (state: string | null, org: string, retryCount = 0) => {
+    if (!state) {
       setIsLoading(false);
       return;
     }
+
+    // Cancel any pending request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
 
     try {
       setIsLoading(true);
@@ -128,26 +149,30 @@ const SopScreen: React.FC = () => {
         return;
       }
 
-      const params: any = { state: selectedState };
-      if (organization && organization !== 'None') {
-        params.organization = organization;
+      const params: any = { state };
+      if (org && org !== 'None') {
+        params.organization = org;
       }
 
       const response = await axios.get(`${BASE_URL}/api/sop/active`, {
         headers: { Authorization: `Bearer ${token}` },
         params,
-        timeout: 45000 // 45 seconds for cold start
+        timeout: 30000,
+        signal: abortControllerRef.current.signal
       });
 
       clearTimeout(slowLoadTimer);
       setActiveStateSop(response.data.stateSop);
       setActiveOrgSop(response.data.orgSop);
     } catch (err: any) {
+      // Ignore abort errors
+      if (err?.name === 'AbortError' || err?.code === 'ERR_CANCELED') return;
+      
       console.error('Error fetching SOP data:', err?.message);
       // Retry once if timeout (server cold start)
       if (retryCount < 1 && err?.code === 'ECONNABORTED') {
         setLoadingMessage('Retrying connection...');
-        setTimeout(() => fetchSopData(retryCount + 1), 2000);
+        setTimeout(() => fetchSopData(state, org, retryCount + 1), 3000);
         return;
       }
       setActiveStateSop(null);
@@ -156,11 +181,33 @@ const SopScreen: React.FC = () => {
       setIsLoading(false);
       setLoadingMessage('Loading...');
     }
-  }, [selectedState, organization, getToken]);
+  }, [getToken]);
 
+  // Fetch SOP data when state or organization changes
   useEffect(() => {
-    fetchSopData();
-  }, [fetchSopData]);
+    // Skip initial render until initialization is complete
+    if (isInitializing.current) return;
+    
+    fetchSopData(selectedState, organization);
+    
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, [selectedState, organization, fetchSopData]);
+
+  // Initial load after component mounts
+  useEffect(() => {
+    if (!initialLoadDone.current && selectedState) {
+      initialLoadDone.current = true;
+      // Small delay to ensure user metadata is loaded
+      const timer = setTimeout(() => {
+        fetchSopData(selectedState, organization);
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [selectedState]);
 
   // Open PDF in browser/viewer
   const handleViewDocument = async (fileUrl: string, documentName: string) => {
