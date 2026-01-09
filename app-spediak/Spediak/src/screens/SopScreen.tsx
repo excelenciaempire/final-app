@@ -17,15 +17,9 @@ import { useAuth, useUser } from '@clerk/clerk-expo';
 import axios from 'axios';
 import { BASE_URL } from '../config/api';
 import { COLORS } from '../styles/colors';
-import { FileText, Download, CheckSquare, Square, ExternalLink, AlertCircle } from 'lucide-react-native';
+import { FileText, ExternalLink, CheckCircle, AlertCircle, ChevronDown } from 'lucide-react-native';
 import AdBanner from '../components/AdBanner';
 import StatementUsageCard from '../components/StatementUsageCard';
-
-const DEFAULT_ORGANIZATIONS = [
-  { value: 'None', label: 'None / Not using organization SOP' },
-  { value: 'ASHI', label: 'ASHI' },
-  { value: 'InterNACHI', label: 'InterNACHI' },
-];
 
 const SopScreen: React.FC = () => {
   const { selectedState, setSelectedState } = useGlobalState();
@@ -35,12 +29,13 @@ const SopScreen: React.FC = () => {
   const isLargeScreen = width > 600;
   
   const [organization, setOrganization] = useState<string>('None');
-  const [organizations, setOrganizations] = useState(DEFAULT_ORGANIZATIONS);
-  const [useStateSop, setUseStateSop] = useState<boolean>(true);
+  const [organizations, setOrganizations] = useState<{ value: string; label: string }[]>([
+    { value: 'None', label: 'None / Not using organization SOP' }
+  ]);
   const [activeStateSop, setActiveStateSop] = useState<any>(null);
   const [activeOrgSop, setActiveOrgSop] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [isLoadingOrgs, setIsLoadingOrgs] = useState(true);
 
   // Initialize organization from user metadata
   useEffect(() => {
@@ -53,22 +48,32 @@ const SopScreen: React.FC = () => {
   useEffect(() => {
     const fetchOrganizations = async () => {
       try {
+        setIsLoadingOrgs(true);
         const token = await getToken();
-        if (!token) return;
+        if (!token) {
+          setIsLoadingOrgs(false);
+          return;
+        }
         
         const response = await axios.get(`${BASE_URL}/api/sop/organizations`, {
-          headers: { Authorization: `Bearer ${token}` }
+          headers: { Authorization: `Bearer ${token}` },
+          timeout: 10000
         });
         
         const backendOrgs = response.data.organizations || [];
         const orgOptions = [
           { value: 'None', label: 'None / Not using organization SOP' },
-          ...backendOrgs.map((org: any) => ({ value: org.name, label: org.name }))
+          ...backendOrgs.map((org: any) => ({ 
+            value: org.name, 
+            label: org.name 
+          }))
         ];
         setOrganizations(orgOptions);
       } catch (err) {
-        console.log('Could not fetch organizations, using defaults');
-        // Keep default organizations if fetch fails
+        console.log('Could not fetch organizations:', err);
+        // Keep default option
+      } finally {
+        setIsLoadingOrgs(false);
       }
     };
     fetchOrganizations();
@@ -101,7 +106,6 @@ const SopScreen: React.FC = () => {
 
     try {
       setIsLoading(true);
-      setError(null);
       const token = await getToken();
       
       if (!token) {
@@ -122,12 +126,11 @@ const SopScreen: React.FC = () => {
 
       setActiveStateSop(response.data.stateSop);
       setActiveOrgSop(response.data.orgSop);
-      setIsLoading(false);
     } catch (err: any) {
       console.error('Error fetching SOP data:', err);
-      // Don't show error - just set empty state
       setActiveStateSop(null);
       setActiveOrgSop(null);
+    } finally {
       setIsLoading(false);
     }
   }, [selectedState, organization, getToken]);
@@ -136,18 +139,15 @@ const SopScreen: React.FC = () => {
     fetchSopData();
   }, [fetchSopData]);
 
-  // Open PDF in browser/viewer instead of downloading
+  // Open PDF in browser/viewer
   const handleViewDocument = async (fileUrl: string, documentName: string) => {
     try {
-      // For web, open in new tab
       if (Platform.OS === 'web') {
-        // Use Google Docs viewer for PDFs to view in-browser
         const viewerUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(fileUrl)}&embedded=true`;
         window.open(viewerUrl, '_blank');
         return;
       }
       
-      // For native, open with system viewer
       const canOpen = await Linking.canOpenURL(fileUrl);
       if (canOpen) {
         await Linking.openURL(fileUrl);
@@ -180,14 +180,14 @@ const SopScreen: React.FC = () => {
 
       {/* Main SOP Card */}
       <View style={[styles.cardContainer, isLargeScreen && styles.cardContainerLarge]}>
-        <Text style={styles.title}>SOP or Organization</Text>
+        <Text style={styles.title}>SOP Configuration</Text>
         <Text style={styles.description}>
-          Select your state and (optionally) an organization SOP. Spediak will generate DDID statements that align with the active SOP sources.
+          Select your state and organization to configure which Standards of Practice Spediak will use when generating DDID statements.
         </Text>
 
         {/* State Selector */}
         <View style={styles.fieldContainer}>
-          <Text style={styles.label}>Select state</Text>
+          <Text style={styles.label}>Select State</Text>
           <View style={styles.pickerWrapper}>
             <Picker
               selectedValue={selectedState || 'NC'}
@@ -203,109 +203,158 @@ const SopScreen: React.FC = () => {
                 />
               ))}
             </Picker>
+            <ChevronDown size={18} color={COLORS.textSecondary} style={styles.pickerIcon} />
           </View>
         </View>
-
-        {/* Current State Display */}
-        <Text style={styles.currentStateText}>Current state: <Text style={styles.currentStateValue}>{selectedState || 'NC'}</Text></Text>
-
-        {/* Use State SOP Checkbox */}
-        <TouchableOpacity 
-          style={styles.checkboxRow}
-          onPress={() => setUseStateSop(!useStateSop)}
-          activeOpacity={0.7}
-        >
-          {useStateSop ? (
-            <CheckSquare size={22} color={COLORS.primary} />
-          ) : (
-            <Square size={22} color={COLORS.textSecondary} />
-          )}
-          <Text style={styles.checkboxLabel}>Use State SOP (if assigned)</Text>
-        </TouchableOpacity>
 
         {/* Organization Selector */}
         <View style={styles.fieldContainer}>
-          <Text style={styles.labelSmall}>Organization SOP <Text style={styles.optionalText}>(optional)</Text>:</Text>
+          <Text style={styles.label}>Organization SOP <Text style={styles.optionalText}>(optional)</Text></Text>
           <View style={styles.pickerWrapper}>
-            <Picker
-              selectedValue={organization}
-              onValueChange={handleOrganizationChange}
-              style={styles.picker}
-              dropdownIconColor={COLORS.textSecondary}
-            >
-              {organizations.map((org) => (
-                <Picker.Item key={org.value} label={org.label} value={org.value} />
-              ))}
-            </Picker>
+            {isLoadingOrgs ? (
+              <View style={styles.loadingPicker}>
+                <ActivityIndicator size="small" color={COLORS.primary} />
+                <Text style={styles.loadingPickerText}>Loading organizations...</Text>
+              </View>
+            ) : (
+              <Picker
+                selectedValue={organization}
+                onValueChange={handleOrganizationChange}
+                style={styles.picker}
+                dropdownIconColor={COLORS.textSecondary}
+              >
+                {organizations.map((org) => (
+                  <Picker.Item key={org.value} label={org.label} value={org.value} />
+                ))}
+              </Picker>
+            )}
+            {!isLoadingOrgs && <ChevronDown size={18} color={COLORS.textSecondary} style={styles.pickerIcon} />}
           </View>
         </View>
 
-        {/* Active SOP Sources Banner */}
-        <View style={styles.activeSopBanner}>
-          <View style={styles.activeSopBannerIcon}>
-            <FileText size={18} color="#FFFFFF" />
+        {/* Active SOP Documents Section */}
+        <View style={styles.activeSopSection}>
+          <View style={styles.sectionHeader}>
+            <FileText size={20} color={COLORS.primary} />
+            <Text style={styles.sectionTitle}>Active SOP Documents</Text>
           </View>
-          <View style={styles.activeSopBannerContent}>
-            <Text style={styles.activeSopBannerTitle}>ACTIVE SOP SOURCES</Text>
-            <Text style={styles.activeSopBannerText}>
-              {isLoading 
-                ? 'Loading...' 
-                : hasStateSop 
-                  ? activeStateSop.documentName 
-                  : 'No assigned State SOP yet'}
-            </Text>
-          </View>
-        </View>
-
-        {/* Downloads Section */}
-        <View style={styles.downloadsSection}>
-          <Text style={styles.downloadsSectionTitle}>Downloads</Text>
           
-          {/* State SOP Download */}
-          <View style={styles.downloadItem}>
-            <View style={styles.downloadItemHeader}>
-              <Text style={styles.downloadItemTitle}>State SOP</Text>
-              {hasStateSop && activeStateSop.fileUrl && (
-                <TouchableOpacity 
-                  style={styles.downloadButton}
-                  onPress={() => handleViewDocument(activeStateSop.fileUrl, activeStateSop.documentName)}
-                >
-                  <ExternalLink size={16} color={COLORS.primary} />
-                </TouchableOpacity>
-              )}
+          {isLoading ? (
+            <View style={styles.loadingRow}>
+              <ActivityIndicator size="small" color={COLORS.primary} />
+              <Text style={styles.loadingText}>Loading SOP assignments...</Text>
             </View>
-            <Text style={styles.downloadItemStatus}>
-              {hasStateSop ? activeStateSop.documentName : 'No State SOP assigned yet.'}
-            </Text>
-          </View>
+          ) : (
+            <>
+              {/* State SOP Row */}
+              <View style={styles.sopRow}>
+                <View style={styles.sopRowLeft}>
+                  <View style={[styles.sopTypeTag, styles.stateTag]}>
+                    <Text style={styles.sopTypeTagText}>STATE</Text>
+                  </View>
+                  <View style={styles.sopInfo}>
+                    <Text style={styles.sopLabel}>{selectedState || 'NC'} SOP</Text>
+                    <Text style={[
+                      styles.sopStatus,
+                      hasStateSop ? styles.sopStatusAssigned : styles.sopStatusMissing
+                    ]}>
+                      {hasStateSop ? activeStateSop.documentName : 'Not assigned'}
+                    </Text>
+                  </View>
+                </View>
+                {hasStateSop && activeStateSop.fileUrl && (
+                  <TouchableOpacity 
+                    style={styles.viewButton}
+                    onPress={() => handleViewDocument(activeStateSop.fileUrl, activeStateSop.documentName)}
+                  >
+                    <ExternalLink size={16} color="#fff" />
+                    <Text style={styles.viewButtonText}>View</Text>
+                  </TouchableOpacity>
+                )}
+                {!hasStateSop && (
+                  <View style={styles.statusBadge}>
+                    <AlertCircle size={14} color="#F59E0B" />
+                  </View>
+                )}
+              </View>
 
-          {/* Organization SOP Download */}
-          <View style={styles.downloadItem}>
-            <View style={styles.downloadItemHeader}>
-              <Text style={styles.downloadItemTitle}>Organization SOP</Text>
-              {hasOrgSop && activeOrgSop.fileUrl && (
-                <TouchableOpacity 
-                  style={styles.downloadButton}
-                  onPress={() => handleViewDocument(activeOrgSop.fileUrl, activeOrgSop.documentName)}
-                >
-                  <ExternalLink size={16} color={COLORS.primary} />
-                </TouchableOpacity>
-              )}
-            </View>
-            <Text style={styles.downloadItemStatus}>
-              {organization === 'None' 
-                ? 'No organization selected.' 
-                : hasOrgSop 
-                  ? activeOrgSop.documentName 
-                  : `No ${organization} SOP assigned yet.`}
-            </Text>
-          </View>
+              {/* Organization SOP Row */}
+              <View style={styles.sopRow}>
+                <View style={styles.sopRowLeft}>
+                  <View style={[styles.sopTypeTag, styles.orgTag]}>
+                    <Text style={styles.sopTypeTagText}>ORG</Text>
+                  </View>
+                  <View style={styles.sopInfo}>
+                    <Text style={styles.sopLabel}>
+                      {organization === 'None' ? 'Organization SOP' : `${organization} SOP`}
+                    </Text>
+                    <Text style={[
+                      styles.sopStatus,
+                      organization === 'None' 
+                        ? styles.sopStatusNone
+                        : hasOrgSop 
+                          ? styles.sopStatusAssigned 
+                          : styles.sopStatusMissing
+                    ]}>
+                      {organization === 'None' 
+                        ? 'None selected'
+                        : hasOrgSop 
+                          ? activeOrgSop.documentName 
+                          : 'Not assigned'}
+                    </Text>
+                  </View>
+                </View>
+                {hasOrgSop && activeOrgSop.fileUrl && (
+                  <TouchableOpacity 
+                    style={styles.viewButton}
+                    onPress={() => handleViewDocument(activeOrgSop.fileUrl, activeOrgSop.documentName)}
+                  >
+                    <ExternalLink size={16} color="#fff" />
+                    <Text style={styles.viewButtonText}>View</Text>
+                  </TouchableOpacity>
+                )}
+                {organization !== 'None' && !hasOrgSop && (
+                  <View style={styles.statusBadge}>
+                    <AlertCircle size={14} color="#F59E0B" />
+                  </View>
+                )}
+                {organization === 'None' && (
+                  <View style={styles.statusBadgeNeutral}>
+                    <Text style={styles.statusBadgeText}>—</Text>
+                  </View>
+                )}
+              </View>
+            </>
+          )}
         </View>
 
-        {/* Compliance Note */}
-        <Text style={styles.complianceNote}>
-          When both a State SOP and an Organization SOP are active, the AI will be expected to remain compliant with <Text style={styles.boldText}>both</Text> when generating inspection statements.
-        </Text>
+        {/* Status Summary */}
+        {!isLoading && (
+          <View style={[
+            styles.statusSummary,
+            (hasStateSop || hasOrgSop) ? styles.statusSummaryActive : styles.statusSummaryInactive
+          ]}>
+            {(hasStateSop || hasOrgSop) ? (
+              <>
+                <CheckCircle size={18} color="#10B981" />
+                <Text style={styles.statusSummaryTextActive}>
+                  {hasStateSop && hasOrgSop 
+                    ? 'Statements will comply with both State and Organization SOPs'
+                    : hasStateSop 
+                      ? 'Statements will comply with State SOP'
+                      : 'Statements will comply with Organization SOP'}
+                </Text>
+              </>
+            ) : (
+              <>
+                <AlertCircle size={18} color="#6B7280" />
+                <Text style={styles.statusSummaryTextInactive}>
+                  No SOP configured. Statements will use Spediak's general best-practice guidance.
+                </Text>
+              </>
+            )}
+          </View>
+        )}
 
         {/* Report Issue Button */}
         <TouchableOpacity 
@@ -349,24 +398,6 @@ const styles = StyleSheet.create({
   cardContainerLarge: {
     padding: 24,
   },
-  adBannerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
-    marginBottom: 12,
-  },
-  adBannerPlaceholder: {
-    backgroundColor: '#F0F4F8',
-    borderRadius: 8,
-    padding: 16,
-    alignItems: 'center',
-  },
-  adBannerText: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
   title: {
     fontSize: 22,
     fontWeight: '700',
@@ -377,24 +408,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: COLORS.textSecondary,
     lineHeight: 20,
-    marginBottom: 20,
+    marginBottom: 24,
   },
   fieldContainer: {
-    marginBottom: 16,
+    marginBottom: 20,
   },
   label: {
     fontSize: 14,
-    fontWeight: '500',
-    color: COLORS.textSecondary,
-    marginBottom: 8,
-  },
-  labelSmall: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
     marginBottom: 8,
   },
   optionalText: {
     color: COLORS.textSecondary,
+    fontWeight: '400',
     fontStyle: 'italic',
   },
   pickerWrapper: {
@@ -405,120 +432,174 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     minHeight: 48,
     justifyContent: 'center',
+    position: 'relative',
   },
   picker: {
     height: 48,
     width: '100%',
     color: COLORS.textPrimary,
   },
-  currentStateText: {
+  pickerIcon: {
+    position: 'absolute',
+    right: 12,
+    top: 15,
+    pointerEvents: 'none',
+  },
+  loadingPicker: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    height: 48,
+    gap: 10,
+  },
+  loadingPickerText: {
     fontSize: 14,
     color: COLORS.textSecondary,
-    marginBottom: 12,
   },
-  currentStateValue: {
-    fontWeight: '600',
-    color: COLORS.textPrimary,
+  activeSopSection: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    padding: 16,
+    marginBottom: 16,
   },
-  checkboxRow: {
+  sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    marginBottom: 20,
+    marginBottom: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+  },
+  loadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 20,
+    gap: 10,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+  },
+  sopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  sopRowLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 12,
+  },
+  sopTypeTag: {
+    paddingHorizontal: 8,
     paddingVertical: 4,
+    borderRadius: 4,
+    minWidth: 50,
+    alignItems: 'center',
   },
-  checkboxLabel: {
-    fontSize: 15,
-    color: COLORS.primary,
-    fontWeight: '500',
+  stateTag: {
+    backgroundColor: '#DBEAFE',
   },
-  activeSopBanner: {
+  orgTag: {
+    backgroundColor: '#E0E7FF',
+  },
+  sopTypeTagText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#1E40AF',
+    letterSpacing: 0.5,
+  },
+  sopInfo: {
+    flex: 1,
+  },
+  sopLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+    marginBottom: 2,
+  },
+  sopStatus: {
+    fontSize: 13,
+  },
+  sopStatusAssigned: {
+    color: '#059669',
+  },
+  sopStatusMissing: {
+    color: '#D97706',
+  },
+  sopStatusNone: {
+    color: '#9CA3AF',
+  },
+  viewButton: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: COLORS.primary,
-    borderRadius: 8,
-    padding: 14,
-    marginBottom: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 6,
+    gap: 6,
   },
-  activeSopBannerIcon: {
-    marginRight: 12,
-  },
-  activeSopBannerContent: {
-    flex: 1,
-  },
-  activeSopBannerTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    letterSpacing: 0.5,
-    marginBottom: 2,
-  },
-  activeSopBannerText: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.9)',
-  },
-  downloadsSection: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 16,
-  },
-  downloadsSectionTitle: {
-    fontSize: 15,
+  viewButtonText: {
+    fontSize: 13,
     fontWeight: '600',
-    color: COLORS.textPrimary,
-    marginBottom: 16,
+    color: '#fff',
   },
-  downloadItem: {
-    marginBottom: 16,
-  },
-  downloadItemHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  statusBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#FEF3C7',
     alignItems: 'center',
-    marginBottom: 4,
+    justifyContent: 'center',
   },
-  downloadItemTitle: {
+  statusBadgeNeutral: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statusBadgeText: {
     fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.textPrimary,
+    color: '#9CA3AF',
   },
-  downloadButton: {
-    padding: 6,
-  },
-  downloadItemStatus: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
-  },
-  quickReferenceSection: {
-    backgroundColor: '#F0F7FF',
+  statusSummary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 14,
     borderRadius: 8,
-    padding: 16,
-    marginBottom: 16,
-    borderLeftWidth: 3,
-    borderLeftColor: COLORS.primary,
-  },
-  quickReferenceTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.textPrimary,
-    marginBottom: 8,
-  },
-  quickReferenceText: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    lineHeight: 19,
-  },
-  complianceNote: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    lineHeight: 19,
     marginBottom: 20,
-    fontStyle: 'italic',
   },
-  boldText: {
-    fontWeight: '600',
-    color: COLORS.textPrimary,
+  statusSummaryActive: {
+    backgroundColor: '#ECFDF5',
+  },
+  statusSummaryInactive: {
+    backgroundColor: '#F3F4F6',
+  },
+  statusSummaryTextActive: {
+    fontSize: 13,
+    color: '#065F46',
+    flex: 1,
+    lineHeight: 18,
+  },
+  statusSummaryTextInactive: {
+    fontSize: 13,
+    color: '#6B7280',
+    flex: 1,
+    lineHeight: 18,
   },
   reportButton: {
     backgroundColor: '#F0F4F8',
