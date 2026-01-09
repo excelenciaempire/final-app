@@ -114,16 +114,11 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
       });
       console.log("[SignUpScreen] signUp.create SUCCEEDED.");
 
-      // Since email verification is disabled, we can try to set the session active immediately.
-      if (signUp.createdSessionId) {
-        await setActive({ session: signUp.createdSessionId });
-        console.log("[SignUpScreen] setActive SUCCEEDED, user should be logged in.");
-      } else {
-        // Fallback, if for some reason the session wasn't created, prompt for verification.
-        // This might happen if you re-enable "Verify at sign-up" in Clerk without changing the code.
-        await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
-        setPendingVerification(true);
-      }
+      // Email verification is ENABLED for security
+      // Send verification code to the user's email
+      await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
+      setPendingVerification(true);
+      console.log("[SignUpScreen] Verification code sent to email.");
 
     } catch (err: any) {
       clearErrors(); // Clear previous before setting new ones
@@ -377,7 +372,7 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
 
           {pendingVerification && (
             <>
-              <Text style={styles.description}>Check your email for a verification code.</Text>
+              <Text style={styles.description}>We've sent a 6-digit verification code to your email. Please enter it below.</Text>
                <View style={styles.inputContainer}>
                    <Ionicons name="shield-checkmark-outline" size={20} color={COLORS.darkText} style={styles.inputIcon} />
                   <TextInput
