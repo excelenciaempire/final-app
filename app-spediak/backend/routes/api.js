@@ -64,6 +64,7 @@ router.post('/user/subscription/increment', userController.incrementStatementUsa
 // SOP Routes
 router.get('/sop/active', sopController.getActiveSops);
 router.get('/sop/documents', sopController.getSopDocuments);
+router.get('/sop/organizations', sopController.getOrganizations);
 router.get('/sop/text-context', sopController.getSopTextForContext);
 router.get('/sop/extraction-status', sopController.getExtractionStatus);
 

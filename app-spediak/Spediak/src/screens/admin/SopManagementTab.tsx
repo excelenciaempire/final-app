@@ -410,6 +410,56 @@ const SopManagementTab: React.FC = () => {
     }
   };
 
+  // Delete SOP Document
+  const [deletingDocId, setDeletingDocId] = useState<number | null>(null);
+  
+  const handleDeleteDocument = async (docId: number, docName: string) => {
+    const doDelete = async () => {
+      try {
+        setDeletingDocId(docId);
+        const token = await getToken();
+        if (!token) throw new Error('Not authenticated');
+        
+        await axios.delete(`${BASE_URL}/api/admin/sop/documents/${docId}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        
+        // Refresh data
+        await fetchSopData();
+        
+        if (Platform.OS === 'web') {
+          alert(`Document "${docName}" deleted successfully`);
+        } else {
+          Alert.alert('Success', `Document "${docName}" deleted`);
+        }
+      } catch (error: any) {
+        console.error('Error deleting document:', error);
+        if (Platform.OS === 'web') {
+          alert(error.response?.data?.message || 'Failed to delete document');
+        } else {
+          Alert.alert('Error', error.response?.data?.message || 'Failed to delete document');
+        }
+      } finally {
+        setDeletingDocId(null);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm(`Delete "${docName}"? This will also remove any assignments using this document.`)) {
+        doDelete();
+      }
+    } else {
+      Alert.alert(
+        'Delete Document',
+        `Are you sure you want to delete "${docName}"? This will also remove any assignments using this document.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Delete', style: 'destructive', onPress: doDelete }
+        ]
+      );
+    }
+  };
+
   // Pick document for organization SOP
   const handlePickOrgDocument = async () => {
     try {
@@ -833,6 +883,47 @@ const SopManagementTab: React.FC = () => {
           </View>
         ) : (
           <Text style={styles.noDataText}>No documents uploaded yet. Upload one above.</Text>
+        )}
+
+        {/* Divider */}
+        <View style={styles.divider} />
+
+        {/* All Uploaded Documents */}
+        <Text style={styles.sectionTitle}>All Uploaded Documents</Text>
+        {sopDocuments.length > 0 ? (
+          sopDocuments.map((doc) => (
+            <View key={doc.id} style={styles.assignmentItemRow}>
+              <View style={styles.assignmentItemInfo}>
+                <Text style={styles.assignmentState}>{doc.document_name}</Text>
+                <Text style={styles.assignmentDoc} numberOfLines={1}>
+                  — {doc.document_type} | {doc.extraction_status}
+                </Text>
+              </View>
+              <View style={styles.assignmentActions}>
+                {doc.file_url && (
+                  <TouchableOpacity 
+                    style={styles.assignmentActionBtn}
+                    onPress={() => handleViewDocument(doc.file_url)}
+                  >
+                    <Eye size={16} color={COLORS.primary} />
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity 
+                  style={styles.assignmentActionBtn}
+                  onPress={() => handleDeleteDocument(doc.id, doc.document_name)}
+                  disabled={deletingDocId === doc.id}
+                >
+                  {deletingDocId === doc.id ? (
+                    <ActivityIndicator size="small" color={COLORS.error} />
+                  ) : (
+                    <Trash2 size={16} color={COLORS.error} />
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          ))
+        ) : (
+          <Text style={styles.noDataText}>No documents uploaded yet.</Text>
         )}
 
         {/* Divider */}

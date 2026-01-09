@@ -893,6 +893,65 @@ const createOrganization = async (req, res) => {
 };
 
 /**
+ * Delete an SOP document
+ */
+const deleteSopDocument = async (req, res) => {
+  try {
+    const { documentId } = req.params;
+    const clerkId = req.auth?.userId;
+
+    if (!documentId) {
+      return res.status(400).json({ message: 'Document ID is required' });
+    }
+
+    // Get document info first
+    const docResult = await pool.query(
+      'SELECT * FROM sop_documents WHERE id = $1',
+      [documentId]
+    );
+
+    if (docResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Document not found' });
+    }
+
+    const document = docResult.rows[0];
+
+    // Delete any assignments using this document first
+    await pool.query(
+      'DELETE FROM sop_assignments WHERE sop_document_id = $1',
+      [documentId]
+    );
+
+    // Delete the document
+    await pool.query('DELETE FROM sop_documents WHERE id = $1', [documentId]);
+
+    // Log to history
+    await pool.query(`
+      INSERT INTO sop_history (
+        action_type, 
+        sop_document_id,
+        changed_by, 
+        change_details,
+        created_at
+      ) VALUES ($1, $2, $3, $4, NOW())
+    `, [
+      'document_deleted',
+      documentId,
+      clerkId,
+      JSON.stringify({ document_name: document.document_name })
+    ]);
+
+    res.json({ 
+      message: 'Document deleted successfully',
+      deletedDocument: document.document_name
+    });
+  } catch (error) {
+    console.error('Error deleting SOP document:', error);
+    res.status(500).json({ message: 'Failed to delete document' });
+  }
+};
+
+/**
  * Delete an SOP organization
  */
 const deleteOrganization = async (req, res) => {
@@ -1011,6 +1070,7 @@ module.exports = {
   getOrganizations,
   createOrganization,
   deleteOrganization,
-  removeSopAssignment
+  removeSopAssignment,
+  deleteSopDocument
 };
 

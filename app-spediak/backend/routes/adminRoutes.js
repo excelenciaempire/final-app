@@ -144,6 +144,7 @@ router.get('/sop/history', sopController.getSopHistory);
 router.get('/sop/history/export-csv', sopController.exportSopHistoryCsv);
 router.post('/sop/:documentId/retry-extraction', sopController.retryPdfExtraction);
 router.delete('/sop/assignments/:assignmentId', sopController.removeSopAssignment);
+router.delete('/sop/documents/:documentId', sopController.deleteSopDocument);
 
 // SOP Organization Management
 router.get('/sop/organizations', sopController.getOrganizations);

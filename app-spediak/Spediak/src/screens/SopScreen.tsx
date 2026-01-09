@@ -21,7 +21,7 @@ import { FileText, Download, CheckSquare, Square, ExternalLink, AlertCircle } fr
 import AdBanner from '../components/AdBanner';
 import StatementUsageCard from '../components/StatementUsageCard';
 
-const ORGANIZATIONS = [
+const DEFAULT_ORGANIZATIONS = [
   { value: 'None', label: 'None / Not using organization SOP' },
   { value: 'ASHI', label: 'ASHI' },
   { value: 'InterNACHI', label: 'InterNACHI' },
@@ -35,6 +35,7 @@ const SopScreen: React.FC = () => {
   const isLargeScreen = width > 600;
   
   const [organization, setOrganization] = useState<string>('None');
+  const [organizations, setOrganizations] = useState(DEFAULT_ORGANIZATIONS);
   const [useStateSop, setUseStateSop] = useState<boolean>(true);
   const [activeStateSop, setActiveStateSop] = useState<any>(null);
   const [activeOrgSop, setActiveOrgSop] = useState<any>(null);
@@ -47,6 +48,50 @@ const SopScreen: React.FC = () => {
       setOrganization(user.unsafeMetadata.organization as string);
     }
   }, [user]);
+
+  // Fetch organizations from backend
+  useEffect(() => {
+    const fetchOrganizations = async () => {
+      try {
+        const token = await getToken();
+        if (!token) return;
+        
+        const response = await axios.get(`${BASE_URL}/api/sop/organizations`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        
+        const backendOrgs = response.data.organizations || [];
+        const orgOptions = [
+          { value: 'None', label: 'None / Not using organization SOP' },
+          ...backendOrgs.map((org: any) => ({ value: org.name, label: org.name }))
+        ];
+        setOrganizations(orgOptions);
+      } catch (err) {
+        console.log('Could not fetch organizations, using defaults');
+        // Keep default organizations if fetch fails
+      }
+    };
+    fetchOrganizations();
+  }, [getToken]);
+
+  // Save organization selection to user metadata
+  const handleOrganizationChange = async (value: string) => {
+    setOrganization(value);
+    
+    // Save to user metadata
+    if (user) {
+      try {
+        await user.update({
+          unsafeMetadata: {
+            ...user.unsafeMetadata,
+            organization: value
+          }
+        });
+      } catch (err) {
+        console.error('Error saving organization preference:', err);
+      }
+    }
+  };
 
   const fetchSopData = useCallback(async () => {
     if (!selectedState) {
@@ -184,11 +229,11 @@ const SopScreen: React.FC = () => {
           <View style={styles.pickerWrapper}>
             <Picker
               selectedValue={organization}
-              onValueChange={(value) => setOrganization(value)}
+              onValueChange={handleOrganizationChange}
               style={styles.picker}
               dropdownIconColor={COLORS.textSecondary}
             >
-              {ORGANIZATIONS.map((org) => (
+              {organizations.map((org) => (
                 <Picker.Item key={org.value} label={org.label} value={org.value} />
               ))}
             </Picker>
