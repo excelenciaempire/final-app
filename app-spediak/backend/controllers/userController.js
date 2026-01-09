@@ -1,4 +1,5 @@
 const pool = require('../db');
+const { clerkClient } = require('@clerk/clerk-sdk-node');
 
 /**
  * Get user profile and subscription data
@@ -425,11 +426,101 @@ const syncUserEmail = async (req, res) => {
   }
 };
 
+/**
+ * Change user email using Clerk Admin API (bypasses 2FA requirement)
+ * This is the easiest way for users to change their email
+ */
+const changeEmail = async (req, res) => {
+  try {
+    const clerkId = req.auth.userId;
+    const { newEmail } = req.body;
+
+    if (!clerkId) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    if (!newEmail || !newEmail.trim()) {
+      return res.status(400).json({ message: 'New email is required' });
+    }
+
+    const trimmedEmail = newEmail.trim().toLowerCase();
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(trimmedEmail)) {
+      return res.status(400).json({ message: 'Invalid email format' });
+    }
+
+    console.log(`[UserController] Changing email for user ${clerkId} to ${trimmedEmail}`);
+
+    // Get the current user from Clerk to get old email
+    const clerkUser = await clerkClient.users.getUser(clerkId);
+    const oldEmail = clerkUser.emailAddresses?.[0]?.emailAddress;
+
+    // Check if the email is the same
+    if (oldEmail === trimmedEmail) {
+      return res.status(400).json({ message: 'New email is the same as the current email' });
+    }
+
+    // Create new email address in Clerk using Admin API
+    const newEmailAddress = await clerkClient.emailAddresses.createEmailAddress({
+      userId: clerkId,
+      emailAddress: trimmedEmail,
+      verified: true, // Mark as verified since we're using admin API
+      primary: true // Set as primary immediately
+    });
+
+    console.log(`[UserController] New email address created in Clerk: ${newEmailAddress.id}`);
+
+    // Update in our database
+    await pool.query('UPDATE users SET email = $1, updated_at = NOW() WHERE clerk_id = $2', [trimmedEmail, clerkId]);
+
+    // Update admin_user_overrides if exists
+    await pool.query('UPDATE admin_user_overrides SET user_email = $1 WHERE user_clerk_id = $2', [trimmedEmail, clerkId]);
+
+    // Remove old email addresses (optional - keep only the new primary)
+    try {
+      for (const emailAddr of clerkUser.emailAddresses) {
+        if (emailAddr.id !== newEmailAddress.id) {
+          await clerkClient.emailAddresses.deleteEmailAddress(emailAddr.id);
+          console.log(`[UserController] Removed old email: ${emailAddr.emailAddress}`);
+        }
+      }
+    } catch (deleteErr) {
+      console.warn('[UserController] Could not delete old email addresses:', deleteErr.message);
+      // Continue anyway - the new email is set as primary
+    }
+
+    console.log(`[UserController] Email changed successfully for user ${clerkId}`);
+    
+    res.json({ 
+      message: 'Email changed successfully', 
+      newEmail: trimmedEmail,
+      oldEmail: oldEmail
+    });
+
+  } catch (error) {
+    console.error('[UserController] Error changing email:', error);
+    
+    // Handle specific Clerk errors
+    if (error.errors) {
+      const clerkError = error.errors[0];
+      if (clerkError?.code === 'form_identifier_exists') {
+        return res.status(400).json({ message: 'This email address is already registered to another account' });
+      }
+      return res.status(400).json({ message: clerkError?.longMessage || clerkError?.message || 'Error changing email' });
+    }
+    
+    res.status(500).json({ message: 'Failed to change email', error: error.message });
+  }
+};
+
 module.exports = {
   getUserProfile,
   updateProfile,
   getSubscriptionStatus,
   incrementStatementUsage,
-  syncUserEmail
+  syncUserEmail,
+  changeEmail
 };
 

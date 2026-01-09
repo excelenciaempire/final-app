@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, Image, TextInput, TouchableOpacity, Alert, ActivityIndicator, ScrollView, Platform, SafeAreaView, useWindowDimensions } from 'react-native';
-import { useUser, useAuth, useClerk, isClerkAPIResponseError } from '@clerk/clerk-expo';
+import { useUser, useAuth } from '@clerk/clerk-expo';
 import { Picker } from '@react-native-picker/picker';
 import * as ImagePicker from 'expo-image-picker';
 import { COLORS } from '../styles/colors';
@@ -73,7 +73,6 @@ const organizationOptions = [
 const ProfileSettingsScreen: React.FC = () => {
     const { isLoaded, isSignedIn, user } = useUser();
     const { signOut, getToken } = useAuth();
-    const clerk = useClerk();
     const { width } = useWindowDimensions();
 
     // State for editable fields
@@ -95,8 +94,6 @@ const ProfileSettingsScreen: React.FC = () => {
 
     // States for email change
     const [newEmail, setNewEmail] = useState('');
-    const [isVerifyingEmail, setIsVerifyingEmail] = useState(false);
-    const [verificationCode, setVerificationCode] = useState('');
     const [emailChangeError, setEmailChangeError] = useState<string | null>(null);
     const [emailChangeSuccess, setEmailChangeSuccess] = useState<string | null>(null);
 
@@ -237,11 +234,18 @@ const ProfileSettingsScreen: React.FC = () => {
         }
     };
 
-    const handleInitiateEmailChange = async () => {
+    const handleChangeEmail = async () => {
         if (!clerkUser) return;
-        const trimmedEmail = newEmail.trim();
+        const trimmedEmail = newEmail.trim().toLowerCase();
+        
         if (!trimmedEmail || !/^\S+@\S+\.\S+$/.test(trimmedEmail)) {
-            setEmailChangeError("Please enter a valid new email address.");
+            setEmailChangeError("Please enter a valid email address.");
+            return;
+        }
+
+        // Check if same as current
+        if (trimmedEmail === clerkUser.primaryEmailAddress?.emailAddress?.toLowerCase()) {
+            setEmailChangeError("This is already your current email address.");
             return;
         }
 
@@ -250,104 +254,31 @@ const ProfileSettingsScreen: React.FC = () => {
         setIsLoading(true);
 
         try {
-            const createdEmailAddress = await clerkUser.createEmailAddress({ email: trimmedEmail });
-            await createdEmailAddress.prepareVerification({ strategy: 'email_code' });
-            setIsVerifyingEmail(true);
-            setEmailChangeSuccess(`A verification code has been sent to ${trimmedEmail}.`);
-        } catch (err: unknown) {
-            console.error("Error initiating email change:", err);
-            if (isClerkAPIResponseError(err)) {
-                const firstError = err.errors[0];
-                const errorCode = firstError?.code;
-                const errorMessage = firstError?.longMessage || firstError?.message || "";
-                
-                // Handle specific Clerk errors with user-friendly messages
-                if (errorCode === 'form_identifier_exists' || errorMessage.includes('already exists')) {
-                    setEmailChangeError("This email address is already registered to another account.");
-                } else if (errorMessage.includes('additional verification') || errorCode === 'verification_required') {
-                    setEmailChangeError("Clerk requires additional verification (2FA). Please add a phone number to your Clerk account or disable 2FA temporarily in your security settings.");
-                } else {
-                    setEmailChangeError(errorMessage || "An error occurred while changing email.");
-                }
-            } else if (err instanceof Error) {
-                if (err.message.includes('additional verification')) {
-                    setEmailChangeError("Your account requires additional verification (2FA) to change the email. Please contact support or adjust your security settings.");
-                } else {
-                    setEmailChangeError(err.message || "An unexpected error occurred.");
-                }
-            } else {
-                setEmailChangeError("An unexpected error occurred.");
-            }
-            setIsVerifyingEmail(false);
-        } finally {
-            setIsLoading(false);
-        }
-    };
+            const token = await getToken();
+            const response = await fetch(`${API_URL}/api/user/change-email`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ newEmail: trimmedEmail }),
+            });
 
-    const handleAttemptEmailVerification = async () => {
-        if (!clerkUser || !newEmail.trim()) return;
-        if (!verificationCode.trim()) {
-            setEmailChangeError("Please enter the verification code.");
-            return;
-        }
+            const data = await response.json();
 
-        setEmailChangeError(null);
-        setIsLoading(true);
-
-        try {
-            const emailAddressToVerify = clerkUser.emailAddresses.find(
-                (ea) => ea.emailAddress === newEmail && ea.verification.status !== 'verified'
-            );
-
-            if (!emailAddressToVerify) {
-                setEmailChangeError("Could not find the email address to verify.");
-                setIsVerifyingEmail(false);
-                setIsLoading(false);
-                return;
+            if (!response.ok) {
+                throw new Error(data.message || 'Failed to change email');
             }
 
-            const verifiedEmailAddress = await emailAddressToVerify.attemptVerification({ code: verificationCode });
-
-            if (verifiedEmailAddress.verification.status === 'verified') {
-                // Get the old email before changing
-                const oldEmail = clerkUser.primaryEmailAddress?.emailAddress;
-                
-                // Use Clerk's frontend API to set the new email as primary
-                await clerkUser.update({ 
-                    primaryEmailAddressId: verifiedEmailAddress.id 
-                });
-
-                // Sync the new email with our backend database
-                try {
-                    const token = await getToken();
-                    await fetch(`${API_URL}/api/user/sync-email`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${token}`
-                        },
-                        body: JSON.stringify({ 
-                            newEmail: newEmail,
-                            oldEmail: oldEmail
-                        }),
-                    });
-                    console.log('Email synced with backend successfully');
-                } catch (syncError) {
-                    console.warn('Failed to sync email with backend:', syncError);
-                    // Don't fail the whole operation if sync fails - webhook will also sync
-                }
-
-                setEmailChangeSuccess('Email address changed successfully!');
-                setIsVerifyingEmail(false);
-                setNewEmail('');
-                setVerificationCode('');
-                await clerkUser.reload();
-            } else {
-                setEmailChangeError("Verification failed. Please check the code.");
-            }
+            setEmailChangeSuccess('Email changed successfully! Your new email is: ' + trimmedEmail);
+            setNewEmail('');
+            
+            // Reload user data from Clerk
+            await clerkUser.reload();
+            
         } catch (err: any) {
-            console.error("Error verifying email:", err);
-            setEmailChangeError(err.errors?.[0]?.message || err.message || "Verification failed.");
+            console.error("Error changing email:", err);
+            setEmailChangeError(err.message || "Failed to change email. Please try again.");
         } finally {
             setIsLoading(false);
         }
@@ -531,7 +462,7 @@ const ProfileSettingsScreen: React.FC = () => {
                     onPress={handleSaveChanges}
                     disabled={isLoading}
                 >
-                    {isLoading && !isVerifyingEmail ? (
+                    {isLoading ? (
                         <ActivityIndicator color="#fff" />
                     ) : (
                         <>
@@ -548,80 +479,49 @@ const ProfileSettingsScreen: React.FC = () => {
                 <View style={styles.divider} />
                 <Text style={styles.sectionTitle}>Change Email</Text>
                 <Text style={styles.helperText}>
-                  Note: Changing your email requires verification. If you encounter "additional verification required" error, you may need to add a phone number to your account first, or disable this security feature in your Clerk settings.
+                  Enter your new email address below. The change will take effect immediately.
                 </Text>
 
-                {!isVerifyingEmail ? (
-                    <>
-                        <Text style={styles.inputLabel}>New Email Address</Text>
-                        <View style={styles.inputWrapper}>
-                            <Mail size={18} color={COLORS.primary} style={styles.inputIcon} />
-                            <TextInput
-                                value={newEmail}
-                                onChangeText={(text) => {
-                                    setNewEmail(text);
-                                    setEmailChangeError(null);
-                                }}
-                                placeholder="Enter new email"
-                                style={styles.input}
-                                keyboardType="email-address"
-                                autoCapitalize="none"
-                                editable={!isLoading}
-                            />
-                        </View>
-                        {emailChangeSuccess && <Text style={styles.successText}>{emailChangeSuccess}</Text>}
-                        {emailChangeError && <Text style={styles.errorText}>{emailChangeError}</Text>}
-                        <TouchableOpacity
-                            style={[styles.secondaryButton, isLoading && styles.buttonDisabled]}
-                            onPress={handleInitiateEmailChange}
-                            disabled={isLoading}
-                        >
-                            <Text style={styles.secondaryButtonText}>
-                                {isLoading ? 'Sending...' : 'Send Verification Code'}
-                            </Text>
-                        </TouchableOpacity>
-                    </>
-                ) : (
-                    <>
-                        <Text style={styles.inputLabel}>Verification Code</Text>
-                        <View style={styles.inputWrapper}>
-                            <TextInput
-                                value={verificationCode}
-                                onChangeText={(text) => {
-                                    setVerificationCode(text);
-                                    setEmailChangeError(null);
-                                }}
-                                placeholder="Enter verification code"
-                                style={styles.input}
-                                keyboardType="number-pad"
-                                editable={!isLoading}
-                            />
-                        </View>
-                        {emailChangeError && <Text style={styles.errorText}>{emailChangeError}</Text>}
-                        <TouchableOpacity
-                            style={[styles.saveButton, isLoading && styles.buttonDisabled]}
-                            onPress={handleAttemptEmailVerification}
-                            disabled={isLoading}
-                        >
-                            <Text style={styles.saveButtonText}>
-                                {isLoading ? 'Verifying...' : 'Verify and Update Email'}
-                            </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                            style={[styles.cancelButton, isLoading && styles.buttonDisabled]}
-                            onPress={() => {
-                                setIsVerifyingEmail(false);
-                                setNewEmail('');
-                                setVerificationCode('');
-                                setEmailChangeError(null);
-                                setEmailChangeSuccess(null);
-                            }}
-                            disabled={isLoading}
-                        >
-                            <Text style={styles.cancelButtonText}>Cancel</Text>
-                        </TouchableOpacity>
-                    </>
-                )}
+                <Text style={styles.inputLabel}>Current Email</Text>
+                <View style={[styles.inputWrapper, styles.disabledInput]}>
+                    <Mail size={18} color={COLORS.textSecondary} style={styles.inputIcon} />
+                    <Text style={styles.currentEmailText}>
+                        {clerkUser.primaryEmailAddress?.emailAddress || 'No email set'}
+                    </Text>
+                </View>
+
+                <Text style={styles.inputLabel}>New Email Address</Text>
+                <View style={styles.inputWrapper}>
+                    <Mail size={18} color={COLORS.primary} style={styles.inputIcon} />
+                    <TextInput
+                        value={newEmail}
+                        onChangeText={(text) => {
+                            setNewEmail(text);
+                            setEmailChangeError(null);
+                            setEmailChangeSuccess(null);
+                        }}
+                        placeholder="Enter new email address"
+                        style={styles.input}
+                        keyboardType="email-address"
+                        autoCapitalize="none"
+                        editable={!isLoading}
+                    />
+                </View>
+                
+                {emailChangeSuccess && <Text style={styles.successText}>{emailChangeSuccess}</Text>}
+                {emailChangeError && <Text style={styles.errorText}>{emailChangeError}</Text>}
+                
+                <TouchableOpacity
+                    style={[styles.secondaryButton, (isLoading || !newEmail.trim()) && styles.buttonDisabled]}
+                    onPress={handleChangeEmail}
+                    disabled={isLoading || !newEmail.trim()}
+                >
+                    {isLoading ? (
+                        <ActivityIndicator color={COLORS.primary} size="small" />
+                    ) : (
+                        <Text style={styles.secondaryButtonText}>Change Email</Text>
+                    )}
+                </TouchableOpacity>
             </ScrollView>
         </SafeAreaView>
     );
@@ -840,6 +740,16 @@ const styles = StyleSheet.create({
         fontWeight: '500',
         color: COLORS.textSecondary,
         marginBottom: 6,
+    },
+    disabledInput: {
+        backgroundColor: '#F1F5F9',
+        borderColor: '#E2E8F0',
+    },
+    currentEmailText: {
+        flex: 1,
+        paddingVertical: Platform.OS === 'ios' ? 14 : 12,
+        fontSize: 15,
+        color: COLORS.textSecondary,
     },
 });
 
