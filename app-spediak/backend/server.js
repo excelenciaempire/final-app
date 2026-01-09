@@ -10,7 +10,7 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Configuración de CORS
+// Configuración de CORS - Allow ALL origins for now to debug
 const allowedOrigins = [
   'https://app-spediak.vercel.app',
   'https://spediak-approved.vercel.app',
@@ -22,36 +22,18 @@ const allowedOrigins = [
   'https://spediak.com'
 ];
 
-// CORS middleware with proper preflight handling
+// CORS middleware - permissive configuration
 app.use(cors({
-  origin: function (origin, callback) {
-    // Allow requests with no origin (mobile apps, curl, etc.)
-    if (!origin) {
-      return callback(null, true);
-    }
-    
-    // Check if origin is in allowed list
-    if (allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    }
-    
-    // Also allow any subdomain of spediak.com
-    if (origin.endsWith('.spediak.com') || origin.endsWith('.vercel.app') || origin.endsWith('.onrender.com')) {
-      return callback(null, true);
-    }
-    
-    console.log('Origen bloqueado por CORS:', origin);
-    callback(new Error('No permitido por CORS'));
-  },
+  origin: true, // Allow all origins temporarily
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
   exposedHeaders: ['Content-Range', 'X-Content-Range'],
-  maxAge: 86400 // Cache preflight for 24 hours
+  maxAge: 86400
 }));
 
 // Explicit OPTIONS handling for preflight requests
-app.options('*', cors());
+app.options('*', cors({ origin: true, credentials: true }));
 
 // Webhook Route
 app.post('/api/webhooks/clerk', express.raw({ type: 'application/json' }), handleClerkWebhook);

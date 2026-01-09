@@ -258,9 +258,23 @@ const ProfileSettingsScreen: React.FC = () => {
             console.error("Error initiating email change:", err);
             if (isClerkAPIResponseError(err)) {
                 const firstError = err.errors[0];
-                setEmailChangeError(firstError?.longMessage || firstError?.message || "An error occurred.");
+                const errorCode = firstError?.code;
+                const errorMessage = firstError?.longMessage || firstError?.message || "";
+                
+                // Handle specific Clerk errors with user-friendly messages
+                if (errorCode === 'form_identifier_exists' || errorMessage.includes('already exists')) {
+                    setEmailChangeError("This email address is already registered to another account.");
+                } else if (errorMessage.includes('additional verification') || errorCode === 'verification_required') {
+                    setEmailChangeError("Clerk requires additional verification (2FA). Please add a phone number to your Clerk account or disable 2FA temporarily in your security settings.");
+                } else {
+                    setEmailChangeError(errorMessage || "An error occurred while changing email.");
+                }
             } else if (err instanceof Error) {
-                setEmailChangeError(err.message || "An unexpected error occurred.");
+                if (err.message.includes('additional verification')) {
+                    setEmailChangeError("Your account requires additional verification (2FA) to change the email. Please contact support or adjust your security settings.");
+                } else {
+                    setEmailChangeError(err.message || "An unexpected error occurred.");
+                }
             } else {
                 setEmailChangeError("An unexpected error occurred.");
             }
