@@ -36,6 +36,7 @@ const SopScreen: React.FC = () => {
   const [activeOrgSop, setActiveOrgSop] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingOrgs, setIsLoadingOrgs] = useState(true);
+  const [loadingMessage, setLoadingMessage] = useState('Loading...');
 
   // Initialize organization from user metadata
   useEffect(() => {
@@ -44,9 +45,9 @@ const SopScreen: React.FC = () => {
     }
   }, [user]);
 
-  // Fetch organizations from backend
+  // Fetch organizations from backend with retry
   useEffect(() => {
-    const fetchOrganizations = async () => {
+    const fetchOrganizations = async (retryCount = 0) => {
       try {
         setIsLoadingOrgs(true);
         const token = await getToken();
@@ -57,7 +58,7 @@ const SopScreen: React.FC = () => {
         
         const response = await axios.get(`${BASE_URL}/api/sop/organizations`, {
           headers: { Authorization: `Bearer ${token}` },
-          timeout: 10000
+          timeout: 45000 // 45 seconds for cold start
         });
         
         const backendOrgs = response.data.organizations || [];
@@ -69,8 +70,14 @@ const SopScreen: React.FC = () => {
           }))
         ];
         setOrganizations(orgOptions);
-      } catch (err) {
-        console.log('Could not fetch organizations:', err);
+      } catch (err: any) {
+        console.log('Could not fetch organizations:', err?.message);
+        // Retry once if timeout (server cold start)
+        if (retryCount < 1 && err?.code === 'ECONNABORTED') {
+          console.log('Retrying organizations fetch...');
+          setTimeout(() => fetchOrganizations(retryCount + 1), 2000);
+          return;
+        }
         // Keep default option
       } finally {
         setIsLoadingOrgs(false);
@@ -98,7 +105,7 @@ const SopScreen: React.FC = () => {
     }
   };
 
-  const fetchSopData = useCallback(async () => {
+  const fetchSopData = useCallback(async (retryCount = 0) => {
     if (!selectedState) {
       setIsLoading(false);
       return;
@@ -106,9 +113,17 @@ const SopScreen: React.FC = () => {
 
     try {
       setIsLoading(true);
+      setLoadingMessage('Loading SOP data...');
+      
+      // Show "server starting" message after 5 seconds
+      const slowLoadTimer = setTimeout(() => {
+        setLoadingMessage('Server starting up, please wait...');
+      }, 5000);
+      
       const token = await getToken();
       
       if (!token) {
+        clearTimeout(slowLoadTimer);
         setIsLoading(false);
         return;
       }
@@ -121,17 +136,25 @@ const SopScreen: React.FC = () => {
       const response = await axios.get(`${BASE_URL}/api/sop/active`, {
         headers: { Authorization: `Bearer ${token}` },
         params,
-        timeout: 15000
+        timeout: 45000 // 45 seconds for cold start
       });
 
+      clearTimeout(slowLoadTimer);
       setActiveStateSop(response.data.stateSop);
       setActiveOrgSop(response.data.orgSop);
     } catch (err: any) {
-      console.error('Error fetching SOP data:', err);
+      console.error('Error fetching SOP data:', err?.message);
+      // Retry once if timeout (server cold start)
+      if (retryCount < 1 && err?.code === 'ECONNABORTED') {
+        setLoadingMessage('Retrying connection...');
+        setTimeout(() => fetchSopData(retryCount + 1), 2000);
+        return;
+      }
       setActiveStateSop(null);
       setActiveOrgSop(null);
     } finally {
       setIsLoading(false);
+      setLoadingMessage('Loading...');
     }
   }, [selectedState, organization, getToken]);
 
@@ -242,7 +265,7 @@ const SopScreen: React.FC = () => {
           {isLoading ? (
             <View style={styles.loadingRow}>
               <ActivityIndicator size="small" color={COLORS.primary} />
-              <Text style={styles.loadingText}>Loading SOP assignments...</Text>
+              <Text style={styles.loadingText}>{loadingMessage}</Text>
             </View>
           ) : (
             <>
@@ -455,6 +478,12 @@ const styles = StyleSheet.create({
   loadingPickerText: {
     fontSize: 14,
     color: COLORS.textSecondary,
+  },
+  serverStartingText: {
+    fontSize: 12,
+    color: '#F59E0B',
+    textAlign: 'center',
+    marginTop: 4,
   },
   activeSopSection: {
     backgroundColor: '#F8FAFC',
