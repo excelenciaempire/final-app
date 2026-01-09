@@ -295,10 +295,33 @@ const ProfileSettingsScreen: React.FC = () => {
             const verifiedEmailAddress = await emailAddressToVerify.attemptVerification({ code: verificationCode });
 
             if (verifiedEmailAddress.verification.status === 'verified') {
+                // Get the old email before changing
+                const oldEmail = clerkUser.primaryEmailAddress?.emailAddress;
+                
                 // Use Clerk's frontend API to set the new email as primary
                 await clerkUser.update({ 
                     primaryEmailAddressId: verifiedEmailAddress.id 
                 });
+
+                // Sync the new email with our backend database
+                try {
+                    const token = await getToken();
+                    await fetch(`${API_URL}/api/user/sync-email`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({ 
+                            newEmail: newEmail,
+                            oldEmail: oldEmail
+                        }),
+                    });
+                    console.log('Email synced with backend successfully');
+                } catch (syncError) {
+                    console.warn('Failed to sync email with backend:', syncError);
+                    // Don't fail the whole operation if sync fails - webhook will also sync
+                }
 
                 setEmailChangeSuccess('Email address changed successfully!');
                 setIsVerifyingEmail(false);

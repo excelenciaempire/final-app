@@ -373,10 +373,63 @@ const incrementStatementUsage = async (req, res) => {
   }
 };
 
+/**
+ * Sync user email after change in Clerk
+ * Updates email across all relevant tables
+ */
+const syncUserEmail = async (req, res) => {
+  try {
+    const clerkId = req.auth.userId;
+    const { newEmail, oldEmail } = req.body;
+
+    if (!clerkId) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    if (!newEmail) {
+      return res.status(400).json({ message: 'New email is required' });
+    }
+
+    console.log(`[UserController] Syncing email for user ${clerkId}: ${oldEmail} -> ${newEmail}`);
+
+    // Update users table
+    await pool.query(`
+      UPDATE users 
+      SET email = $1, updated_at = NOW()
+      WHERE clerk_id = $2
+    `, [newEmail, clerkId]);
+
+    // Update admin_user_overrides if exists (match by old email or clerk_id)
+    if (oldEmail) {
+      await pool.query(`
+        UPDATE admin_user_overrides 
+        SET user_email = $1
+        WHERE user_clerk_id = $2 OR user_email = $3
+      `, [newEmail, clerkId, oldEmail]);
+    }
+
+    // Update any other tables that might reference email
+    // (Most tables use clerk_id, so email sync in users table is the main concern)
+
+    console.log(`[UserController] Email synced successfully for user ${clerkId}`);
+    
+    res.json({ 
+      success: true, 
+      message: 'Email synced successfully',
+      email: newEmail 
+    });
+
+  } catch (error) {
+    console.error('Error syncing email:', error);
+    res.status(500).json({ message: 'Failed to sync email', error: error.message });
+  }
+};
+
 module.exports = {
   getUserProfile,
   updateProfile,
   getSubscriptionStatus,
-  incrementStatementUsage
+  incrementStatementUsage,
+  syncUserEmail
 };
 

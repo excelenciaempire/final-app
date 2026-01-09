@@ -57,6 +57,7 @@ router.get('/image-url', getPresignedUrl);
 // User Profile Routes
 router.get('/user/profile', userController.getUserProfile);
 router.put('/user/profile', userController.updateProfile);
+router.post('/user/sync-email', userController.syncUserEmail);
 router.get('/user/subscription', userController.getSubscriptionStatus);
 router.post('/user/subscription/increment', userController.incrementStatementUsage);
 
