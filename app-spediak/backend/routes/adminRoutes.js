@@ -41,6 +41,7 @@ const {
   reactivateUser,
   cancelSubscription,
   softDeleteUser,
+  restoreSoftDeletedUser,
   forceLogout,
   forcePasswordReset,
   resetUsage,
@@ -119,6 +120,7 @@ router.post('/users/:userId/suspend', suspendUser);
 router.post('/users/:userId/reactivate', reactivateUser);
 router.post('/users/:userId/cancel-subscription', cancelSubscription);
 router.post('/users/:userId/soft-delete', softDeleteUser);
+router.post('/users/:userId/restore', restoreSoftDeletedUser);
 router.post('/users/:userId/force-logout', forceLogout);
 router.post('/users/:userId/force-password-reset', forcePasswordReset);
 router.post('/users/:userId/reset-usage', resetUsage);

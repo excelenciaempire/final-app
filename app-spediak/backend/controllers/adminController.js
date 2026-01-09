@@ -1352,13 +1352,43 @@ const searchUserByEmail = async (req, res) => {
 // ============================================
 
 /**
- * Suspend user
+ * Suspend user - Also bans in Clerk to prevent login
  */
 const suspendUser = async (req, res) => {
   const { userId } = req.params;
   const adminClerkId = req.auth?.userId;
 
   try {
+    // 1. Ban user in Clerk (prevents login)
+    let clerkBanned = false;
+    try {
+      await clerkClient.users.banUser(userId);
+      clerkBanned = true;
+      console.log(`[Admin] User ${userId} banned in Clerk`);
+    } catch (clerkError) {
+      console.error('[Admin] Clerk ban error:', clerkError.message);
+      // Continue with DB update even if Clerk fails
+    }
+
+    // 2. Revoke all active sessions
+    let sessionsRevoked = 0;
+    try {
+      const sessionsResponse = await clerkClient.sessions.getSessionList({ userId });
+      const sessions = sessionsResponse.data || sessionsResponse || [];
+      for (const session of sessions) {
+        if (session.status === 'active') {
+          try {
+            await clerkClient.sessions.revokeSession(session.id);
+            sessionsRevoked++;
+          } catch (e) { /* ignore */ }
+        }
+      }
+      console.log(`[Admin] Revoked ${sessionsRevoked} sessions for user ${userId}`);
+    } catch (e) {
+      console.log('[Admin] Session revocation error:', e.message);
+    }
+
+    // 3. Update DB flag
     await pool.query(`
       INSERT INTO user_security_flags (user_clerk_id, is_suspended, suspended_at, suspended_by)
       VALUES ($1, TRUE, NOW(), $2)
@@ -1366,43 +1396,71 @@ const suspendUser = async (req, res) => {
       DO UPDATE SET is_suspended = TRUE, suspended_at = NOW(), suspended_by = $2, updated_at = NOW()
     `, [userId, adminClerkId]);
 
-    // Log audit
+    // 4. Log audit
     await pool.query(`
       INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, target_user_id, action_details)
-      VALUES ($1, 'suspend_user', 'user_management', 'user', $2, $2, '{"action": "User suspended"}')
-    `, [adminClerkId, userId]);
+      VALUES ($1, 'suspend_user', 'user_management', 'user', $2, $2, $3)
+    `, [adminClerkId, userId, JSON.stringify({ 
+      action: 'User suspended', 
+      clerk_banned: clerkBanned,
+      sessions_revoked: sessionsRevoked 
+    })]);
 
-    res.json({ message: 'User suspended successfully' });
+    res.json({ 
+      message: 'User suspended successfully', 
+      clerk_banned: clerkBanned,
+      sessions_revoked: sessionsRevoked
+    });
   } catch (error) {
     console.error('[Admin] Error suspending user:', error);
-    res.status(500).json({ message: 'Failed to suspend user' });
+    res.status(500).json({ message: 'Failed to suspend user', error: error.message });
   }
 };
 
 /**
- * Reactivate user
+ * Reactivate user - Also unbans in Clerk to allow login
  */
 const reactivateUser = async (req, res) => {
   const { userId } = req.params;
   const adminClerkId = req.auth?.userId;
 
   try {
+    // 1. Unban user in Clerk (allows login again)
+    let clerkUnbanned = false;
+    try {
+      await clerkClient.users.unbanUser(userId);
+      clerkUnbanned = true;
+      console.log(`[Admin] User ${userId} unbanned in Clerk`);
+    } catch (clerkError) {
+      // User might not be banned, that's okay
+      if (clerkError.status !== 422) { // 422 = user not banned
+        console.error('[Admin] Clerk unban error:', clerkError.message);
+      }
+    }
+
+    // 2. Update DB flag
     await pool.query(`
       UPDATE user_security_flags 
       SET is_suspended = FALSE, updated_at = NOW()
       WHERE user_clerk_id = $1
     `, [userId]);
 
-    // Log audit
+    // 3. Log audit
     await pool.query(`
       INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, target_user_id, action_details)
-      VALUES ($1, 'reactivate_user', 'user_management', 'user', $2, $2, '{"action": "User reactivated"}')
-    `, [adminClerkId, userId]);
+      VALUES ($1, 'reactivate_user', 'user_management', 'user', $2, $2, $3)
+    `, [adminClerkId, userId, JSON.stringify({ 
+      action: 'User reactivated',
+      clerk_unbanned: clerkUnbanned
+    })]);
 
-    res.json({ message: 'User reactivated successfully' });
+    res.json({ 
+      message: 'User reactivated successfully',
+      clerk_unbanned: clerkUnbanned
+    });
   } catch (error) {
     console.error('[Admin] Error reactivating user:', error);
-    res.status(500).json({ message: 'Failed to reactivate user' });
+    res.status(500).json({ message: 'Failed to reactivate user', error: error.message });
   }
 };
 
@@ -1434,29 +1492,127 @@ const cancelSubscription = async (req, res) => {
 };
 
 /**
- * Soft delete user
+ * Soft delete user - Deactivates in DB and bans in Clerk
+ * User can be restored later (unlike hard delete)
  */
 const softDeleteUser = async (req, res) => {
   const { userId } = req.params;
   const adminClerkId = req.auth?.userId;
 
   try {
+    // 1. Ban user in Clerk (prevents login)
+    let clerkBanned = false;
+    try {
+      await clerkClient.users.banUser(userId);
+      clerkBanned = true;
+      console.log(`[Admin] User ${userId} banned in Clerk (soft delete)`);
+    } catch (clerkError) {
+      console.error('[Admin] Clerk ban error:', clerkError.message);
+    }
+
+    // 2. Revoke all active sessions
+    let sessionsRevoked = 0;
+    try {
+      const sessionsResponse = await clerkClient.sessions.getSessionList({ userId });
+      const sessions = sessionsResponse.data || sessionsResponse || [];
+      for (const session of sessions) {
+        if (session.status === 'active') {
+          try {
+            await clerkClient.sessions.revokeSession(session.id);
+            sessionsRevoked++;
+          } catch (e) { /* ignore */ }
+        }
+      }
+    } catch (e) {
+      console.log('[Admin] Session revocation error:', e.message);
+    }
+
+    // 3. Update DB - mark as inactive
     await pool.query(`
       UPDATE users 
       SET is_active = FALSE, updated_at = NOW()
       WHERE clerk_id = $1
     `, [userId]);
 
-    // Log audit
+    // 4. Also mark as suspended in security flags
+    await pool.query(`
+      INSERT INTO user_security_flags (user_clerk_id, is_suspended, is_soft_deleted, suspended_at, suspended_by)
+      VALUES ($1, TRUE, TRUE, NOW(), $2)
+      ON CONFLICT (user_clerk_id) 
+      DO UPDATE SET is_suspended = TRUE, is_soft_deleted = TRUE, suspended_at = NOW(), suspended_by = $2, updated_at = NOW()
+    `, [userId, adminClerkId]);
+
+    // 5. Log audit
     await pool.query(`
       INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, target_user_id, action_details)
-      VALUES ($1, 'soft_delete_user', 'user_management', 'user', $2, $2, '{"action": "User soft deleted"}')
-    `, [adminClerkId, userId]);
+      VALUES ($1, 'soft_delete_user', 'user_management', 'user', $2, $2, $3)
+    `, [adminClerkId, userId, JSON.stringify({ 
+      action: 'User soft deleted',
+      clerk_banned: clerkBanned,
+      sessions_revoked: sessionsRevoked
+    })]);
 
-    res.json({ message: 'User soft deleted successfully' });
+    res.json({ 
+      message: 'User soft deleted successfully',
+      clerk_banned: clerkBanned,
+      sessions_revoked: sessionsRevoked
+    });
   } catch (error) {
     console.error('[Admin] Error soft deleting user:', error);
-    res.status(500).json({ message: 'Failed to soft delete user' });
+    res.status(500).json({ message: 'Failed to soft delete user', error: error.message });
+  }
+};
+
+/**
+ * Restore soft deleted user - Reactivates in DB and unbans in Clerk
+ */
+const restoreSoftDeletedUser = async (req, res) => {
+  const { userId } = req.params;
+  const adminClerkId = req.auth?.userId;
+
+  try {
+    // 1. Unban user in Clerk
+    let clerkUnbanned = false;
+    try {
+      await clerkClient.users.unbanUser(userId);
+      clerkUnbanned = true;
+      console.log(`[Admin] User ${userId} unbanned in Clerk (restore)`);
+    } catch (clerkError) {
+      if (clerkError.status !== 422) { // 422 = user not banned
+        console.error('[Admin] Clerk unban error:', clerkError.message);
+      }
+    }
+
+    // 2. Reactivate in DB
+    await pool.query(`
+      UPDATE users 
+      SET is_active = TRUE, updated_at = NOW()
+      WHERE clerk_id = $1
+    `, [userId]);
+
+    // 3. Clear security flags
+    await pool.query(`
+      UPDATE user_security_flags 
+      SET is_suspended = FALSE, is_soft_deleted = FALSE, updated_at = NOW()
+      WHERE user_clerk_id = $1
+    `, [userId]);
+
+    // 4. Log audit
+    await pool.query(`
+      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, target_user_id, action_details)
+      VALUES ($1, 'restore_user', 'user_management', 'user', $2, $2, $3)
+    `, [adminClerkId, userId, JSON.stringify({ 
+      action: 'User restored from soft delete',
+      clerk_unbanned: clerkUnbanned
+    })]);
+
+    res.json({ 
+      message: 'User restored successfully',
+      clerk_unbanned: clerkUnbanned
+    });
+  } catch (error) {
+    console.error('[Admin] Error restoring user:', error);
+    res.status(500).json({ message: 'Failed to restore user', error: error.message });
   }
 };
 
@@ -2014,6 +2170,7 @@ module.exports = {
   reactivateUser,
   cancelSubscription,
   softDeleteUser,
+  restoreSoftDeletedUser,
   forceLogout,
   forcePasswordReset,
   resetUsage,
