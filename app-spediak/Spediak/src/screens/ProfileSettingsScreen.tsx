@@ -295,20 +295,10 @@ const ProfileSettingsScreen: React.FC = () => {
             const verifiedEmailAddress = await emailAddressToVerify.attemptVerification({ code: verificationCode });
 
             if (verifiedEmailAddress.verification.status === 'verified') {
-                const token = await getToken();
-                const response = await fetch(`${API_URL}/api/user/set-primary-email`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({ newEmailAddressId: verifiedEmailAddress.id }),
+                // Use Clerk's frontend API to set the new email as primary
+                await clerkUser.update({ 
+                    primaryEmailAddressId: verifiedEmailAddress.id 
                 });
-
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.message || 'Failed to set new email as primary.');
-                }
 
                 setEmailChangeSuccess('Email address changed successfully!');
                 setIsVerifyingEmail(false);
