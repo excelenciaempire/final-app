@@ -412,7 +412,8 @@ const RootNavigator: React.FC = () => {
                     />
                   </TouchableOpacity>
                 ),
-                headerTitle: () => <CustomHeaderTitle />,
+                // Only show state selector on Home screen, otherwise show nothing (logo is on left)
+                headerTitle: () => route.name === 'Home' ? <CustomHeaderTitle /> : null,
                 headerRight: () => (
                   <TouchableOpacity onPress={() => navigation.toggleDrawer()} style={{ marginRight: 15 }}>
                     <Ionicons name="menu" size={28} color={COLORS.white} />

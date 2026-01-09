@@ -192,6 +192,7 @@ const exportUsersCsv = async (req, res) => {
 // Delete User (Admin)
 const deleteUser = async (req, res) => {
   const { userId } = req.params; // This is the Clerk User ID
+  const adminClerkId = req.auth?.userId;
   console.log(`[Admin] Request to delete user ID: ${userId}`);
 
   if (!userId) {
@@ -203,32 +204,77 @@ const deleteUser = async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    // First, delete inspections associated with the user
-    console.log(`[Admin] Deleting inspections for user ${userId}...`);
-    const deleteInspectionsQuery = 'DELETE FROM inspections WHERE user_id = $1';
-    await client.query(deleteInspectionsQuery, [userId]);
-    console.log(`[Admin] Inspections for user ${userId} deleted.`);
+    // Delete from all related tables in correct order (to avoid foreign key issues)
+    console.log(`[Admin] Deleting all data for user ${userId}...`);
+    
+    // 1. Delete inspections
+    await client.query('DELETE FROM inspections WHERE user_id = $1', [userId]);
+    console.log(`[Admin] Deleted inspections for user ${userId}`);
+    
+    // 2. Delete user profile
+    await client.query('DELETE FROM user_profiles WHERE clerk_id = $1', [userId]);
+    console.log(`[Admin] Deleted user_profiles for user ${userId}`);
+    
+    // 3. Delete user subscription
+    await client.query('DELETE FROM user_subscriptions WHERE clerk_id = $1', [userId]);
+    console.log(`[Admin] Deleted user_subscriptions for user ${userId}`);
+    
+    // 4. Delete user security flags
+    await client.query('DELETE FROM user_security_flags WHERE user_clerk_id = $1', [userId]);
+    console.log(`[Admin] Deleted user_security_flags for user ${userId}`);
+    
+    // 5. Delete user support tags
+    await client.query('DELETE FROM user_support_tags WHERE user_clerk_id = $1', [userId]);
+    console.log(`[Admin] Deleted user_support_tags for user ${userId}`);
+    
+    // 6. Delete admin user notes
+    await client.query('DELETE FROM admin_user_notes WHERE user_clerk_id = $1', [userId]);
+    console.log(`[Admin] Deleted admin_user_notes for user ${userId}`);
+    
+    // 7. Delete gifted credits history
+    await client.query('DELETE FROM admin_gifted_credits WHERE user_clerk_id = $1', [userId]);
+    console.log(`[Admin] Deleted admin_gifted_credits for user ${userId}`);
+    
+    // 8. Delete trial resets history
+    await client.query('DELETE FROM admin_trial_resets WHERE user_clerk_id = $1', [userId]);
+    console.log(`[Admin] Deleted admin_trial_resets for user ${userId}`);
+    
+    // 9. Delete admin user overrides
+    await client.query('DELETE FROM admin_user_overrides WHERE user_clerk_id = $1', [userId]);
+    console.log(`[Admin] Deleted admin_user_overrides for user ${userId}`);
 
-    // Then, delete the user from Clerk
+    // 10. Delete the user from Clerk (if exists)
     console.log(`[Admin] Deleting user ${userId} from Clerk...`);
-    await clerkClient.users.deleteUser(userId);
-    console.log(`[Admin] User ${userId} deleted from Clerk successfully.`);
-
-    console.log(`[Admin] Deleting user ${userId} from local database...`);
-    const deleteDbUserQuery = 'DELETE FROM users WHERE clerk_id = $1 RETURNING *';
-    const dbResult = await client.query(deleteDbUserQuery, [userId]);
-
-    if (dbResult.rowCount === 0) {
-      // This case might happen if the user was in Clerk but not in the local DB (e.g., sync issue)
-      // Or if they were already deleted from the DB but not Clerk.
-      // We'll still consider the Clerk deletion a success for the overall operation if it passed.
-      console.warn(`[Admin] User ${userId} not found in the local database, but was deleted from Clerk.`);
-      // Optionally, you could choose to throw an error here if strict consistency is required immediately.
-    } else {
-      console.log(`[Admin] User ${userId} (DB record: ${dbResult.rows[0].id}) deleted from local database.`);
+    try {
+      await clerkClient.users.deleteUser(userId);
+      console.log(`[Admin] User ${userId} deleted from Clerk successfully.`);
+    } catch (clerkError) {
+      // If user doesn't exist in Clerk (404), continue with DB deletion
+      if (clerkError.status === 404) {
+        console.warn(`[Admin] User ${userId} not found in Clerk, continuing with DB cleanup.`);
+      } else {
+        throw clerkError;
+      }
     }
 
+    // 11. Finally delete from users table
+    console.log(`[Admin] Deleting user ${userId} from users table...`);
+    const dbResult = await client.query('DELETE FROM users WHERE clerk_id = $1 RETURNING *', [userId]);
+
+    if (dbResult.rowCount === 0) {
+      console.warn(`[Admin] User ${userId} not found in the users table.`);
+    } else {
+      console.log(`[Admin] User ${userId} deleted from users table.`);
+    }
+
+    // 12. Log the deletion in audit log (don't reference the deleted user)
+    await client.query(`
+      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, action_details)
+      VALUES ($1, 'hard_delete_user', 'user_management', 'user', $2, $3)
+    `, [adminClerkId, userId, JSON.stringify({ action: 'User permanently deleted' })]);
+
     await client.query('COMMIT');
+    console.log(`[Admin] User ${userId} fully deleted.`);
     res.status(200).json({ message: 'User deleted successfully from Clerk and database.' });
 
   } catch (error) {
@@ -237,13 +283,11 @@ const deleteUser = async (req, res) => {
     let errorMessage = 'Failed to delete user.';
     let statusCode = 500;
 
-    if (error.isClerkAPIError) { // Check if it's a Clerk API error
+    if (error.isClerkAPIError) {
         errorMessage = error.errors?.[0]?.longMessage || error.errors?.[0]?.message || 'Clerk API error during user deletion.';
-        // Clerk API might return specific status codes, e.g., 404 if user not found
         if (error.status) statusCode = error.status;
         console.error('[Admin] Clerk API Error details:', JSON.stringify(error.errors));
-    } else if (error.code) { // Check for pg error codes
-        // Handle specific pg errors if needed, e.g., foreign key constraints
+    } else if (error.code) {
         errorMessage = `Database error: ${error.message}`;
     }
 
