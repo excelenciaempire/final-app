@@ -218,10 +218,16 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = () => {
             {/* Optional Profile Picture (Moved Up) */}
              <Text style={styles.label}>Profile Picture (Optional):</Text>
              <TouchableOpacity onPress={pickImage} style={styles.profileImageContainer}>
-                 <Image
-                     source={{ uri: profileImageUri || 'https://via.placeholder.com/150' }} // Use a generic placeholder
-                     style={styles.profileImage}
-                 />
+                 {profileImageUri ? (
+                   <Image
+                       source={{ uri: profileImageUri }}
+                       style={styles.profileImage}
+                   />
+                 ) : (
+                   <View style={[styles.profileImage, styles.placeholderImage]}>
+                     <Camera size={40} color="#9CA3AF" />
+                   </View>
+                 )}
                  <View style={styles.cameraOverlay}>
                      <Camera size={24} color="#fff" />
                  </View>
@@ -376,6 +382,11 @@ const styles = StyleSheet.create({
         borderWidth: 3,
         borderColor: '#007bff',
         backgroundColor: '#e0e0e0', // Placeholder bg
+    },
+    placeholderImage: {
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: '#F3F4F6',
     },
     cameraOverlay: {
         position: 'absolute',
