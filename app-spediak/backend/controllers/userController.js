@@ -138,7 +138,7 @@ const updateProfile = async (req, res) => {
 
     // Handle organizations - prefer array, fallback to single
     const orgsArray = organizations || (organization && organization !== 'None' ? [organization] : []);
-    const primaryOrg = orgsArray.length > 0 ? orgsArray[0] : null;
+    const primaryOrg = orgsArray.length > 0 ? orgsArray[0] : (organization || null);
 
     // Check if profile exists
     const existingProfile = await pool.query(
@@ -147,48 +147,100 @@ const updateProfile = async (req, res) => {
     );
 
     if (existingProfile.rows.length === 0) {
-      // Create new profile
-      const result = await pool.query(`
-        INSERT INTO user_profiles (
-          clerk_id, 
-          profile_photo_url, 
-          primary_state, 
-          secondary_states, 
-          organization,
-          organizations,
-          company_name,
-          phone_number,
-          updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
-        RETURNING *
-      `, [clerkId, profilePhotoUrl, primaryState, secondaryStates || [], primaryOrg, JSON.stringify(orgsArray), companyName, phoneNumber]);
+      // Create new profile - use simpler query without organizations column if it doesn't exist
+      try {
+        const result = await pool.query(`
+          INSERT INTO user_profiles (
+            clerk_id, 
+            profile_photo_url, 
+            primary_state, 
+            secondary_states, 
+            organization,
+            organizations,
+            company_name,
+            phone_number,
+            updated_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+          RETURNING *
+        `, [clerkId, profilePhotoUrl, primaryState, secondaryStates || [], primaryOrg, JSON.stringify(orgsArray), companyName, phoneNumber]);
 
-      return res.json({ 
-        message: 'Profile created successfully', 
-        profile: result.rows[0] 
-      });
+        return res.json({ 
+          message: 'Profile created successfully', 
+          profile: result.rows[0] 
+        });
+      } catch (insertErr) {
+        // If organizations column doesn't exist, try without it
+        if (insertErr.message.includes('organizations')) {
+          console.log('[UserController] organizations column not found, using fallback');
+          const result = await pool.query(`
+            INSERT INTO user_profiles (
+              clerk_id, 
+              profile_photo_url, 
+              primary_state, 
+              secondary_states, 
+              organization,
+              company_name,
+              phone_number,
+              updated_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+            RETURNING *
+          `, [clerkId, profilePhotoUrl, primaryState, secondaryStates || [], primaryOrg, companyName, phoneNumber]);
+
+          return res.json({ 
+            message: 'Profile created successfully', 
+            profile: result.rows[0] 
+          });
+        }
+        throw insertErr;
+      }
     }
 
-    // Update existing profile
-    const result = await pool.query(`
-      UPDATE user_profiles 
-      SET 
-        profile_photo_url = COALESCE($2, profile_photo_url),
-        primary_state = COALESCE($3, primary_state),
-        secondary_states = COALESCE($4, secondary_states),
-        organization = COALESCE($5, organization),
-        organizations = COALESCE($6, organizations),
-        company_name = COALESCE($7, company_name),
-        phone_number = COALESCE($8, phone_number),
-        updated_at = NOW()
-      WHERE clerk_id = $1
-      RETURNING *
-    `, [clerkId, profilePhotoUrl, primaryState, secondaryStates, primaryOrg, JSON.stringify(orgsArray), companyName, phoneNumber]);
+    // Update existing profile - try with organizations column first
+    try {
+      const result = await pool.query(`
+        UPDATE user_profiles 
+        SET 
+          profile_photo_url = COALESCE($2, profile_photo_url),
+          primary_state = COALESCE($3, primary_state),
+          secondary_states = COALESCE($4, secondary_states),
+          organization = COALESCE($5, organization),
+          organizations = COALESCE($6, organizations),
+          company_name = COALESCE($7, company_name),
+          phone_number = COALESCE($8, phone_number),
+          updated_at = NOW()
+        WHERE clerk_id = $1
+        RETURNING *
+      `, [clerkId, profilePhotoUrl, primaryState, secondaryStates, primaryOrg, JSON.stringify(orgsArray), companyName, phoneNumber]);
 
-    res.json({ 
-      message: 'Profile updated successfully', 
-      profile: result.rows[0] 
-    });
+      res.json({ 
+        message: 'Profile updated successfully', 
+        profile: result.rows[0] 
+      });
+    } catch (updateErr) {
+      // If organizations column doesn't exist, try without it
+      if (updateErr.message.includes('organizations')) {
+        console.log('[UserController] organizations column not found, using fallback for update');
+        const result = await pool.query(`
+          UPDATE user_profiles 
+          SET 
+            profile_photo_url = COALESCE($2, profile_photo_url),
+            primary_state = COALESCE($3, primary_state),
+            secondary_states = COALESCE($4, secondary_states),
+            organization = COALESCE($5, organization),
+            company_name = COALESCE($6, company_name),
+            phone_number = COALESCE($7, phone_number),
+            updated_at = NOW()
+          WHERE clerk_id = $1
+          RETURNING *
+        `, [clerkId, profilePhotoUrl, primaryState, secondaryStates, primaryOrg, companyName, phoneNumber]);
+
+        return res.json({ 
+          message: 'Profile updated successfully', 
+          profile: result.rows[0] 
+        });
+      }
+      throw updateErr;
+    }
 
   } catch (error) {
     console.error('Error updating user profile:', error);

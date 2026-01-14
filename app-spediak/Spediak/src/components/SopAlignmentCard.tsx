@@ -22,7 +22,7 @@ interface ActiveSop {
 }
 
 const SopAlignmentCard: React.FC = () => {
-  const { selectedState, selectedOrganization } = useGlobalState();
+  const { selectedState, selectedOrganization, setSelectedOrganization } = useGlobalState();
   const { getToken } = useAuth();
   const { user } = useUser();
   const navigation = useNavigation<any>();
@@ -30,15 +30,48 @@ const SopAlignmentCard: React.FC = () => {
   const { subscription } = useSubscription();
   const [activeSops, setActiveSops] = useState<ActiveSop>({ stateSop: null, orgSop: null });
   const [isLoading, setIsLoading] = useState(false);
+  const [localOrganization, setLocalOrganization] = useState<string | null>(null);
   
   // Check if user is on a paid plan (Pro or Platinum)
   const isPaidUser = subscription?.plan_type === 'pro' || subscription?.plan_type === 'platinum';
   const hasFetchedRef = useRef(false);
   const lastStateRef = useRef<string | null>(null);
   const lastOrgRef = useRef<string | null>(null);
+  const hasLoadedOrgRef = useRef(false);
 
-  // Use global context organization or fallback to user metadata
-  const organization = selectedOrganization || user?.unsafeMetadata?.organization as string || null;
+  // Load organization from backend profile if not already set
+  useEffect(() => {
+    const loadOrganizationFromBackend = async () => {
+      if (hasLoadedOrgRef.current) return;
+      if (selectedOrganization && selectedOrganization !== 'None') return;
+      
+      try {
+        const token = await getToken();
+        if (!token) return;
+        
+        const response = await axios.get(`${BASE_URL}/api/user/profile`, {
+          headers: { Authorization: `Bearer ${token}` },
+          timeout: 10000
+        });
+        
+        const savedOrg = response.data.profile?.organization;
+        if (savedOrg && savedOrg !== 'None') {
+          setLocalOrganization(savedOrg);
+          setSelectedOrganization(savedOrg);
+          console.log('[SopAlignmentCard] Loaded organization from backend:', savedOrg);
+        }
+        hasLoadedOrgRef.current = true;
+      } catch (err) {
+        console.log('[SopAlignmentCard] Could not load organization from backend');
+        hasLoadedOrgRef.current = true;
+      }
+    };
+    
+    loadOrganizationFromBackend();
+  }, [getToken, selectedOrganization, setSelectedOrganization]);
+
+  // Use global context organization, local loaded, or fallback to user metadata
+  const organization = selectedOrganization || localOrganization || user?.unsafeMetadata?.organization as string || null;
 
   useEffect(() => {
     // Only fetch if state/org changed or hasn't been fetched

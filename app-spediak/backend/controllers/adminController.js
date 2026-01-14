@@ -2144,39 +2144,50 @@ const getUserInspections = async (req, res) => {
  */
 const getDiagnostics = async (req, res) => {
   try {
-    // Get all counts in parallel
+    // Helper function to safely query a table
+    const safeCount = async (query) => {
+      try {
+        const result = await pool.query(query);
+        return parseInt(result.rows[0].count, 10);
+      } catch (err) {
+        console.warn(`[Diagnostics] Query failed (table may not exist): ${err.message}`);
+        return 0;
+      }
+    };
+
+    // Get all counts with error handling for missing tables
     const [
-      usersResult,
-      stateSopResult,
-      orgSopResult,
-      sopHistoryResult,
-      auditResult,
-      adsResult,
-      adsEnabledResult,
-      knowledgeResult,
-      promotionsResult
+      usersStored,
+      stateSopAssignments,
+      orgSopAssignments,
+      sopHistoryEntries,
+      adminAuditEvents,
+      adsInInventory,
+      adsEnabled,
+      knowledgeDocuments,
+      activePromotions
     ] = await Promise.all([
-      pool.query('SELECT COUNT(*) FROM users'),
-      pool.query("SELECT COUNT(*) FROM sop_assignments WHERE assignment_type = 'state'"),
-      pool.query("SELECT COUNT(*) FROM sop_assignments WHERE assignment_type = 'organization'"),
-      pool.query('SELECT COUNT(*) FROM sop_history'),
-      pool.query('SELECT COUNT(*) FROM admin_audit_log'),
-      pool.query('SELECT COUNT(*) FROM ads'),
-      pool.query('SELECT COUNT(*) FROM ads WHERE is_active = true'),
-      pool.query('SELECT COUNT(*) FROM knowledge_documents'),
-      pool.query('SELECT COUNT(*) FROM signup_promotions WHERE is_active = true AND end_date >= CURRENT_DATE')
+      safeCount('SELECT COUNT(*) FROM users'),
+      safeCount("SELECT COUNT(*) FROM sop_assignments WHERE assignment_type = 'state'"),
+      safeCount("SELECT COUNT(*) FROM sop_assignments WHERE assignment_type = 'organization'"),
+      safeCount('SELECT COUNT(*) FROM sop_history'),
+      safeCount('SELECT COUNT(*) FROM admin_audit_log'),
+      safeCount('SELECT COUNT(*) FROM ads'),
+      safeCount('SELECT COUNT(*) FROM ads WHERE is_active = true'),
+      safeCount('SELECT COUNT(*) FROM knowledge_documents'),
+      safeCount('SELECT COUNT(*) FROM signup_promotions WHERE is_active = true AND end_date >= CURRENT_DATE')
     ]);
 
     res.json({
-      usersStored: parseInt(usersResult.rows[0].count, 10),
-      stateSopAssignments: parseInt(stateSopResult.rows[0].count, 10),
-      orgSopAssignments: parseInt(orgSopResult.rows[0].count, 10),
-      sopHistoryEntries: parseInt(sopHistoryResult.rows[0].count, 10),
-      adminAuditEvents: parseInt(auditResult.rows[0].count, 10),
-      adsInInventory: parseInt(adsResult.rows[0].count, 10),
-      adsEnabled: parseInt(adsEnabledResult.rows[0].count, 10),
-      knowledgeDocuments: parseInt(knowledgeResult.rows[0].count, 10),
-      activePromotions: parseInt(promotionsResult.rows[0].count, 10)
+      usersStored,
+      stateSopAssignments,
+      orgSopAssignments,
+      sopHistoryEntries,
+      adminAuditEvents,
+      adsInInventory,
+      adsEnabled,
+      knowledgeDocuments,
+      activePromotions
     });
 
   } catch (error) {
