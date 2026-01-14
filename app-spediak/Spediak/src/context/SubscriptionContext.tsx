@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { useAuth } from '@clerk/clerk-expo';
+import { Alert, Platform } from 'react-native';
 import axios from 'axios';
-import { BASE_URL } from '../config/api';
+import { BASE_URL, isAccountSuspendedError } from '../config/api';
 
 interface SubscriptionData {
   id: number;
@@ -36,7 +37,7 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [adminPreviewMode, setAdminPreviewMode] = useState(false);
-  const { getToken, isSignedIn } = useAuth();
+  const { getToken, isSignedIn, signOut } = useAuth();
 
   const refreshSubscription = useCallback(async () => {
     if (!isSignedIn) {
@@ -60,6 +61,27 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
       setSubscription(response.data);
     } catch (err: any) {
       console.error('Error fetching subscription:', err);
+      
+      // Check if account is suspended
+      if (isAccountSuspendedError(err)) {
+        const message = 'Tu cuenta ha sido suspendida. Por favor contacta a soporte en support@spediak.com';
+        setError(message);
+        
+        // Sign out the user
+        try {
+          await signOut();
+        } catch (signOutErr) {
+          console.error('Error signing out suspended user:', signOutErr);
+        }
+        
+        if (Platform.OS === 'web') {
+          alert(message);
+        } else {
+          Alert.alert('Cuenta Suspendida', message);
+        }
+        return;
+      }
+      
       setError(err.response?.data?.message || err.message || 'Failed to fetch subscription');
     } finally {
       setIsLoading(false);

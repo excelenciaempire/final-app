@@ -1427,35 +1427,63 @@ const searchUserByEmail = async (req, res) => {
 // ============================================
 
 /**
- * Suspend user - Also bans in Clerk to prevent login
+ * Suspend user - Bans in Clerk to prevent login and revokes sessions
  */
 const suspendUser = async (req, res) => {
   const { userId } = req.params;
   const adminClerkId = req.auth?.userId;
 
+  console.log(`[Admin] Attempting to suspend user: ${userId}`);
+
   try {
     // 1. Ban user in Clerk (prevents login)
     let clerkBanned = false;
+    let clerkError = null;
+    
     try {
+      // Try the banUser method
+      console.log(`[Admin] Calling clerkClient.users.banUser for ${userId}`);
       await clerkClient.users.banUser(userId);
       clerkBanned = true;
-      console.log(`[Admin] User ${userId} banned in Clerk`);
-    } catch (clerkError) {
-      console.error('[Admin] Clerk ban error:', clerkError.message);
-      // Continue with DB update even if Clerk fails
+      console.log(`[Admin] User ${userId} banned in Clerk successfully`);
+    } catch (err) {
+      clerkError = err;
+      console.error('[Admin] Clerk ban error:', err.message);
+      console.error('[Admin] Clerk ban error details:', JSON.stringify(err.errors || err, null, 2));
+      
+      // Try alternative: update user metadata to mark as banned
+      try {
+        console.log(`[Admin] Attempting alternative: updating user metadata`);
+        await clerkClient.users.updateUser(userId, {
+          publicMetadata: {
+            suspended: true,
+            suspendedAt: new Date().toISOString(),
+            suspendedBy: adminClerkId
+          }
+        });
+        console.log(`[Admin] Updated user metadata with suspended flag`);
+      } catch (metaErr) {
+        console.error('[Admin] Failed to update user metadata:', metaErr.message);
+      }
     }
 
-    // 2. Revoke all active sessions
+    // 2. Revoke all active sessions (this will force logout)
     let sessionsRevoked = 0;
     try {
+      console.log(`[Admin] Getting sessions for user ${userId}`);
       const sessionsResponse = await clerkClient.sessions.getSessionList({ userId });
       const sessions = sessionsResponse.data || sessionsResponse || [];
+      console.log(`[Admin] Found ${sessions.length} sessions for user ${userId}`);
+      
       for (const session of sessions) {
         if (session.status === 'active') {
           try {
             await clerkClient.sessions.revokeSession(session.id);
             sessionsRevoked++;
-          } catch (e) { /* ignore */ }
+            console.log(`[Admin] Revoked session ${session.id}`);
+          } catch (e) { 
+            console.log(`[Admin] Failed to revoke session ${session.id}:`, e.message);
+          }
         }
       }
       console.log(`[Admin] Revoked ${sessionsRevoked} sessions for user ${userId}`);
@@ -1470,6 +1498,7 @@ const suspendUser = async (req, res) => {
       ON CONFLICT (user_clerk_id) 
       DO UPDATE SET is_suspended = TRUE, suspended_at = NOW(), suspended_by = $2, updated_at = NOW()
     `, [userId, adminClerkId]);
+    console.log(`[Admin] Updated user_security_flags for ${userId}`);
 
     // 4. Log audit
     await pool.query(`
@@ -1478,11 +1507,22 @@ const suspendUser = async (req, res) => {
     `, [adminClerkId, userId, JSON.stringify({ 
       action: 'User suspended', 
       clerk_banned: clerkBanned,
-      sessions_revoked: sessionsRevoked 
+      sessions_revoked: sessionsRevoked,
+      clerk_error: clerkError ? clerkError.message : null
     })]);
 
+    // Return warning if Clerk ban failed
+    if (!clerkBanned) {
+      return res.json({ 
+        message: 'User marked as suspended in database. Sessions revoked. Note: Clerk ban may have failed - user login might still work until they try to make an API call.',
+        warning: 'Clerk ban failed: ' + (clerkError?.message || 'Unknown error'),
+        clerk_banned: clerkBanned,
+        sessions_revoked: sessionsRevoked
+      });
+    }
+
     res.json({ 
-      message: 'User suspended successfully', 
+      message: 'User suspended successfully and banned from Clerk', 
       clerk_banned: clerkBanned,
       sessions_revoked: sessionsRevoked
     });
