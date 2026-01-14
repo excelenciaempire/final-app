@@ -425,18 +425,30 @@ const AdManagerTab: React.FC = () => {
     const imageUrlToUse = newAd.imageUrl || previewUrl;
     
     if (!imageUrlToUse) {
-      Alert.alert('Error', 'Please upload an ad image');
+      if (Platform.OS === 'web') {
+        alert('Please upload an ad image');
+      } else {
+        Alert.alert('Error', 'Please upload an ad image');
+      }
       return;
     }
     if (!newAd.destinationUrl.trim()) {
-      Alert.alert('Error', 'Destination URL is required');
+      if (Platform.OS === 'web') {
+        alert('Destination URL is required');
+      } else {
+        Alert.alert('Error', 'Destination URL is required');
+      }
       return;
     }
 
     // Basic URL validation
     const urlToUse = newAd.destinationUrl.trim();
     if (!urlToUse.startsWith('http://') && !urlToUse.startsWith('https://')) {
-      Alert.alert('Error', 'Please enter a valid URL starting with http:// or https://');
+      if (Platform.OS === 'web') {
+        alert('Please enter a valid URL starting with http:// or https://');
+      } else {
+        Alert.alert('Error', 'Please enter a valid URL starting with http:// or https://');
+      }
       return;
     }
 
@@ -444,7 +456,11 @@ const AdManagerTab: React.FC = () => {
       setIsSaving(true);
       const token = await getToken();
       if (!token) {
-        Alert.alert('Error', 'Authentication required');
+        if (Platform.OS === 'web') {
+          alert('Authentication required');
+        } else {
+          Alert.alert('Error', 'Authentication required');
+        }
         return;
       }
 
@@ -472,11 +488,19 @@ const AdManagerTab: React.FC = () => {
       // Refresh ads list
       await fetchAds();
       
-      Alert.alert('Success', 'Ad created successfully');
+      if (Platform.OS === 'web') {
+        alert('Ad created successfully!');
+      } else {
+        Alert.alert('Success', 'Ad created successfully');
+      }
     } catch (error: any) {
       console.error('[AdManager] Error creating ad:', error);
       const errorMessage = error.response?.data?.message || error.message || 'Failed to create ad';
-      Alert.alert('Error', errorMessage);
+      if (Platform.OS === 'web') {
+        alert('Error: ' + errorMessage);
+      } else {
+        Alert.alert('Error', errorMessage);
+      }
     } finally {
       setIsSaving(false);
     }
@@ -492,10 +516,18 @@ const AdManagerTab: React.FC = () => {
           headers: { Authorization: `Bearer ${token}` }
         });
 
-        Alert.alert('Success', 'Ad deleted successfully');
+        if (Platform.OS === 'web') {
+          alert('Ad deleted successfully');
+        } else {
+          Alert.alert('Success', 'Ad deleted successfully');
+        }
         fetchAds();
       } catch (error: any) {
-        Alert.alert('Error', 'Failed to delete ad');
+        if (Platform.OS === 'web') {
+          alert('Error: Failed to delete ad');
+        } else {
+          Alert.alert('Error', 'Failed to delete ad');
+        }
       }
     };
 

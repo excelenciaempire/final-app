@@ -813,7 +813,7 @@ const saveUserOverride = async (req, res) => {
         is_active = TRUE,
         updated_at = NOW()
       RETURNING *
-    `, [userClerkId, email, statementAllowance, reason || null, adminClerkId]);
+    `, [userClerkId, userEmail, overrideValue, reason || null, adminClerkId]);
 
     // If user exists, also update their subscription limit
     if (userClerkId) {
@@ -821,14 +821,14 @@ const saveUserOverride = async (req, res) => {
         UPDATE user_subscriptions 
         SET statements_limit = $1, updated_at = NOW()
         WHERE clerk_id = $2
-      `, [statementAllowance, userClerkId]);
+      `, [overrideValue, userClerkId]);
     }
 
     // Log to audit
     await pool.query(`
       INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, target_user_id, action_details)
       VALUES ($1, $2, $3, $4, $5, $5, $6)
-    `, [adminClerkId, 'save_override', 'user_management', 'user', userClerkId || email, JSON.stringify({ email, statementAllowance, reason })]);
+    `, [adminClerkId, 'save_override', 'user_management', 'user', userClerkId || userEmail, JSON.stringify({ email: userEmail, statementAllowance: overrideValue, reason })]);
 
     res.json({
       message: 'Override saved successfully',
@@ -2278,7 +2278,7 @@ const getDiagnostics = async (req, res) => {
       safeCount('SELECT COUNT(*) FROM sop_history'),
       safeCount('SELECT COUNT(*) FROM admin_audit_log'),
       safeCount('SELECT COUNT(*) FROM ad_inventory'),
-      safeCount('SELECT COUNT(*) FROM ad_inventory WHERE is_active = true'),
+      safeCount("SELECT COUNT(*) FROM ad_inventory WHERE status = 'active'"),
       safeCount('SELECT COUNT(*) FROM knowledge_documents'),
       safeCount('SELECT COUNT(*) FROM signup_promotions WHERE is_active = true AND end_date >= CURRENT_DATE')
     ]);

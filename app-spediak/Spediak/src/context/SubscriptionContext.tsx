@@ -64,7 +64,7 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
       
       // Check if account is suspended
       if (isAccountSuspendedError(err)) {
-        const message = 'Tu cuenta ha sido suspendida. Por favor contacta a soporte en support@spediak.com';
+        const message = 'Your account has been suspended. Please contact support at support@spediak.com for assistance.';
         setError(message);
         
         // Sign out the user
@@ -77,7 +77,7 @@ export const SubscriptionProvider: React.FC<{ children: ReactNode }> = ({ childr
         if (Platform.OS === 'web') {
           alert(message);
         } else {
-          Alert.alert('Cuenta Suspendida', message);
+          Alert.alert('Account Suspended', message);
         }
         return;
       }

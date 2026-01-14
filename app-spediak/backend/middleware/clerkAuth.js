@@ -46,7 +46,7 @@ const requireAuth = (req, res, next) => {
       if (flags?.is_suspended === true) {
         console.log(`[Auth] Blocked suspended user: ${userId}`);
         return res.status(403).json({ 
-          message: 'Tu cuenta ha sido suspendida. Contacta a soporte.',
+          message: 'Your account has been suspended. Please contact support at support@spediak.com',
           code: 'ACCOUNT_SUSPENDED'
         });
       }
@@ -61,7 +61,7 @@ const requireAuth = (req, res, next) => {
       if (userResult.rows[0]?.is_active === false) {
         console.log(`[Auth] Blocked deactivated user: ${userId}`);
         return res.status(403).json({ 
-          message: 'Tu cuenta ha sido desactivada. Contacta a soporte.',
+          message: 'Your account has been deactivated. Please contact support at support@spediak.com',
           code: 'ACCOUNT_DEACTIVATED'
         });
       }

@@ -32,12 +32,12 @@ apiClient.interceptors.response.use(
     if (error.response?.status === 403 && error.response?.data?.code === 'ACCOUNT_SUSPENDED') {
       if (!suspendedAlertShown) {
         suspendedAlertShown = true;
-        const message = 'Tu cuenta ha sido suspendida. Por favor contacta a soporte en support@spediak.com';
+        const message = 'Your account has been suspended. Please contact support at support@spediak.com for assistance.';
         
         if (Platform.OS === 'web') {
           alert(message);
         } else {
-          Alert.alert('Cuenta Suspendida', message);
+          Alert.alert('Account Suspended', message);
         }
         
         // Reset flag after 5 seconds to allow showing again if user tries another action
