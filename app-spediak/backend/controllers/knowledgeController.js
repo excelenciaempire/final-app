@@ -77,15 +77,19 @@ const uploadDocument = (req, res) => {
                     // Reverted to a simple INSERT to avoid errors without a unique constraint.
                     // This is safer than relying on a migration the user may not have run.
                     const dbResult = await pool.query(
-                        'INSERT INTO knowledge_documents (file_name, file_type, file_url, status) VALUES ($1, $2, $3, $4) RETURNING id',
+                        'INSERT INTO knowledge_documents (file_name, file_type, file_url, status) VALUES ($1, $2, $3, $4) RETURNING id, file_name, file_type, file_url, status, uploaded_at',
                         [originalname, mimetype, result.secure_url, 'pending']
                     );
-                    const documentId = dbResult.rows[0].id;
+                    const document = dbResult.rows[0];
 
                     // This can run in the background, no need to await
-                    processAndEmbedDocument(documentId, buffer, mimetype);
+                    processAndEmbedDocument(document.id, buffer, mimetype);
 
-                    res.status(201).json({ message: 'File uploaded successfully and is being processed.', documentId });
+                    res.status(201).json({ 
+                        message: 'File uploaded successfully and is being processed.', 
+                        documentId: document.id,
+                        document: document
+                    });
                 } catch (dbError) {
                     console.error('[Database] Error saving document metadata:', dbError);
                     res.status(500).json({ message: 'Failed to save document metadata.' });

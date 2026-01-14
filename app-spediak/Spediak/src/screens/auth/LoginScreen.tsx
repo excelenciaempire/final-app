@@ -43,8 +43,17 @@ const LoginScreen = ({ navigation }: LoginScreenProps) => {
       await setActive({ session: completeSignIn.createdSessionId });
     } catch (err: any) {
       console.error("Login Error Raw:", JSON.stringify(err, null, 2));
+      
+      // Check for banned/suspended user error
+      const errorCode = err.errors?.[0]?.code;
       const errorMessage = err.errors?.[0]?.longMessage || err.errors?.[0]?.message || 'Invalid email or password. Please try again.';
-      setError(errorMessage);
+      
+      // Handle specific error codes
+      if (errorCode === 'user_banned' || errorCode === 'user_locked' || errorMessage.toLowerCase().includes('banned') || errorMessage.toLowerCase().includes('suspended')) {
+        setError('Your account has been suspended. Please contact support at support@spediak.com for assistance.');
+      } else {
+        setError(errorMessage);
+      }
     } finally {
       setLoading(false);
     }

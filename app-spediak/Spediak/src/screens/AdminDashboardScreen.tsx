@@ -630,13 +630,25 @@ const KnowledgeManager = () => {
 
         try {
             const token = await getToken();
-            await axios.post(`${BASE_URL}/api/admin/knowledge/upload`, formData, {
+            const response = await axios.post(`${BASE_URL}/api/admin/knowledge/upload`, formData, {
                 headers: {
                     'Content-Type': 'multipart/form-data',
                     Authorization: `Bearer ${token}`,
                 },
             });
             setSelectedFile(null); // Clear file input
+            
+            // Add the new document to the list immediately
+            if (response.data.document) {
+                setDocuments(prevDocs => [response.data.document, ...prevDocs]);
+            } else {
+                // Refresh the list if no document returned
+                fetchDocuments();
+            }
+            
+            if (Platform.OS === 'web') {
+                alert('Document uploaded successfully!');
+            }
         } catch (err: any)
         {
             const errorMessage = err.response?.data?.message || err.message || 'An error occurred during upload.';

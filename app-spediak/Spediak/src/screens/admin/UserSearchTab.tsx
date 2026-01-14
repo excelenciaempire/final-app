@@ -607,24 +607,45 @@ const UserSearchTab: React.FC = () => {
   const handleSaveRoleSecurity = async () => {
     if (!loadedUser) return;
 
-    setIsSavingSecurity(true);
-    try {
-      const token = await getToken();
-      if (!token) return;
+    const doSave = async () => {
+      setIsSavingSecurity(true);
+      try {
+        const token = await getToken();
+        if (!token) return;
 
-      await axios.put(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/security-flags`, {
-        role: userRole,
-        two_fa_required: twoFARequirement === 'on'
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+        await axios.put(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/security-flags`, {
+          role: userRole,
+          two_fa_required: twoFARequirement === 'on'
+        }, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
 
-      Alert.alert('Success', 'Role & security saved');
-      addLocalAuditEvent(`Role changed to ${userRole}`, true);
-    } catch (error) {
-      Alert.alert('Error', 'Failed to save role/security');
-    } finally {
-      setIsSavingSecurity(false);
+        if (Platform.OS === 'web') {
+          alert(`Role & security settings saved successfully.\nRole: ${userRole}\n2FA: ${twoFARequirement}`);
+        } else {
+          Alert.alert('Success', 'Role & security saved');
+        }
+        addLocalAuditEvent(`Role changed to ${userRole}`, true);
+      } catch (error) {
+        if (Platform.OS === 'web') {
+          alert('Error: Failed to save role/security');
+        } else {
+          Alert.alert('Error', 'Failed to save role/security');
+        }
+      } finally {
+        setIsSavingSecurity(false);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm(`Save security settings?\n\nRole: ${userRole}\n2FA: ${twoFARequirement}`)) {
+        doSave();
+      }
+    } else {
+      Alert.alert('Confirm Save', `Save security settings?\n\nRole: ${userRole}\n2FA: ${twoFARequirement}`, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Save', onPress: doSave }
+      ]);
     }
   };
 
@@ -632,23 +653,48 @@ const UserSearchTab: React.FC = () => {
   const handleSavePlanType = async () => {
     if (!loadedUser) return;
 
-    setIsSavingPlan(true);
-    try {
-      const token = await getToken();
-      if (!token) return;
+    const planLabel = userPlanType === 'free' ? 'Free (5 statements/month)' : 
+                      userPlanType === 'pro' ? 'Pro (Unlimited)' : 'Platinum (Unlimited)';
 
-      await axios.put(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/plan`, {
-        plan_type: userPlanType
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+    const doSave = async () => {
+      setIsSavingPlan(true);
+      try {
+        const token = await getToken();
+        if (!token) return;
 
-      Alert.alert('Success', `Plan changed to ${userPlanType}`);
-      addLocalAuditEvent(`Plan changed to ${userPlanType}`, true);
-    } catch (error: any) {
-      Alert.alert('Error', error.response?.data?.message || 'Failed to change plan');
-    } finally {
-      setIsSavingPlan(false);
+        await axios.put(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/plan`, {
+          plan_type: userPlanType
+        }, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        if (Platform.OS === 'web') {
+          alert(`Subscription plan changed to ${planLabel}`);
+        } else {
+          Alert.alert('Success', `Plan changed to ${userPlanType}`);
+        }
+        addLocalAuditEvent(`Plan changed to ${userPlanType}`, true);
+      } catch (error: any) {
+        const errorMsg = error.response?.data?.message || 'Failed to change plan';
+        if (Platform.OS === 'web') {
+          alert('Error: ' + errorMsg);
+        } else {
+          Alert.alert('Error', errorMsg);
+        }
+      } finally {
+        setIsSavingPlan(false);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm(`Change subscription plan to ${planLabel}?`)) {
+        doSave();
+      }
+    } else {
+      Alert.alert('Confirm Plan Change', `Change to ${planLabel}?`, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Change', onPress: doSave }
+      ]);
     }
   };
 
@@ -656,21 +702,42 @@ const UserSearchTab: React.FC = () => {
   const handleForceLogout = async () => {
     if (!loadedUser) return;
 
-    setActionLoading('force-logout');
-    try {
-      const token = await getToken();
-      if (!token) return;
+    const doLogout = async () => {
+      setActionLoading('force-logout');
+      try {
+        const token = await getToken();
+        if (!token) return;
 
-      await axios.post(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/force-logout`, {}, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+        await axios.post(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/force-logout`, {}, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
 
-      Alert.alert('Success', 'User sessions terminated');
-      addLocalAuditEvent('Force logout executed');
-    } catch (error) {
-      Alert.alert('Error', 'Failed to force logout');
-    } finally {
-      setActionLoading(null);
+        if (Platform.OS === 'web') {
+          alert('User has been logged out from all sessions.');
+        } else {
+          Alert.alert('Success', 'User sessions terminated');
+        }
+        addLocalAuditEvent('Force logout executed');
+      } catch (error) {
+        if (Platform.OS === 'web') {
+          alert('Error: Failed to force logout');
+        } else {
+          Alert.alert('Error', 'Failed to force logout');
+        }
+      } finally {
+        setActionLoading(null);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('Force logout this user from all sessions?')) {
+        doLogout();
+      }
+    } else {
+      Alert.alert('Confirm Logout', 'Force logout this user from all sessions?', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Logout', onPress: doLogout }
+      ]);
     }
   };
 
@@ -678,21 +745,42 @@ const UserSearchTab: React.FC = () => {
   const handleForcePasswordReset = async () => {
     if (!loadedUser) return;
 
-    setActionLoading('force-password');
-    try {
-      const token = await getToken();
-      if (!token) return;
+    const doReset = async () => {
+      setActionLoading('force-password');
+      try {
+        const token = await getToken();
+        if (!token) return;
 
-      await axios.post(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/force-password-reset`, {}, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+        await axios.post(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/force-password-reset`, {}, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
 
-      Alert.alert('Success', 'Password reset email sent');
-      addLocalAuditEvent('Password reset forced');
-    } catch (error) {
-      Alert.alert('Error', 'Failed to force password reset');
-    } finally {
-      setActionLoading(null);
+        if (Platform.OS === 'web') {
+          alert('Password reset email has been sent to the user.');
+        } else {
+          Alert.alert('Success', 'Password reset email sent');
+        }
+        addLocalAuditEvent('Password reset forced');
+      } catch (error) {
+        if (Platform.OS === 'web') {
+          alert('Error: Failed to force password reset');
+        } else {
+          Alert.alert('Error', 'Failed to force password reset');
+        }
+      } finally {
+        setActionLoading(null);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('Send a password reset email to this user?')) {
+        doReset();
+      }
+    } else {
+      Alert.alert('Confirm Reset', 'Send password reset email?', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Send', onPress: doReset }
+      ]);
     }
   };
 
@@ -700,21 +788,42 @@ const UserSearchTab: React.FC = () => {
   const handleResetMonthlyUsage = async () => {
     if (!loadedUser) return;
 
-    setActionLoading('reset-usage');
-    try {
-      const token = await getToken();
-      if (!token) return;
+    const doReset = async () => {
+      setActionLoading('reset-usage');
+      try {
+        const token = await getToken();
+        if (!token) return;
 
-      await axios.post(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/reset-usage`, {}, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+        await axios.post(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/reset-usage`, {}, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
 
-      Alert.alert('Success', 'Monthly usage reset');
-      addLocalAuditEvent('Monthly usage reset', true);
-    } catch (error) {
-      Alert.alert('Error', 'Failed to reset usage');
-    } finally {
-      setActionLoading(null);
+        if (Platform.OS === 'web') {
+          alert('Monthly usage has been reset to 0.');
+        } else {
+          Alert.alert('Success', 'Monthly usage reset');
+        }
+        addLocalAuditEvent('Monthly usage reset', true);
+      } catch (error) {
+        if (Platform.OS === 'web') {
+          alert('Error: Failed to reset usage');
+        } else {
+          Alert.alert('Error', 'Failed to reset usage');
+        }
+      } finally {
+        setActionLoading(null);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('Reset this user\'s monthly statement usage to 0?')) {
+        doReset();
+      }
+    } else {
+      Alert.alert('Confirm Reset', 'Reset monthly usage to 0?', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Reset', onPress: doReset }
+      ]);
     }
   };
 
@@ -722,22 +831,43 @@ const UserSearchTab: React.FC = () => {
   const handleGrantTrial = async () => {
     if (!loadedUser) return;
 
-    setActionLoading('grant-trial');
-    try {
-      const token = await getToken();
-      if (!token) return;
+    const doGrant = async () => {
+      setActionLoading('grant-trial');
+      try {
+        const token = await getToken();
+        if (!token) return;
 
-      await axios.post(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/grant-trial`, 
-        { days: 30 },
-        { headers: { Authorization: `Bearer ${token}` }}
-      );
+        await axios.post(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/grant-trial`, 
+          { days: 30 },
+          { headers: { Authorization: `Bearer ${token}` }}
+        );
 
-      Alert.alert('Success', '30-day trial granted');
-      addLocalAuditEvent('Trial granted (30 days)', true);
-    } catch (error) {
-      Alert.alert('Error', 'Failed to grant trial');
-    } finally {
-      setActionLoading(null);
+        if (Platform.OS === 'web') {
+          alert('30-day trial has been granted to this user.');
+        } else {
+          Alert.alert('Success', '30-day trial granted');
+        }
+        addLocalAuditEvent('Trial granted (30 days)', true);
+      } catch (error) {
+        if (Platform.OS === 'web') {
+          alert('Error: Failed to grant trial');
+        } else {
+          Alert.alert('Error', 'Failed to grant trial');
+        }
+      } finally {
+        setActionLoading(null);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('Grant a 30-day trial to this user?')) {
+        doGrant();
+      }
+    } else {
+      Alert.alert('Confirm Trial', 'Grant 30-day trial to this user?', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Grant', onPress: doGrant }
+      ]);
     }
   };
 
@@ -745,21 +875,42 @@ const UserSearchTab: React.FC = () => {
   const handleRevokeTrial = async () => {
     if (!loadedUser) return;
 
-    setActionLoading('revoke-trial');
-    try {
-      const token = await getToken();
-      if (!token) return;
+    const doRevoke = async () => {
+      setActionLoading('revoke-trial');
+      try {
+        const token = await getToken();
+        if (!token) return;
 
-      await axios.post(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/revoke-trial`, {}, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+        await axios.post(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/revoke-trial`, {}, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
 
-      Alert.alert('Success', 'Trial revoked');
-      addLocalAuditEvent('Trial revoked', true);
-    } catch (error) {
-      Alert.alert('Error', 'Failed to revoke trial');
-    } finally {
-      setActionLoading(null);
+        if (Platform.OS === 'web') {
+          alert('Trial has been revoked for this user.');
+        } else {
+          Alert.alert('Success', 'Trial revoked');
+        }
+        addLocalAuditEvent('Trial revoked', true);
+      } catch (error) {
+        if (Platform.OS === 'web') {
+          alert('Error: Failed to revoke trial');
+        } else {
+          Alert.alert('Error', 'Failed to revoke trial');
+        }
+      } finally {
+        setActionLoading(null);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('Revoke the trial period for this user?')) {
+        doRevoke();
+      }
+    } else {
+      Alert.alert('Confirm Revoke', 'Revoke trial for this user?', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Revoke', style: 'destructive', onPress: doRevoke }
+      ]);
     }
   };
 
@@ -767,22 +918,43 @@ const UserSearchTab: React.FC = () => {
   const handleRecordStatementEvent = async () => {
     if (!loadedUser) return;
 
-    setActionLoading('record-event');
-    try {
-      const token = await getToken();
-      if (!token) return;
+    const doRecord = async () => {
+      setActionLoading('record-event');
+      try {
+        const token = await getToken();
+        if (!token) return;
 
-      await axios.post(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/record-statement`, {}, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+        await axios.post(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/record-statement`, {}, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
 
-      Alert.alert('Success', 'Statement event recorded (+1)');
-      addLocalAuditEvent('Statement event recorded', true);
-      loadStatementEvents(loadedUser.clerk_id);
-    } catch (error) {
-      Alert.alert('Error', 'Failed to record event');
-    } finally {
-      setActionLoading(null);
+        if (Platform.OS === 'web') {
+          alert('Statement event recorded (+1 usage).');
+        } else {
+          Alert.alert('Success', 'Statement event recorded (+1)');
+        }
+        addLocalAuditEvent('Statement event recorded', true);
+        loadStatementEvents(loadedUser.clerk_id);
+      } catch (error) {
+        if (Platform.OS === 'web') {
+          alert('Error: Failed to record event');
+        } else {
+          Alert.alert('Error', 'Failed to record event');
+        }
+      } finally {
+        setActionLoading(null);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('Record a statement event for this user? (+1 to usage count)')) {
+        doRecord();
+      }
+    } else {
+      Alert.alert('Confirm', 'Record statement event (+1)?', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Record', onPress: doRecord }
+      ]);
     }
   };
 

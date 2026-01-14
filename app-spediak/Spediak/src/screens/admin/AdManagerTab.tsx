@@ -224,15 +224,17 @@ const AdManagerTab: React.FC = () => {
     }
   };
 
-  // Clear promotion
-  const handleClearPromotion = async () => {
+  // Clear/Delete promotion
+  const handleClearPromotion = async (promoId?: number) => {
     const doClear = async () => {
       setIsSavingPromo(true);
       try {
         const token = await getToken();
         if (!token) return;
 
-        await axios.delete(`${BASE_URL}/api/admin/promotions`, {
+        await axios.post(`${BASE_URL}/api/admin/promotions/clear`, {
+          promoId: promoId || promotion?.id
+        }, {
           headers: { Authorization: `Bearer ${token}` },
           timeout: 10000
         });
@@ -246,12 +248,12 @@ const AdManagerTab: React.FC = () => {
         });
 
         if (Platform.OS === 'web') {
-          alert('Promotion cleared.');
+          alert('Promotion deleted successfully.');
         } else {
-          Alert.alert('Success', 'Promotion cleared');
+          Alert.alert('Success', 'Promotion deleted');
         }
       } catch (error: any) {
-        const errorMsg = error.response?.data?.message || 'Failed to clear promotion';
+        const errorMsg = error.response?.data?.message || 'Failed to delete promotion';
         if (Platform.OS === 'web') {
           alert('Error: ' + errorMsg);
         } else {
@@ -263,13 +265,13 @@ const AdManagerTab: React.FC = () => {
     };
 
     if (Platform.OS === 'web') {
-      if (window.confirm('Are you sure you want to clear this promotion? New sign-ups will no longer receive bonus statements.')) {
+      if (window.confirm('Are you sure you want to delete this promotion? New sign-ups will no longer receive bonus statements.')) {
         doClear();
       }
     } else {
-      Alert.alert('Clear Promotion', 'Are you sure you want to clear this promotion?', [
+      Alert.alert('Delete Promotion', 'Are you sure you want to delete this promotion?', [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Clear', style: 'destructive', onPress: doClear }
+        { text: 'Delete', style: 'destructive', onPress: doClear }
       ]);
     }
   }
@@ -802,27 +804,37 @@ const AdManagerTab: React.FC = () => {
           <ActivityIndicator size="small" color={COLORS.primary} style={{ marginVertical: 20 }} />
         ) : promotion ? (
           <View style={styles.activePromoBox}>
-            <View style={styles.promoStatusBadge}>
-              <Check size={14} color="#059669" />
-              <Text style={styles.promoStatusText}>Active Promotion</Text>
+            <View style={styles.promoHeader}>
+              <View style={styles.promoStatusBadge}>
+                <Check size={14} color="#059669" />
+                <Text style={styles.promoStatusText}>Active Promotion</Text>
+              </View>
+              <TouchableOpacity 
+                style={[styles.deletePromoButton, isSavingPromo && { opacity: 0.5 }]}
+                onPress={() => handleClearPromotion(promotion.id)}
+                disabled={isSavingPromo}
+              >
+                <Trash2 size={16} color="#DC2626" />
+              </TouchableOpacity>
             </View>
-            <Text style={styles.promoInfoText}>
-              Name: <Text style={styles.promoInfoValue}>{promotion.promoName || 'Sign-up Promotion'}</Text>
-            </Text>
-            <Text style={styles.promoInfoText}>
-              Period: <Text style={styles.promoInfoValue}>{promotion.startDate} to {promotion.endDate}</Text>
-            </Text>
-            <Text style={styles.promoInfoText}>
-              Bonus Statements: <Text style={styles.promoInfoValue}>{promotion.freeStatements}</Text>
-            </Text>
-            <TouchableOpacity 
-              style={[styles.clearPromoButton, isSavingPromo && { opacity: 0.5 }]}
-              onPress={handleClearPromotion}
-              disabled={isSavingPromo}
-            >
-              <Trash2 size={14} color="#DC2626" />
-              <Text style={styles.clearPromoText}>Clear Promotion</Text>
-            </TouchableOpacity>
+            <View style={styles.promoDetails}>
+              <Text style={styles.promoInfoText}>
+                <Text style={styles.promoLabel}>Name: </Text>
+                <Text style={styles.promoInfoValue}>{promotion.promoName || 'Sign-up Promotion'}</Text>
+              </Text>
+              <Text style={styles.promoInfoText}>
+                <Text style={styles.promoLabel}>Start: </Text>
+                <Text style={styles.promoInfoValue}>{promotion.startDate}</Text>
+              </Text>
+              <Text style={styles.promoInfoText}>
+                <Text style={styles.promoLabel}>End: </Text>
+                <Text style={styles.promoInfoValue}>{promotion.endDate}</Text>
+              </Text>
+              <Text style={styles.promoInfoText}>
+                <Text style={styles.promoLabel}>Bonus: </Text>
+                <Text style={styles.promoInfoValue}>{promotion.freeStatements} statements</Text>
+              </Text>
+            </View>
           </View>
         ) : (
           <View style={styles.noPromoBox}>
@@ -1564,6 +1576,24 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#A7F3D0',
   },
+  promoHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  promoDetails: {
+    gap: 6,
+  },
+  promoLabel: {
+    fontWeight: '500',
+    color: '#6B7280',
+  },
+  deletePromoButton: {
+    padding: 8,
+    backgroundColor: '#FEE2E2',
+    borderRadius: 6,
+  },
   promoStatusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1627,11 +1657,12 @@ const styles = StyleSheet.create({
   },
   dateRow: {
     flexDirection: 'row',
-    gap: 12,
-    marginBottom: 8,
+    gap: 20,
+    marginBottom: 12,
   },
   dateField: {
     flex: 1,
+    marginHorizontal: 4,
   },
   savePromoButton: {
     flexDirection: 'row',

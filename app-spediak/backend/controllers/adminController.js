@@ -859,6 +859,18 @@ const clearUserOverride = async (req, res) => {
  */
 const getActivePromotion = async (req, res) => {
   try {
+    // Check if table exists first
+    const tableExists = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_name = 'signup_promotions'
+      )
+    `);
+    
+    if (!tableExists.rows[0].exists) {
+      return res.json({ promotion: null });
+    }
+    
     const result = await pool.query(`
       SELECT * FROM signup_promotions 
       WHERE is_active = TRUE 
@@ -874,7 +886,8 @@ const getActivePromotion = async (req, res) => {
 
   } catch (error) {
     console.error('[Admin] Error fetching active promotion:', error);
-    res.status(500).json({ message: 'Failed to fetch active promotion', error: error.message });
+    // Return null instead of error for missing table
+    res.json({ promotion: null });
   }
 };
 
