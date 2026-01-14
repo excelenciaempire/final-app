@@ -908,10 +908,15 @@ const getAllPromotions = async (req, res) => {
  * Save sign-up promotion
  */
 const savePromotion = async (req, res) => {
-  const { promoName, startDate, endDate, freeStatements } = req.body;
+  // Handle both camelCase and snake_case field names
+  const promoName = req.body.promoName || req.body.promo_name;
+  const startDate = req.body.startDate || req.body.start_date;
+  const endDate = req.body.endDate || req.body.end_date;
+  const freeStatements = req.body.freeStatements || req.body.free_statements;
+  const isActive = req.body.isActive !== undefined ? req.body.isActive : (req.body.is_active !== undefined ? req.body.is_active : true);
   const adminClerkId = req.auth?.userId;
 
-  if (!startDate || !endDate || !freeStatements) {
+  if (!startDate || !endDate || freeStatements === undefined) {
     return res.status(400).json({ message: 'Start date, end date, and free statements are required' });
   }
 
@@ -920,11 +925,16 @@ const savePromotion = async (req, res) => {
   }
 
   try {
+    // Deactivate any existing active promotions first
+    await pool.query(`
+      UPDATE signup_promotions SET is_active = FALSE WHERE is_active = TRUE
+    `);
+
     const result = await pool.query(`
       INSERT INTO signup_promotions (promo_name, start_date, end_date, free_statements, created_by, is_active)
-      VALUES ($1, $2, $3, $4, $5, TRUE)
+      VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING *
-    `, [promoName || `Promo ${new Date().toISOString().split('T')[0]}`, startDate, endDate, freeStatements, adminClerkId]);
+    `, [promoName || `Promo ${new Date().toISOString().split('T')[0]}`, startDate, endDate, freeStatements, adminClerkId, isActive]);
 
     // Log to audit
     await pool.query(`
@@ -2129,6 +2139,52 @@ const getUserInspections = async (req, res) => {
   }
 };
 
+/**
+ * Get system diagnostics for admin dashboard
+ */
+const getDiagnostics = async (req, res) => {
+  try {
+    // Get all counts in parallel
+    const [
+      usersResult,
+      stateSopResult,
+      orgSopResult,
+      sopHistoryResult,
+      auditResult,
+      adsResult,
+      adsEnabledResult,
+      knowledgeResult,
+      promotionsResult
+    ] = await Promise.all([
+      pool.query('SELECT COUNT(*) FROM users'),
+      pool.query("SELECT COUNT(*) FROM sop_assignments WHERE assignment_type = 'state'"),
+      pool.query("SELECT COUNT(*) FROM sop_assignments WHERE assignment_type = 'organization'"),
+      pool.query('SELECT COUNT(*) FROM sop_history'),
+      pool.query('SELECT COUNT(*) FROM admin_audit_log'),
+      pool.query('SELECT COUNT(*) FROM ads'),
+      pool.query('SELECT COUNT(*) FROM ads WHERE is_active = true'),
+      pool.query('SELECT COUNT(*) FROM knowledge_documents'),
+      pool.query('SELECT COUNT(*) FROM signup_promotions WHERE is_active = true AND end_date >= CURRENT_DATE')
+    ]);
+
+    res.json({
+      usersStored: parseInt(usersResult.rows[0].count, 10),
+      stateSopAssignments: parseInt(stateSopResult.rows[0].count, 10),
+      orgSopAssignments: parseInt(orgSopResult.rows[0].count, 10),
+      sopHistoryEntries: parseInt(sopHistoryResult.rows[0].count, 10),
+      adminAuditEvents: parseInt(auditResult.rows[0].count, 10),
+      adsInInventory: parseInt(adsResult.rows[0].count, 10),
+      adsEnabled: parseInt(adsEnabledResult.rows[0].count, 10),
+      knowledgeDocuments: parseInt(knowledgeResult.rows[0].count, 10),
+      activePromotions: parseInt(promotionsResult.rows[0].count, 10)
+    });
+
+  } catch (error) {
+    console.error('[Admin] Error fetching diagnostics:', error);
+    res.status(500).json({ message: 'Failed to fetch diagnostics', error: error.message });
+  }
+};
+
 module.exports = {
   getAllInspections: getAllInspectionsWithUserDetails,
   getUserInspections,
@@ -2179,5 +2235,7 @@ module.exports = {
   updateUserPlan,
   recordStatementEvent,
   getStatementEvents,
-  saveSupportInfo
+  saveSupportInfo,
+  // Diagnostics
+  getDiagnostics
 }; 

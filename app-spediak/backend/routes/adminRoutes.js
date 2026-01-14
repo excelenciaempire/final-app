@@ -50,7 +50,9 @@ const {
   updateUserPlan,
   recordStatementEvent,
   getStatementEvents,
-  saveSupportInfo
+  saveSupportInfo,
+  // Diagnostics
+  getDiagnostics
 } = require('../controllers/adminController');
 const knowledgeRoutes = require('./knowledgeRoutes'); // Import knowledge base routes
 const sopController = require('../controllers/sopController');
@@ -61,6 +63,9 @@ router.use(requireAuth, requireAdmin);
 
 // Mount knowledge base routes
 router.use('/knowledge', knowledgeRoutes);
+
+// Diagnostics route
+router.get('/diagnostics', getDiagnostics);
 
 // Prompt routes
 router.get('/prompts', getPrompts);
@@ -101,6 +106,7 @@ router.post('/user-override/clear', clearUserOverride);
 router.get('/promotions', getAllPromotions);
 router.get('/promotions/active', getActivePromotion);
 router.post('/promotions', savePromotion);
+router.delete('/promotions', clearPromotion);
 router.post('/promotions/clear', clearPromotion);
 
 // User security flags

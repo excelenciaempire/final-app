@@ -126,7 +126,8 @@ const updateProfile = async (req, res) => {
       profilePhotoUrl, 
       primaryState, 
       secondaryStates, 
-      organization, 
+      organization,
+      organizations, // Array of organizations
       companyName,
       phoneNumber
     } = req.body;
@@ -134,6 +135,10 @@ const updateProfile = async (req, res) => {
     if (!clerkId) {
       return res.status(401).json({ message: 'Unauthorized' });
     }
+
+    // Handle organizations - prefer array, fallback to single
+    const orgsArray = organizations || (organization && organization !== 'None' ? [organization] : []);
+    const primaryOrg = orgsArray.length > 0 ? orgsArray[0] : null;
 
     // Check if profile exists
     const existingProfile = await pool.query(
@@ -149,13 +154,14 @@ const updateProfile = async (req, res) => {
           profile_photo_url, 
           primary_state, 
           secondary_states, 
-          organization, 
+          organization,
+          organizations,
           company_name,
           phone_number,
           updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
         RETURNING *
-      `, [clerkId, profilePhotoUrl, primaryState, secondaryStates || [], organization, companyName, phoneNumber]);
+      `, [clerkId, profilePhotoUrl, primaryState, secondaryStates || [], primaryOrg, JSON.stringify(orgsArray), companyName, phoneNumber]);
 
       return res.json({ 
         message: 'Profile created successfully', 
@@ -171,12 +177,13 @@ const updateProfile = async (req, res) => {
         primary_state = COALESCE($3, primary_state),
         secondary_states = COALESCE($4, secondary_states),
         organization = COALESCE($5, organization),
-        company_name = COALESCE($6, company_name),
-        phone_number = COALESCE($7, phone_number),
+        organizations = COALESCE($6, organizations),
+        company_name = COALESCE($7, company_name),
+        phone_number = COALESCE($8, phone_number),
         updated_at = NOW()
       WHERE clerk_id = $1
       RETURNING *
-    `, [clerkId, profilePhotoUrl, primaryState, secondaryStates, organization, companyName, phoneNumber]);
+    `, [clerkId, profilePhotoUrl, primaryState, secondaryStates, primaryOrg, JSON.stringify(orgsArray), companyName, phoneNumber]);
 
     res.json({ 
       message: 'Profile updated successfully', 

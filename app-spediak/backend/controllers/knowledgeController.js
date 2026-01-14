@@ -120,27 +120,42 @@ const deleteDocument = async (req, res) => {
 
         const docResult = await client.query('SELECT file_name FROM knowledge_documents WHERE id = $1', [id]);
 
-        if (docResult.rows.length > 0) {
-            const fileName = docResult.rows[0].file_name;
-            const publicId = `knowledge_base/${fileName}`;
+        if (docResult.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ message: 'Document not found.' });
+        }
 
-            // Use a promise to handle the async cloudinary call properly
+        const fileName = docResult.rows[0].file_name;
+        const publicId = `knowledge_base/${fileName}`;
+
+        // First, delete all related knowledge_chunks
+        await client.query('DELETE FROM knowledge_chunks WHERE document_id = $1', [id]);
+        console.log(`[KnowledgeBase] Deleted chunks for document ID: ${id}`);
+
+        // Try to delete from Cloudinary (don't fail if file doesn't exist)
+        try {
             await new Promise((resolve, reject) => {
                 cloudinary.uploader.destroy(publicId, { resource_type: 'raw' }, (error, result) => {
                     if (error) {
-                        console.error('[Cloudinary] Failed to delete document:', error);
-                        return reject(new Error('Failed to delete file from cloud storage.'));
+                        console.warn('[Cloudinary] Warning - could not delete file (may not exist):', error.message);
+                        // Don't reject - continue with database deletion
+                        resolve(result);
+                    } else {
+                        console.log('[Cloudinary] Document deleted:', result);
+                        resolve(result);
                     }
-                    console.log('[Cloudinary] Document deleted:', result);
-                    resolve(result);
                 });
             });
+        } catch (cloudinaryError) {
+            console.warn('[Cloudinary] Non-fatal error:', cloudinaryError);
+            // Continue anyway - the important thing is to delete from DB
         }
 
-        // Now delete from the database
+        // Delete from the database
         await client.query('DELETE FROM knowledge_documents WHERE id = $1', [id]);
         
         await client.query('COMMIT');
+        console.log(`[KnowledgeBase] Successfully deleted document ID: ${id}`);
         res.status(200).json({ message: 'Document deleted successfully.' });
 
     } catch (error) {

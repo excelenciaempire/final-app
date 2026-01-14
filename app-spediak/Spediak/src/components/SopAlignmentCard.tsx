@@ -155,19 +155,31 @@ const SopAlignmentCard: React.FC = () => {
               <View style={styles.sopSourcesList}>
                 {hasStateSop && (
                   <Text style={styles.sopSourceItem}>
-                    • State SOP: {activeSops.stateSop?.documentName}
+                    • State SOP: {selectedState} - {activeSops.stateSop?.documentName}
                   </Text>
                 )}
                 {hasOrgSop && (
                   <Text style={styles.sopSourceItem}>
-                    • Organization SOP: {activeSops.orgSop?.documentName}
+                    • Organization SOP: {organization} - {activeSops.orgSop?.documentName}
+                  </Text>
+                )}
+                {!hasOrgSop && organization && organization !== 'None' && (
+                  <Text style={styles.sopSourceItem}>
+                    • Organization: {organization} (no SOP document assigned)
                   </Text>
                 )}
               </View>
             ) : isPaidUser ? (
-              <Text style={styles.sopBannerText}>
-                Using Spediak's best-practice guidance for your statements.
-              </Text>
+              <View style={styles.sopSourcesList}>
+                <Text style={styles.sopBannerText}>
+                  Using Spediak's best-practice guidance for your statements.
+                </Text>
+                {organization && organization !== 'None' && (
+                  <Text style={styles.sopSourceItem}>
+                    • Your organization: {organization}
+                  </Text>
+                )}
+              </View>
             ) : (
               <Text style={styles.sopBannerText}>
                 No State or Organization SOP is currently active. Statements will follow general best-practice guidance only.

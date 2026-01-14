@@ -83,6 +83,24 @@ const AdManagerTab: React.FC = () => {
   // Drag & Drop state (web only)
   const [isDragging, setIsDragging] = useState(false);
 
+  // Promotion state
+  const [promotion, setPromotion] = useState<{
+    id?: number;
+    promoName: string;
+    startDate: string;
+    endDate: string;
+    freeStatements: string;
+    isActive: boolean;
+  } | null>(null);
+  const [isLoadingPromo, setIsLoadingPromo] = useState(false);
+  const [isSavingPromo, setIsSavingPromo] = useState(false);
+  const [promoForm, setPromoForm] = useState({
+    promoName: '',
+    startDate: '',
+    endDate: '',
+    freeStatements: '10'
+  });
+
   const fetchAds = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -108,7 +126,153 @@ const AdManagerTab: React.FC = () => {
 
   useEffect(() => {
     fetchAds();
+    fetchActivePromotion();
   }, []); // Only run once on mount
+
+  // Fetch active promotion
+  const fetchActivePromotion = async () => {
+    try {
+      setIsLoadingPromo(true);
+      const token = await getToken();
+      if (!token) return;
+
+      const response = await axios.get(`${BASE_URL}/api/admin/promotions/active`, {
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 10000
+      });
+
+      if (response.data.promotion) {
+        const promo = response.data.promotion;
+        setPromotion({
+          id: promo.id,
+          promoName: promo.promo_name || '',
+          startDate: promo.start_date?.split('T')[0] || '',
+          endDate: promo.end_date?.split('T')[0] || '',
+          freeStatements: String(promo.free_statements || 0),
+          isActive: promo.is_active
+        });
+        setPromoForm({
+          promoName: promo.promo_name || '',
+          startDate: promo.start_date?.split('T')[0] || '',
+          endDate: promo.end_date?.split('T')[0] || '',
+          freeStatements: String(promo.free_statements || 0)
+        });
+      } else {
+        setPromotion(null);
+      }
+    } catch (error) {
+      console.log('No active promotion found');
+      setPromotion(null);
+    } finally {
+      setIsLoadingPromo(false);
+    }
+  };
+
+  // Save promotion
+  const handleSavePromotion = async () => {
+    if (!promoForm.startDate || !promoForm.endDate) {
+      if (Platform.OS === 'web') {
+        alert('Please enter start and end dates');
+      } else {
+        Alert.alert('Error', 'Please enter start and end dates');
+      }
+      return;
+    }
+
+    const statements = parseInt(promoForm.freeStatements, 10);
+    if (isNaN(statements) || statements < 0) {
+      if (Platform.OS === 'web') {
+        alert('Please enter a valid number of statements');
+      } else {
+        Alert.alert('Error', 'Please enter a valid number of statements');
+      }
+      return;
+    }
+
+    setIsSavingPromo(true);
+    try {
+      const token = await getToken();
+      if (!token) return;
+
+      await axios.post(`${BASE_URL}/api/admin/promotions`, {
+        promo_name: promoForm.promoName || 'Sign-up Promotion',
+        start_date: promoForm.startDate,
+        end_date: promoForm.endDate,
+        free_statements: statements,
+        is_active: true
+      }, {
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 10000
+      });
+
+      if (Platform.OS === 'web') {
+        alert('Promotion saved successfully!');
+      } else {
+        Alert.alert('Success', 'Promotion saved successfully!');
+      }
+      fetchActivePromotion();
+    } catch (error: any) {
+      console.error('Error saving promotion:', error);
+      const errorMsg = error.response?.data?.message || 'Failed to save promotion';
+      if (Platform.OS === 'web') {
+        alert('Error: ' + errorMsg);
+      } else {
+        Alert.alert('Error', errorMsg);
+      }
+    } finally {
+      setIsSavingPromo(false);
+    }
+  };
+
+  // Clear promotion
+  const handleClearPromotion = async () => {
+    const doClear = async () => {
+      setIsSavingPromo(true);
+      try {
+        const token = await getToken();
+        if (!token) return;
+
+        await axios.delete(`${BASE_URL}/api/admin/promotions`, {
+          headers: { Authorization: `Bearer ${token}` },
+          timeout: 10000
+        });
+
+        setPromotion(null);
+        setPromoForm({
+          promoName: '',
+          startDate: '',
+          endDate: '',
+          freeStatements: '10'
+        });
+
+        if (Platform.OS === 'web') {
+          alert('Promotion cleared.');
+        } else {
+          Alert.alert('Success', 'Promotion cleared');
+        }
+      } catch (error: any) {
+        const errorMsg = error.response?.data?.message || 'Failed to clear promotion';
+        if (Platform.OS === 'web') {
+          alert('Error: ' + errorMsg);
+        } else {
+          Alert.alert('Error', errorMsg);
+        }
+      } finally {
+        setIsSavingPromo(false);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('Are you sure you want to clear this promotion? New sign-ups will no longer receive bonus statements.')) {
+        doClear();
+      }
+    } else {
+      Alert.alert('Clear Promotion', 'Are you sure you want to clear this promotion?', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Clear', style: 'destructive', onPress: doClear }
+      ]);
+    }
+  }
 
   const pickImage = async () => {
     try {
@@ -625,6 +789,144 @@ const AdManagerTab: React.FC = () => {
             </View>
           ))
         )}
+      </View>
+
+      {/* Sign-up Promotion Section */}
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Sign-up Promotion</Text>
+        <Text style={styles.cardDescription}>
+          Define bonus statements for new users who sign up during a promotional period.
+        </Text>
+
+        {isLoadingPromo ? (
+          <ActivityIndicator size="small" color={COLORS.primary} style={{ marginVertical: 20 }} />
+        ) : promotion ? (
+          <View style={styles.activePromoBox}>
+            <View style={styles.promoStatusBadge}>
+              <Check size={14} color="#059669" />
+              <Text style={styles.promoStatusText}>Active Promotion</Text>
+            </View>
+            <Text style={styles.promoInfoText}>
+              Name: <Text style={styles.promoInfoValue}>{promotion.promoName || 'Sign-up Promotion'}</Text>
+            </Text>
+            <Text style={styles.promoInfoText}>
+              Period: <Text style={styles.promoInfoValue}>{promotion.startDate} to {promotion.endDate}</Text>
+            </Text>
+            <Text style={styles.promoInfoText}>
+              Bonus Statements: <Text style={styles.promoInfoValue}>{promotion.freeStatements}</Text>
+            </Text>
+            <TouchableOpacity 
+              style={[styles.clearPromoButton, isSavingPromo && { opacity: 0.5 }]}
+              onPress={handleClearPromotion}
+              disabled={isSavingPromo}
+            >
+              <Trash2 size={14} color="#DC2626" />
+              <Text style={styles.clearPromoText}>Clear Promotion</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.noPromoBox}>
+            <Text style={styles.noPromoText}>No active promotion configured.</Text>
+          </View>
+        )}
+
+        <View style={styles.promoFormContainer}>
+          <Text style={styles.promoFormTitle}>
+            {promotion ? 'Update Promotion' : 'Create New Promotion'}
+          </Text>
+
+          <Text style={styles.label}>Promotion Name</Text>
+          <TextInput
+            style={styles.input}
+            value={promoForm.promoName}
+            onChangeText={(text) => setPromoForm({ ...promoForm, promoName: text })}
+            placeholder="e.g., New Year Special"
+            placeholderTextColor="#9CA3AF"
+          />
+
+          <View style={styles.dateRow}>
+            <View style={styles.dateField}>
+              <Text style={styles.label}>Start Date *</Text>
+              {Platform.OS === 'web' ? (
+                // @ts-ignore - web-only date input
+                <input
+                  type="date"
+                  value={promoForm.startDate}
+                  onChange={(e) => setPromoForm({ ...promoForm, startDate: e.target.value })}
+                  style={{
+                    padding: 12,
+                    borderRadius: 8,
+                    border: '1px solid #E5E7EB',
+                    backgroundColor: '#F9FAFB',
+                    fontSize: 14,
+                    width: '100%'
+                  }}
+                />
+              ) : (
+                <TextInput
+                  style={styles.input}
+                  value={promoForm.startDate}
+                  onChangeText={(text) => setPromoForm({ ...promoForm, startDate: text })}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor="#9CA3AF"
+                />
+              )}
+            </View>
+            
+            <View style={styles.dateField}>
+              <Text style={styles.label}>End Date *</Text>
+              {Platform.OS === 'web' ? (
+                // @ts-ignore - web-only date input
+                <input
+                  type="date"
+                  value={promoForm.endDate}
+                  onChange={(e) => setPromoForm({ ...promoForm, endDate: e.target.value })}
+                  style={{
+                    padding: 12,
+                    borderRadius: 8,
+                    border: '1px solid #E5E7EB',
+                    backgroundColor: '#F9FAFB',
+                    fontSize: 14,
+                    width: '100%'
+                  }}
+                />
+              ) : (
+                <TextInput
+                  style={styles.input}
+                  value={promoForm.endDate}
+                  onChangeText={(text) => setPromoForm({ ...promoForm, endDate: text })}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor="#9CA3AF"
+                />
+              )}
+            </View>
+          </View>
+
+          <Text style={styles.label}>Bonus Statements for New Sign-ups *</Text>
+          <TextInput
+            style={styles.input}
+            value={promoForm.freeStatements}
+            onChangeText={(text) => setPromoForm({ ...promoForm, freeStatements: text })}
+            placeholder="e.g., 10"
+            placeholderTextColor="#9CA3AF"
+            keyboardType="numeric"
+          />
+
+          <TouchableOpacity
+            style={[styles.savePromoButton, isSavingPromo && { opacity: 0.5 }]}
+            onPress={handleSavePromotion}
+            disabled={isSavingPromo}
+          >
+            {isSavingPromo ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <>
+                <Check size={16} color="#fff" />
+                <Text style={styles.savePromoText}>Save Promotion</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Image Crop Modal */}
@@ -1251,6 +1553,99 @@ const styles = StyleSheet.create({
   applyCropText: {
     fontSize: 15,
     fontWeight: '700',
+    color: '#fff',
+  },
+  // Promotion styles
+  activePromoBox: {
+    backgroundColor: '#ECFDF5',
+    borderRadius: 10,
+    padding: 16,
+    marginVertical: 12,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+  },
+  promoStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+  },
+  promoStatusText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#059669',
+  },
+  promoInfoText: {
+    fontSize: 14,
+    color: '#374151',
+    marginBottom: 4,
+  },
+  promoInfoValue: {
+    fontWeight: '600',
+  },
+  clearPromoButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: '#FEE2E2',
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+  },
+  clearPromoText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#DC2626',
+  },
+  noPromoBox: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    padding: 16,
+    marginVertical: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    alignItems: 'center',
+  },
+  noPromoText: {
+    fontSize: 14,
+    color: '#6B7280',
+    fontStyle: 'italic',
+  },
+  promoFormContainer: {
+    marginTop: 8,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  promoFormTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 12,
+  },
+  dateRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 8,
+  },
+  dateField: {
+    flex: 1,
+  },
+  savePromoButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: COLORS.primary,
+    paddingVertical: 14,
+    borderRadius: 10,
+    marginTop: 12,
+  },
+  savePromoText: {
+    fontSize: 15,
+    fontWeight: '600',
     color: '#fff',
   },
 });

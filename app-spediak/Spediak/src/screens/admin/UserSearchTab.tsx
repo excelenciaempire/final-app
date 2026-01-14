@@ -9,6 +9,7 @@ import {
   Alert, 
   ActivityIndicator, 
   useWindowDimensions,
+  Platform,
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { useAuth } from '@clerk/clerk-expo';
@@ -104,6 +105,11 @@ const UserSearchTab: React.FC = () => {
   // Action loading states
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
+  // Statement Override State
+  const [statementOverride, setStatementOverride] = useState<string>('');
+  const [currentOverride, setCurrentOverride] = useState<number | null>(null);
+  const [isSavingOverride, setIsSavingOverride] = useState(false);
+
   // Search user by email
   const handleSearchUser = useCallback(async () => {
     if (!searchEmail.trim()) {
@@ -139,6 +145,7 @@ const UserSearchTab: React.FC = () => {
         loadAuditTrail(user.clerk_id);
         loadSupportTags(user.clerk_id);
         loadUserNotes(user.clerk_id);
+        loadStatementOverride(user.clerk_id);
         
         console.log('[UserSearchTab] User loaded:', { 
           email: user.email, 
@@ -391,102 +398,142 @@ const UserSearchTab: React.FC = () => {
   const handleSuspendUser = async () => {
     if (!loadedUser) return;
 
-    Alert.alert('Confirm Suspend', 'Are you sure you want to suspend this user? They will be blocked from accessing the app.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Suspend',
-        style: 'destructive',
-        onPress: async () => {
-          setActionLoading('suspend');
-          try {
-            const token = await getToken();
-            if (!token) return;
+    const doSuspend = async () => {
+      setActionLoading('suspend');
+      try {
+        const token = await getToken();
+        if (!token) return;
 
-            await axios.post(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/suspend`, {}, {
-              headers: { Authorization: `Bearer ${token}` }
-            });
+        await axios.post(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/suspend`, {}, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
 
-            // Update local state immediately
-            setIsSuspended(true);
-            setLoadedUser(prev => prev ? { ...prev, is_suspended: true } : null);
-            
-            Alert.alert('Success', 'User suspended. They will be blocked on their next API request.');
-            addLocalAuditEvent('User suspended', true);
-          } catch (error: any) {
-            console.error('Suspend error:', error);
-            Alert.alert('Error', error.response?.data?.message || 'Failed to suspend user');
-          } finally {
-            setActionLoading(null);
-          }
+        // Update local state immediately
+        setIsSuspended(true);
+        setLoadedUser(prev => prev ? { ...prev, is_suspended: true } : null);
+        
+        if (Platform.OS === 'web') {
+          alert('User suspended successfully. They will be blocked from accessing the app.');
+        } else {
+          Alert.alert('Success', 'User suspended. They will be blocked on their next API request.');
         }
+        addLocalAuditEvent('User suspended', true);
+      } catch (error: any) {
+        console.error('Suspend error:', error);
+        const errorMsg = error.response?.data?.message || 'Failed to suspend user';
+        if (Platform.OS === 'web') {
+          alert('Error: ' + errorMsg);
+        } else {
+          Alert.alert('Error', errorMsg);
+        }
+      } finally {
+        setActionLoading(null);
       }
-    ]);
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('Are you sure you want to suspend this user? They will be blocked from accessing the app.')) {
+        doSuspend();
+      }
+    } else {
+      Alert.alert('Confirm Suspend', 'Are you sure you want to suspend this user? They will be blocked from accessing the app.', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Suspend', style: 'destructive', onPress: doSuspend }
+      ]);
+    }
   };
 
   // Reactivate user
   const handleReactivateUser = async () => {
     if (!loadedUser) return;
 
-    Alert.alert('Confirm Reactivate', 'Are you sure you want to reactivate this user?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Reactivate',
-        onPress: async () => {
-          setActionLoading('reactivate');
-          try {
-            const token = await getToken();
-            if (!token) return;
+    const doReactivate = async () => {
+      setActionLoading('reactivate');
+      try {
+        const token = await getToken();
+        if (!token) return;
 
-            await axios.post(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/reactivate`, {}, {
-              headers: { Authorization: `Bearer ${token}` }
-            });
+        await axios.post(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/reactivate`, {}, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
 
-            // Update local state immediately
-            setIsSuspended(false);
-            setLoadedUser(prev => prev ? { ...prev, is_suspended: false } : null);
-            
-            Alert.alert('Success', 'User reactivated. They can now access the app again.');
-            addLocalAuditEvent('User reactivated', true);
-          } catch (error: any) {
-            console.error('Reactivate error:', error);
-            Alert.alert('Error', error.response?.data?.message || 'Failed to reactivate user');
-          } finally {
-            setActionLoading(null);
-          }
+        // Update local state immediately
+        setIsSuspended(false);
+        setLoadedUser(prev => prev ? { ...prev, is_suspended: false } : null);
+        
+        if (Platform.OS === 'web') {
+          alert('User reactivated successfully. They can now access the app again.');
+        } else {
+          Alert.alert('Success', 'User reactivated. They can now access the app again.');
         }
+        addLocalAuditEvent('User reactivated', true);
+      } catch (error: any) {
+        console.error('Reactivate error:', error);
+        const errorMsg = error.response?.data?.message || 'Failed to reactivate user';
+        if (Platform.OS === 'web') {
+          alert('Error: ' + errorMsg);
+        } else {
+          Alert.alert('Error', errorMsg);
+        }
+      } finally {
+        setActionLoading(null);
       }
-    ]);
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('Are you sure you want to reactivate this user?')) {
+        doReactivate();
+      }
+    } else {
+      Alert.alert('Confirm Reactivate', 'Are you sure you want to reactivate this user?', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Reactivate', onPress: doReactivate }
+      ]);
+    }
   };
 
   // Cancel subscription
   const handleCancelSubscription = async () => {
     if (!loadedUser) return;
 
-    Alert.alert('Confirm Cancel', 'Are you sure you want to cancel this subscription?', [
-      { text: 'No', style: 'cancel' },
-      {
-        text: 'Yes, Cancel',
-        style: 'destructive',
-        onPress: async () => {
-          setActionLoading('cancel-sub');
-          try {
-            const token = await getToken();
-            if (!token) return;
+    const doCancelSubscription = async () => {
+      setActionLoading('cancel-sub');
+      try {
+        const token = await getToken();
+        if (!token) return;
 
-            await axios.post(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/cancel-subscription`, {}, {
-              headers: { Authorization: `Bearer ${token}` }
-            });
+        await axios.post(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/cancel-subscription`, {}, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
 
-            Alert.alert('Success', 'Subscription cancelled');
-            addLocalAuditEvent('Subscription cancelled', true);
-          } catch (error) {
-            Alert.alert('Error', 'Failed to cancel subscription');
-          } finally {
-            setActionLoading(null);
-          }
+        if (Platform.OS === 'web') {
+          alert('Subscription cancelled successfully.');
+        } else {
+          Alert.alert('Success', 'Subscription cancelled');
         }
+        addLocalAuditEvent('Subscription cancelled', true);
+      } catch (error: any) {
+        const errorMsg = error.response?.data?.message || 'Failed to cancel subscription';
+        if (Platform.OS === 'web') {
+          alert('Error: ' + errorMsg);
+        } else {
+          Alert.alert('Error', errorMsg);
+        }
+      } finally {
+        setActionLoading(null);
       }
-    ]);
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('Are you sure you want to cancel this subscription? The user will lose access to premium features.')) {
+        doCancelSubscription();
+      }
+    } else {
+      Alert.alert('Confirm Cancel', 'Are you sure you want to cancel this subscription?', [
+        { text: 'No', style: 'cancel' },
+        { text: 'Yes, Cancel', style: 'destructive', onPress: doCancelSubscription }
+      ]);
+    }
   };
 
   // Soft delete user
@@ -736,6 +783,120 @@ const UserSearchTab: React.FC = () => {
       Alert.alert('Error', 'Failed to record event');
     } finally {
       setActionLoading(null);
+    }
+  };
+
+  // Load statement override for user
+  const loadStatementOverride = async (userId: string) => {
+    try {
+      const token = await getToken();
+      if (!token) return;
+
+      const response = await axios.get(`${BASE_URL}/api/admin/users/${userId}/override`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (response.data.override) {
+        setCurrentOverride(response.data.override.statement_override);
+        setStatementOverride(response.data.override.statement_override?.toString() || '');
+      } else {
+        setCurrentOverride(null);
+        setStatementOverride('');
+      }
+    } catch (error) {
+      console.log('No override found or error loading:', error);
+      setCurrentOverride(null);
+      setStatementOverride('');
+    }
+  };
+
+  // Save statement override
+  const handleSaveStatementOverride = async () => {
+    if (!loadedUser) return;
+
+    const overrideValue = parseInt(statementOverride, 10);
+    if (isNaN(overrideValue) || overrideValue < 0) {
+      if (Platform.OS === 'web') {
+        alert('Please enter a valid number (0 or greater)');
+      } else {
+        Alert.alert('Error', 'Please enter a valid number (0 or greater)');
+      }
+      return;
+    }
+
+    setIsSavingOverride(true);
+    try {
+      const token = await getToken();
+      if (!token) return;
+
+      await axios.put(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/override`, {
+        statement_override: overrideValue
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      setCurrentOverride(overrideValue);
+      if (Platform.OS === 'web') {
+        alert(`Statement override set to ${overrideValue} for this user.`);
+      } else {
+        Alert.alert('Success', `Statement override set to ${overrideValue}`);
+      }
+      addLocalAuditEvent(`Statement override set to ${overrideValue}`, true);
+    } catch (error: any) {
+      const errorMsg = error.response?.data?.message || 'Failed to save override';
+      if (Platform.OS === 'web') {
+        alert('Error: ' + errorMsg);
+      } else {
+        Alert.alert('Error', errorMsg);
+      }
+    } finally {
+      setIsSavingOverride(false);
+    }
+  };
+
+  // Clear statement override
+  const handleClearStatementOverride = async () => {
+    if (!loadedUser) return;
+
+    const doClear = async () => {
+      setIsSavingOverride(true);
+      try {
+        const token = await getToken();
+        if (!token) return;
+
+        await axios.delete(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/override`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        setCurrentOverride(null);
+        setStatementOverride('');
+        if (Platform.OS === 'web') {
+          alert('Statement override cleared for this user.');
+        } else {
+          Alert.alert('Success', 'Statement override cleared');
+        }
+        addLocalAuditEvent('Statement override cleared', true);
+      } catch (error: any) {
+        const errorMsg = error.response?.data?.message || 'Failed to clear override';
+        if (Platform.OS === 'web') {
+          alert('Error: ' + errorMsg);
+        } else {
+          Alert.alert('Error', errorMsg);
+        }
+      } finally {
+        setIsSavingOverride(false);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('Are you sure you want to clear the statement override for this user?')) {
+        doClear();
+      }
+    } else {
+      Alert.alert('Confirm', 'Clear statement override for this user?', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Clear', onPress: doClear }
+      ]);
     }
   };
 
@@ -1196,6 +1357,54 @@ const UserSearchTab: React.FC = () => {
                 ))
               ) : (
                 <Text style={styles.noEventsText}>No statement events recorded.</Text>
+              )}
+            </View>
+
+            {/* Statement Override Section */}
+            <View style={styles.overrideSection}>
+              <Text style={styles.overrideTitle}>Statement Override</Text>
+              <Text style={styles.overrideDescription}>
+                Set a custom statement allowance for this user that overrides their plan limit.
+              </Text>
+              
+              {currentOverride !== null && (
+                <View style={styles.currentOverrideBox}>
+                  <Text style={styles.currentOverrideText}>
+                    Current override: <Text style={styles.overrideValue}>{currentOverride} statements/month</Text>
+                  </Text>
+                </View>
+              )}
+              
+              <View style={styles.overrideInputRow}>
+                <TextInput
+                  style={[styles.input, styles.overrideInput]}
+                  value={statementOverride}
+                  onChangeText={setStatementOverride}
+                  placeholder="Number of statements"
+                  placeholderTextColor="#9CA3AF"
+                  keyboardType="numeric"
+                />
+                <TouchableOpacity
+                  style={[styles.button, styles.primaryButton, styles.overrideButton]}
+                  onPress={handleSaveStatementOverride}
+                  disabled={isSavingOverride || !statementOverride}
+                >
+                  {isSavingOverride ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={styles.buttonText}>Save Override</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+              
+              {currentOverride !== null && (
+                <TouchableOpacity
+                  style={[styles.button, styles.dangerButton, { marginTop: 8 }]}
+                  onPress={handleClearStatementOverride}
+                  disabled={isSavingOverride}
+                >
+                  <Text style={styles.dangerButtonText}>Clear Override</Text>
+                </TouchableOpacity>
               )}
             </View>
           </View>
@@ -1760,6 +1969,66 @@ const styles = StyleSheet.create({
   },
   dangerOutlineButtonText: {
     color: '#EF4444',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  // Statement Override styles
+  overrideSection: {
+    marginTop: 20,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  overrideTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 4,
+  },
+  overrideDescription: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginBottom: 12,
+  },
+  currentOverrideBox: {
+    backgroundColor: '#EFF6FF',
+    borderRadius: 6,
+    padding: 10,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  currentOverrideText: {
+    fontSize: 13,
+    color: '#1E40AF',
+  },
+  overrideValue: {
+    fontWeight: '700',
+  },
+  overrideInputRow: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  overrideInput: {
+    flex: 1,
+    minWidth: 120,
+  },
+  overrideButton: {
+    paddingHorizontal: 16,
+    minWidth: 120,
+  },
+  dangerButton: {
+    backgroundColor: '#FEE2E2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  dangerButtonText: {
+    color: '#DC2626',
     fontSize: 14,
     fontWeight: '500',
   },

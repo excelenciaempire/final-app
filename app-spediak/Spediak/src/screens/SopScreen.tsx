@@ -22,7 +22,7 @@ import AdBanner from '../components/AdBanner';
 import StatementUsageCard from '../components/StatementUsageCard';
 
 const SopScreen: React.FC = () => {
-  const { selectedState, setSelectedState } = useGlobalState();
+  const { selectedState, setSelectedState, setSelectedOrganization } = useGlobalState();
   const { getToken } = useAuth();
   const { user } = useUser();
   const { width } = useWindowDimensions();
@@ -45,13 +45,40 @@ const SopScreen: React.FC = () => {
   const abortControllerRef = useRef<AbortController | null>(null);
   const lastFetchParams = useRef<string>('');
 
-  // Initialize organization from user metadata (only once)
+  // Initialize organization from backend (only once)
   useEffect(() => {
-    if (user?.unsafeMetadata?.organization && isInitializing.current) {
-      setOrganization(user.unsafeMetadata.organization as string);
-    }
-    isInitializing.current = false;
-  }, [user?.unsafeMetadata?.organization]);
+    const loadOrganizationFromBackend = async () => {
+      if (!isInitializing.current) return;
+      
+      try {
+        const token = await getToken();
+        if (token) {
+          const response = await axios.get(`${BASE_URL}/api/user/profile`, {
+            headers: { Authorization: `Bearer ${token}` },
+            timeout: 10000
+          });
+          
+          const savedOrg = response.data.profile?.organization;
+          if (savedOrg && savedOrg !== 'None') {
+            setOrganization(savedOrg);
+            setSelectedOrganization(savedOrg);
+            console.log('[SopScreen] Loaded organization from backend:', savedOrg);
+          }
+        }
+      } catch (err) {
+        // Fallback to Clerk metadata
+        if (user?.unsafeMetadata?.organization) {
+          setOrganization(user.unsafeMetadata.organization as string);
+          setSelectedOrganization(user.unsafeMetadata.organization as string);
+        }
+        console.log('[SopScreen] Using Clerk metadata for organization');
+      }
+      
+      isInitializing.current = false;
+    };
+    
+    loadOrganizationFromBackend();
+  }, [getToken, user?.unsafeMetadata?.organization]);
 
   // Fetch organizations from backend (only once on mount)
   useEffect(() => {
@@ -102,11 +129,30 @@ const SopScreen: React.FC = () => {
     return () => { isMounted = false; };
   }, []); // Empty dependency - only run once on mount
 
-  // Save organization selection to user metadata
+  // Save organization selection to backend and user metadata
   const handleOrganizationChange = async (value: string) => {
     setOrganization(value);
     
-    // Save to user metadata
+    // Update global context immediately
+    setSelectedOrganization(value);
+    
+    // Save to backend database (persistent storage)
+    try {
+      const token = await getToken();
+      if (token) {
+        await axios.put(`${BASE_URL}/api/user/profile`, {
+          organization: value
+        }, {
+          headers: { Authorization: `Bearer ${token}` },
+          timeout: 10000
+        });
+        console.log('[SopScreen] Organization saved to backend:', value);
+      }
+    } catch (err) {
+      console.error('Error saving organization to backend:', err);
+    }
+    
+    // Also save to user metadata for quick access
     if (user) {
       try {
         await user.update({
@@ -116,7 +162,7 @@ const SopScreen: React.FC = () => {
           }
         });
       } catch (err) {
-        console.error('Error saving organization preference:', err);
+        console.error('Error saving organization to Clerk:', err);
       }
     }
   };

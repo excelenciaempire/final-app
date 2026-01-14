@@ -62,11 +62,14 @@ const availableStates = [
     { label: 'Wyoming', value: 'WY' },
 ];
 
-// Define organizations
+// Define organizations - multi-select options
 const organizationOptions = [
-    { label: 'None', value: 'None' },
     { label: 'ASHI (American Society of Home Inspectors)', value: 'ASHI' },
     { label: 'InterNACHI (International Association of Certified Home Inspectors)', value: 'InterNACHI' },
+    { label: 'Inspector Nation', value: 'Inspector Nation' },
+    { label: 'NAHI (National Association of Home Inspectors)', value: 'NAHI' },
+    { label: 'CREIA (California Real Estate Inspection Association)', value: 'CREIA' },
+    { label: 'TPREIA (Texas Professional Real Estate Inspectors Association)', value: 'TPREIA' },
     { label: 'Other', value: 'Other' },
 ];
 
@@ -80,7 +83,7 @@ const ProfileSettingsScreen: React.FC = () => {
     const [lastName, setLastName] = useState<string>('');
     const [selectedState, setSelectedState] = useState<string | null>(null);
     const [secondaryStates, setSecondaryStates] = useState<string[]>([]);
-    const [organization, setOrganization] = useState<string>('None');
+    const [organizations, setOrganizations] = useState<string[]>([]);
     const [phoneNumber, setPhoneNumber] = useState<string>('');
     const [companyName, setCompanyName] = useState<string>('');
     const [profileImageUri, setProfileImageUri] = useState<string | null>(null);
@@ -116,7 +119,15 @@ const ProfileSettingsScreen: React.FC = () => {
                 if (data.profile) {
                     setSelectedState(data.profile.primary_state || null);
                     setSecondaryStates(data.profile.secondary_states || []);
-                    setOrganization(data.profile.organization || 'None');
+                    // Handle both array and string formats for organizations
+                    const orgData = data.profile.organizations || data.profile.organization;
+                    if (Array.isArray(orgData)) {
+                        setOrganizations(orgData);
+                    } else if (orgData && orgData !== 'None') {
+                        setOrganizations([orgData]);
+                    } else {
+                        setOrganizations([]);
+                    }
                     setPhoneNumber(data.profile.phone_number || '');
                     setCompanyName(data.profile.company_name || '');
                 }
@@ -213,7 +224,8 @@ const ProfileSettingsScreen: React.FC = () => {
                 body: JSON.stringify({
                     primaryState: selectedState,
                     secondaryStates: secondaryStates,
-                    organization: organization,
+                    organizations: organizations,
+                    organization: organizations.length > 0 ? organizations[0] : null, // For backward compatibility
                     phoneNumber: phoneNumber,
                     companyName: companyName,
                     profilePhotoUrl: clerkUser.imageUrl
@@ -569,22 +581,49 @@ const ProfileSettingsScreen: React.FC = () => {
                     ))}
                 </View>
 
-                {/* Organization */}
-                <Text style={styles.fieldLabel}>Professional Organization</Text>
-                <View style={styles.pickerWrapper}>
-                    <Award size={18} color={COLORS.primary} style={styles.inputIcon} />
-                    <Picker
-                        selectedValue={organization}
-                        onValueChange={(itemValue) => setOrganization(itemValue)}
-                        style={styles.picker}
-                        dropdownIconColor={COLORS.primary}
-                        enabled={!isLoading}
-                    >
-                        {organizationOptions.map(org => (
-                            <Picker.Item key={org.value} label={org.label} value={org.value} />
-                        ))}
-                    </Picker>
+                {/* Organizations - Multi-select */}
+                <Text style={styles.fieldLabel}>Professional Organizations</Text>
+                <Text style={styles.fieldHint}>Select all organizations you belong to</Text>
+                <View style={styles.organizationsContainer}>
+                    {organizationOptions.map(org => {
+                        const isSelected = organizations.includes(org.value);
+                        return (
+                            <TouchableOpacity
+                                key={org.value}
+                                style={[
+                                    styles.organizationChip,
+                                    isSelected && styles.organizationChipSelected
+                                ]}
+                                onPress={() => {
+                                    if (isSelected) {
+                                        setOrganizations(organizations.filter(o => o !== org.value));
+                                    } else {
+                                        setOrganizations([...organizations, org.value]);
+                                    }
+                                }}
+                                disabled={isLoading}
+                            >
+                                <View style={[
+                                    styles.checkbox,
+                                    isSelected && styles.checkboxSelected
+                                ]}>
+                                    {isSelected && <Check size={12} color="#fff" />}
+                                </View>
+                                <Text style={[
+                                    styles.organizationChipText,
+                                    isSelected && styles.organizationChipTextSelected
+                                ]}>
+                                    {org.label}
+                                </Text>
+                            </TouchableOpacity>
+                        );
+                    })}
                 </View>
+                {organizations.length > 0 && (
+                    <Text style={styles.selectedOrgsText}>
+                        Selected: {organizations.join(', ')}
+                    </Text>
+                )}
 
                 {/* Save Button */}
                 <TouchableOpacity
@@ -856,6 +895,56 @@ const styles = StyleSheet.create({
     secondaryStatePicker: {
         height: 50,
         color: COLORS.textPrimary,
+    },
+    organizationsContainer: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 8,
+        marginBottom: 12,
+    },
+    organizationChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#F8FAFC',
+        borderRadius: 8,
+        paddingVertical: 10,
+        paddingHorizontal: 12,
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+        marginBottom: 4,
+    },
+    organizationChipSelected: {
+        backgroundColor: '#EFF6FF',
+        borderColor: COLORS.primary,
+    },
+    organizationChipText: {
+        fontSize: 13,
+        color: COLORS.textSecondary,
+        marginLeft: 8,
+        flexShrink: 1,
+    },
+    organizationChipTextSelected: {
+        color: COLORS.primary,
+        fontWeight: '600',
+    },
+    checkbox: {
+        width: 18,
+        height: 18,
+        borderRadius: 4,
+        borderWidth: 2,
+        borderColor: '#D1D5DB',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    checkboxSelected: {
+        backgroundColor: COLORS.primary,
+        borderColor: COLORS.primary,
+    },
+    selectedOrgsText: {
+        fontSize: 12,
+        color: COLORS.textSecondary,
+        fontStyle: 'italic',
+        marginBottom: 8,
     },
     saveButton: {
         flexDirection: 'row',

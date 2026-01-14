@@ -15,6 +15,7 @@ import { format } from 'date-fns';
 import SopManagementTab from './admin/SopManagementTab';
 import UserSearchTab from './admin/UserSearchTab';
 import AdManagerTab from './admin/AdManagerTab';
+import AdminDiagnosticsTab from './admin/AdminDiagnosticsTab';
 
 const api = axios.create({
     baseURL: BASE_URL + '/api'
@@ -647,29 +648,40 @@ const KnowledgeManager = () => {
     };
 
     const handleDelete = async (docId: number) => {
-        Alert.alert('Confirm Deletion', 'Are you sure you want to delete this document? This action cannot be undone.', [
-            { text: 'Cancel', style: 'cancel' },
-            {
-                text: 'Delete',
-                style: 'destructive',
-                onPress: async () => {
-                    try {
-                        const token = await getToken();
-                        if (!token) {
-                            setError('Authentication error.');
-                            return;
-                        }
-                        await axios.delete(`${BASE_URL}/api/admin/knowledge/${docId}`, {
-                            headers: { Authorization: `Bearer ${token}` },
-                        });
-                        setDocuments(prevDocs => prevDocs.filter(doc => doc.id !== docId));
-                    } catch (err: any) {
-                        setError('Failed to delete document.');
-                        console.error(err);
-                    }
-                },
-            },
-        ]);
+        const doDelete = async () => {
+            try {
+                const token = await getToken();
+                if (!token) {
+                    setError('Authentication error.');
+                    return;
+                }
+                await axios.delete(`${BASE_URL}/api/admin/knowledge/${docId}`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                setDocuments(prevDocs => prevDocs.filter(doc => doc.id !== docId));
+                if (Platform.OS === 'web') {
+                    alert('Document deleted successfully.');
+                }
+            } catch (err: any) {
+                const errorMsg = err.response?.data?.message || 'Failed to delete document.';
+                setError(errorMsg);
+                console.error(err);
+                if (Platform.OS === 'web') {
+                    alert('Error: ' + errorMsg);
+                }
+            }
+        };
+
+        if (Platform.OS === 'web') {
+            if (window.confirm('Are you sure you want to delete this document? This action cannot be undone.')) {
+                doDelete();
+            }
+        } else {
+            Alert.alert('Confirm Deletion', 'Are you sure you want to delete this document? This action cannot be undone.', [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Delete', style: 'destructive', onPress: doDelete },
+            ]);
+        }
     };
 
     useEffect(() => {
@@ -777,6 +789,7 @@ const AdminDashboardScreen = () => {
             <Tab.Screen name="SOP Management" component={SopManagementTab} options={{ tabBarLabel: 'SOP Management' }} />
             <Tab.Screen name="Prompt Editor" component={PromptEditor} listeners={{ tabPress: (e: any) => { if (isPromptEditorLocked) { e.preventDefault(); Alert.alert('Locked', `Locked by ${promptLocker}.`); } } }} options={{ tabBarLabel: isPromptEditorLocked ? `Prompt Editor (Locked)` : 'Prompt Editor' }} />
             <Tab.Screen name="Knowledge" component={KnowledgeManager} options={{ tabBarLabel: 'Knowledge Base' }} />
+            <Tab.Screen name="Diagnostics" component={AdminDiagnosticsTab} options={{ tabBarLabel: 'Diagnostics' }} />
         </Tab.Navigator>
     );
 };
