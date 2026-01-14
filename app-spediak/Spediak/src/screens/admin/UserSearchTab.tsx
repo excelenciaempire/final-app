@@ -1570,13 +1570,9 @@ const UserSearchTab: React.FC = () => {
               </View>
               
               {currentOverride !== null && (
-                <TouchableOpacity
-                  style={[styles.button, styles.dangerButton, { marginTop: 8 }]}
-                  onPress={handleClearStatementOverride}
-                  disabled={isSavingOverride}
-                >
-                  <Text style={styles.dangerButtonText}>Clear Override</Text>
-                </TouchableOpacity>
+                <Text style={styles.hintText}>
+                  Current override: {currentOverride} statements
+                </Text>
               )}
             </View>
           </View>

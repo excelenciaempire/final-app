@@ -144,24 +144,19 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
                   setPasswordError("This password is too common or known to be compromised. Please choose another.");
                   break;
               case 'form_password_length_too_short':
-                   setPasswordError(`Password too short. Minimum ${firstError.meta?.minimumLength || '8'} characters.`); // Ensure a default if meta is not present
+                   setPasswordError(`Password too short. Minimum ${firstError.meta?.minimumLength || '8'} characters.`);
                    break;
               case 'form_password_complexity': 
-                   // Updated error message for password complexity (no symbol requirement)
                    setPasswordError("Password must contain at least one uppercase letter and one number.");
                    break;
-              case 'unauthenticated': // Example of another common Clerk error
+              case 'client_state_invalid':
+              case 'api_response_error':
+                  // This error happens when Clerk's state is stale - ask user to try again
+                  setGeneralError("Session expired. Please refresh the page and try again.");
+                  break;
+              case 'unauthenticated':
                   setGeneralError("Authentication error. Please try again.");
                   break;
-              // Add more cases for other specific Clerk error codes as needed
-              // For example, for username validation from Clerk:
-              // case 'form_param_format_invalid':
-              //    if (firstError.meta?.paramName === 'username') {
-              //        setUsernameError(firstError.message); // Use Clerk's message for username
-              //    } else {
-              //        setGeneralError(firstError.longMessage || firstError.message || userMessage);
-              //    }
-              //    break;
               default:
                   // Attempt to set field-specific errors if possible from Clerk's response, otherwise general
                   if (firstError.meta?.paramName === 'password') {
