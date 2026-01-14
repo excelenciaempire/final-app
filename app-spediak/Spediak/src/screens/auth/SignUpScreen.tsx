@@ -104,7 +104,7 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
     setLoading(true);
     try {
       console.log("[SignUpScreen] Attempting signUp.create...");
-      await signUp.create({
+      const signUpResult = await signUp.create({
         firstName,
         lastName,
         emailAddress,
@@ -112,13 +112,33 @@ const SignUpScreen: React.FC<SignUpScreenProps> = ({ navigation }) => {
         username: username.trim(), 
         unsafeMetadata: { username: username.trim() },
       });
-      console.log("[SignUpScreen] signUp.create SUCCEEDED.");
+      console.log("[SignUpScreen] signUp.create SUCCEEDED. Status:", signUpResult.status);
 
-      // Email verification is ENABLED for security
-      // Send verification code to the user's email
-      await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
-      setPendingVerification(true);
-      console.log("[SignUpScreen] Verification code sent to email.");
+      // Check if email verification is required based on signup status
+      if (signUpResult.status === 'complete') {
+        // Email verification is NOT required - session created immediately
+        console.log("[SignUpScreen] SignUp complete, setting session active.");
+        await setActive({ session: signUpResult.createdSessionId });
+      } else if (signUpResult.status === 'missing_requirements') {
+        // Email verification IS required - send verification code
+        console.log("[SignUpScreen] Email verification required, preparing...");
+        try {
+          await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
+          setPendingVerification(true);
+          console.log("[SignUpScreen] Verification code sent to email.");
+        } catch (verifyErr: any) {
+          console.error("[SignUpScreen] Error preparing verification:", verifyErr);
+          // Account was created but verification failed - try to recover
+          if (verifyErr.errors?.[0]?.code === 'client_state_invalid') {
+            setGeneralError("Account created! Please log in with your credentials to complete verification.");
+          } else {
+            setGeneralError("Account created but couldn't send verification email. Please try logging in.");
+          }
+        }
+      } else {
+        console.log("[SignUpScreen] Unexpected status:", signUpResult.status);
+        setPendingVerification(true); // Default to verification flow
+      }
 
     } catch (err: any) {
       clearErrors(); // Clear previous before setting new ones
