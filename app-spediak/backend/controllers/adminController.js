@@ -730,20 +730,30 @@ const getUserDetails = async (req, res) => {
 // ============================================
 
 /**
- * Get user override by email
+ * Get user override by email or userId
  */
 const getUserOverride = async (req, res) => {
   const { email } = req.query;
-
-  if (!email) {
-    return res.status(400).json({ message: 'Email is required' });
-  }
+  const { userId } = req.params;
 
   try {
-    const result = await pool.query(
-      'SELECT * FROM admin_user_overrides WHERE user_email = $1 AND is_active = TRUE',
-      [email]
-    );
+    let result;
+    
+    if (userId) {
+      // Get by clerk_id from params
+      result = await pool.query(
+        'SELECT * FROM admin_user_overrides WHERE user_clerk_id = $1 AND is_active = TRUE',
+        [userId]
+      );
+    } else if (email) {
+      // Get by email from query
+      result = await pool.query(
+        'SELECT * FROM admin_user_overrides WHERE user_email = $1 AND is_active = TRUE',
+        [email]
+      );
+    } else {
+      return res.status(400).json({ message: 'Email or userId is required' });
+    }
 
     res.json({
       override: result.rows.length > 0 ? result.rows[0] : null
@@ -759,21 +769,38 @@ const getUserOverride = async (req, res) => {
  * Save or update user statement override
  */
 const saveUserOverride = async (req, res) => {
-  const { email, statementAllowance, reason } = req.body;
+  const { email, statementAllowance, reason, statement_override } = req.body;
+  const { userId } = req.params;
   const adminClerkId = req.auth?.userId;
 
-  if (!email || statementAllowance === undefined) {
-    return res.status(400).json({ message: 'Email and statement allowance are required' });
-  }
-
+  // Support both parameter names
+  const overrideValue = statement_override !== undefined ? statement_override : statementAllowance;
+  
   try {
-    // Find user by email
-    const userResult = await pool.query(
-      'SELECT clerk_id FROM users WHERE email = $1',
-      [email]
-    );
+    let userClerkId = userId;
+    let userEmail = email;
+    
+    // If we have userId in params, get the email
+    if (userId && !email) {
+      const userLookup = await pool.query('SELECT email FROM users WHERE clerk_id = $1', [userId]);
+      if (userLookup.rows.length > 0) {
+        userEmail = userLookup.rows[0].email;
+      }
+    }
+    
+    // If we have email but no userId, look up the userId
+    if (email && !userId) {
+      const userResult = await pool.query('SELECT clerk_id FROM users WHERE email = $1', [email]);
+      userClerkId = userResult.rows.length > 0 ? userResult.rows[0].clerk_id : null;
+    }
 
-    const userClerkId = userResult.rows.length > 0 ? userResult.rows[0].clerk_id : null;
+    if (!userClerkId && !userEmail) {
+      return res.status(400).json({ message: 'User not found' });
+    }
+
+    if (overrideValue === undefined) {
+      return res.status(400).json({ message: 'Statement allowance is required' });
+    }
 
     // Upsert the override
     const result = await pool.query(`
@@ -819,25 +846,38 @@ const saveUserOverride = async (req, res) => {
  */
 const clearUserOverride = async (req, res) => {
   const { email } = req.body;
+  const { userId } = req.params;
   const adminClerkId = req.auth?.userId;
 
-  if (!email) {
-    return res.status(400).json({ message: 'Email is required' });
+  if (!email && !userId) {
+    return res.status(400).json({ message: 'Email or userId is required' });
   }
 
   try {
-    const result = await pool.query(`
-      UPDATE admin_user_overrides 
-      SET is_active = FALSE, updated_at = NOW()
-      WHERE user_email = $1
-      RETURNING *
-    `, [email]);
+    let result;
+    let targetIdentifier = email || userId;
+    
+    if (userId) {
+      result = await pool.query(`
+        UPDATE admin_user_overrides 
+        SET is_active = FALSE, updated_at = NOW()
+        WHERE user_clerk_id = $1
+        RETURNING *
+      `, [userId]);
+    } else {
+      result = await pool.query(`
+        UPDATE admin_user_overrides 
+        SET is_active = FALSE, updated_at = NOW()
+        WHERE user_email = $1
+        RETURNING *
+      `, [email]);
+    }
 
     // Log to audit
     await pool.query(`
-      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, action_details)
-      VALUES ($1, $2, $3, $4, $5)
-    `, [adminClerkId, 'clear_override', 'user_management', 'user', JSON.stringify({ email })]);
+      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_user_id, action_details)
+      VALUES ($1, $2, $3, $4, $5, $6)
+    `, [adminClerkId, 'clear_override', 'user_management', 'user', userId || null, JSON.stringify({ email: email || null, userId: userId || null })]);
 
     res.json({
       message: 'Override cleared successfully',
@@ -871,7 +911,8 @@ const getActivePromotion = async (req, res) => {
       return res.json({ promotion: null });
     }
     
-    const result = await pool.query(`
+    // First try to get currently active promotion (within date range)
+    let result = await pool.query(`
       SELECT * FROM signup_promotions 
       WHERE is_active = TRUE 
       AND start_date <= CURRENT_DATE 
@@ -879,6 +920,17 @@ const getActivePromotion = async (req, res) => {
       ORDER BY created_at DESC
       LIMIT 1
     `);
+
+    // If no active promotion in current date range, show the most recent active one anyway
+    // (so admin can see what's configured even if dates are off)
+    if (result.rows.length === 0) {
+      result = await pool.query(`
+        SELECT * FROM signup_promotions 
+        WHERE is_active = TRUE 
+        ORDER BY created_at DESC
+        LIMIT 1
+      `);
+    }
 
     res.json({
       promotion: result.rows.length > 0 ? result.rows[0] : null
@@ -2185,8 +2237,8 @@ const getDiagnostics = async (req, res) => {
       safeCount("SELECT COUNT(*) FROM sop_assignments WHERE assignment_type = 'organization'"),
       safeCount('SELECT COUNT(*) FROM sop_history'),
       safeCount('SELECT COUNT(*) FROM admin_audit_log'),
-      safeCount('SELECT COUNT(*) FROM ads'),
-      safeCount('SELECT COUNT(*) FROM ads WHERE is_active = true'),
+      safeCount('SELECT COUNT(*) FROM ad_inventory'),
+      safeCount('SELECT COUNT(*) FROM ad_inventory WHERE is_active = true'),
       safeCount('SELECT COUNT(*) FROM knowledge_documents'),
       safeCount('SELECT COUNT(*) FROM signup_promotions WHERE is_active = true AND end_date >= CURRENT_DATE')
     ]);

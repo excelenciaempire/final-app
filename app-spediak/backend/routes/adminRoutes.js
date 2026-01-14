@@ -97,10 +97,15 @@ router.get('/trial-reset-history', getTrialResetHistory);
 // User search by email
 router.get('/search-user', searchUserByEmail);
 
-// User statement overrides
+// User statement overrides (legacy routes)
 router.get('/user-override', getUserOverride);
 router.post('/user-override', saveUserOverride);
 router.post('/user-override/clear', clearUserOverride);
+
+// User statement overrides (per-user routes)
+router.get('/users/:userId/override', getUserOverride);
+router.put('/users/:userId/override', saveUserOverride);
+router.delete('/users/:userId/override', clearUserOverride);
 
 // Sign-up promotions
 router.get('/promotions', getAllPromotions);
