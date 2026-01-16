@@ -47,12 +47,11 @@ interface Ad {
   created_at: string;
 }
 
-// Recommended ad dimensions
-const AD_WIDTH = 500;
-const AD_HEIGHT = 120;
-const AD_ASPECT_RATIO = AD_WIDTH / AD_HEIGHT;
-
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+// Crop interaction modes
+type CropMode = 'none' | 'drawing' | 'moving' | 'resizing';
+type ResizeHandle = 'tl' | 'tr' | 'bl' | 'br' | 'none';
 
 const AdManagerTab: React.FC = () => {
   const { getToken } = useAuth();
@@ -76,6 +75,14 @@ const AdManagerTab: React.FC = () => {
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
   const [cropArea, setCropArea] = useState({ x: 0, y: 0, width: 0, height: 0 });
   const [displaySize, setDisplaySize] = useState({ width: 0, height: 0 });
+  
+  // Interactive crop state
+  const [cropMode, setCropMode] = useState<CropMode>('none');
+  const [activeHandle, setActiveHandle] = useState<ResizeHandle>('none');
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [initialCrop, setInitialCrop] = useState({ x: 0, y: 0, width: 0, height: 0 });
+  const cropContainerRef = useRef<View>(null);
+  const [containerOffset, setContainerOffset] = useState({ x: 0, y: 0 });
 
   // Preview
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -302,18 +309,18 @@ const AdManagerTab: React.FC = () => {
         setImageSize({ width: imgWidth, height: imgHeight });
         
         // Calculate display size (fit in modal)
-        const maxDisplayWidth = Math.min(SCREEN_WIDTH - 60, 500);
-        const displayScale = maxDisplayWidth / imgWidth;
+        const maxDisplayWidth = Math.min(SCREEN_WIDTH - 60, 600);
+        const maxDisplayHeight = 400;
+        const scaleByWidth = maxDisplayWidth / imgWidth;
+        const scaleByHeight = maxDisplayHeight / imgHeight;
+        const displayScale = Math.min(scaleByWidth, scaleByHeight);
         const displayWidth = imgWidth * displayScale;
         const displayHeight = imgHeight * displayScale;
         setDisplaySize({ width: displayWidth, height: displayHeight });
         
-        // Initialize crop area to center with correct aspect ratio
-        const cropHeight = Math.min(imgHeight, imgWidth / AD_ASPECT_RATIO);
-        const cropWidth = cropHeight * AD_ASPECT_RATIO;
-        const cropX = (imgWidth - cropWidth) / 2;
-        const cropY = (imgHeight - cropHeight) / 2;
-        setCropArea({ x: cropX, y: cropY, width: cropWidth, height: cropHeight });
+        // Initialize with no selection - user will draw it
+        setCropArea({ x: 0, y: 0, width: 0, height: 0 });
+        setCropMode('none');
         
         setShowCropModal(true);
       }
@@ -328,19 +335,202 @@ const AdManagerTab: React.FC = () => {
     setOriginalImage(`data:image/jpeg;base64,${base64}`);
     setImageSize({ width, height });
     
-    const maxDisplayWidth = Math.min(SCREEN_WIDTH - 60, 500);
-    const displayScale = maxDisplayWidth / width;
+    const maxDisplayWidth = Math.min(SCREEN_WIDTH - 60, 600);
+    const maxDisplayHeight = 400;
+    const scaleByWidth = maxDisplayWidth / width;
+    const scaleByHeight = maxDisplayHeight / height;
+    const displayScale = Math.min(scaleByWidth, scaleByHeight);
     const displayWidth = width * displayScale;
     const displayHeight = height * displayScale;
     setDisplaySize({ width: displayWidth, height: displayHeight });
     
-    const cropHeight = Math.min(height, width / AD_ASPECT_RATIO);
-    const cropWidth = cropHeight * AD_ASPECT_RATIO;
-    const cropX = (width - cropWidth) / 2;
-    const cropY = (height - cropHeight) / 2;
-    setCropArea({ x: cropX, y: cropY, width: cropWidth, height: cropHeight });
+    // Initialize with no selection - user will draw it
+    setCropArea({ x: 0, y: 0, width: 0, height: 0 });
+    setCropMode('none');
     
     setShowCropModal(true);
+  };
+
+  // Convert display coordinates to image coordinates
+  const displayToImageCoords = (displayX: number, displayY: number) => {
+    const scale = imageSize.width / displaySize.width;
+    return {
+      x: displayX * scale,
+      y: displayY * scale
+    };
+  };
+
+  // Convert image coordinates to display coordinates
+  const imageToDisplayCoords = (imgX: number, imgY: number) => {
+    const scale = displaySize.width / imageSize.width;
+    return {
+      x: imgX * scale,
+      y: imgY * scale
+    };
+  };
+
+  // Get mouse position relative to crop container
+  const getRelativePosition = (event: any) => {
+    if (Platform.OS === 'web') {
+      const rect = event.currentTarget?.getBoundingClientRect?.();
+      if (rect) {
+        return {
+          x: event.clientX - rect.left,
+          y: event.clientY - rect.top
+        };
+      }
+      return { x: event.nativeEvent?.offsetX || 0, y: event.nativeEvent?.offsetY || 0 };
+    }
+    return { x: event.nativeEvent.locationX, y: event.nativeEvent.locationY };
+  };
+
+  // Check if point is inside crop area
+  const isInsideCrop = (x: number, y: number) => {
+    const displayCrop = imageToDisplayCoords(cropArea.x, cropArea.y);
+    const displayCropSize = imageToDisplayCoords(cropArea.width, cropArea.height);
+    return (
+      x >= displayCrop.x &&
+      x <= displayCrop.x + displayCropSize.x &&
+      y >= displayCrop.y &&
+      y <= displayCrop.y + displayCropSize.y
+    );
+  };
+
+  // Check which resize handle is at position
+  const getHandleAtPosition = (x: number, y: number): ResizeHandle => {
+    const handleSize = 20;
+    const displayCrop = imageToDisplayCoords(cropArea.x, cropArea.y);
+    const displayCropSize = imageToDisplayCoords(cropArea.width, cropArea.height);
+    
+    const left = displayCrop.x;
+    const top = displayCrop.y;
+    const right = left + displayCropSize.x;
+    const bottom = top + displayCropSize.y;
+
+    // Top-left
+    if (x >= left - handleSize && x <= left + handleSize && y >= top - handleSize && y <= top + handleSize) return 'tl';
+    // Top-right
+    if (x >= right - handleSize && x <= right + handleSize && y >= top - handleSize && y <= top + handleSize) return 'tr';
+    // Bottom-left
+    if (x >= left - handleSize && x <= left + handleSize && y >= bottom - handleSize && y <= bottom + handleSize) return 'bl';
+    // Bottom-right
+    if (x >= right - handleSize && x <= right + handleSize && y >= bottom - handleSize && y <= bottom + handleSize) return 'br';
+    
+    return 'none';
+  };
+
+  // Mouse/touch handlers for crop interaction
+  const handleCropMouseDown = (event: any) => {
+    const pos = getRelativePosition(event);
+    
+    // Check if clicking on a resize handle
+    const handle = getHandleAtPosition(pos.x, pos.y);
+    if (handle !== 'none' && cropArea.width > 0) {
+      setCropMode('resizing');
+      setActiveHandle(handle);
+      setDragStart(pos);
+      setInitialCrop({ ...cropArea });
+      return;
+    }
+    
+    // Check if clicking inside existing crop (to move it)
+    if (cropArea.width > 0 && isInsideCrop(pos.x, pos.y)) {
+      setCropMode('moving');
+      setDragStart(pos);
+      setInitialCrop({ ...cropArea });
+      return;
+    }
+    
+    // Otherwise, start drawing new crop
+    const imgCoords = displayToImageCoords(pos.x, pos.y);
+    setCropMode('drawing');
+    setDragStart(pos);
+    setCropArea({ x: imgCoords.x, y: imgCoords.y, width: 0, height: 0 });
+  };
+
+  const handleCropMouseMove = (event: any) => {
+    if (cropMode === 'none') return;
+    
+    const pos = getRelativePosition(event);
+    const scale = imageSize.width / displaySize.width;
+    
+    if (cropMode === 'drawing') {
+      const startImgCoords = displayToImageCoords(dragStart.x, dragStart.y);
+      const currentImgCoords = displayToImageCoords(pos.x, pos.y);
+      
+      const x = Math.min(startImgCoords.x, currentImgCoords.x);
+      const y = Math.min(startImgCoords.y, currentImgCoords.y);
+      const width = Math.abs(currentImgCoords.x - startImgCoords.x);
+      const height = Math.abs(currentImgCoords.y - startImgCoords.y);
+      
+      // Clamp to image bounds
+      setCropArea({
+        x: Math.max(0, x),
+        y: Math.max(0, y),
+        width: Math.min(width, imageSize.width - x),
+        height: Math.min(height, imageSize.height - y)
+      });
+    } else if (cropMode === 'moving') {
+      const deltaX = (pos.x - dragStart.x) * scale;
+      const deltaY = (pos.y - dragStart.y) * scale;
+      
+      let newX = initialCrop.x + deltaX;
+      let newY = initialCrop.y + deltaY;
+      
+      // Clamp to bounds
+      newX = Math.max(0, Math.min(newX, imageSize.width - initialCrop.width));
+      newY = Math.max(0, Math.min(newY, imageSize.height - initialCrop.height));
+      
+      setCropArea({ ...initialCrop, x: newX, y: newY });
+    } else if (cropMode === 'resizing') {
+      const deltaX = (pos.x - dragStart.x) * scale;
+      const deltaY = (pos.y - dragStart.y) * scale;
+      
+      let newCrop = { ...initialCrop };
+      
+      switch (activeHandle) {
+        case 'tl':
+          newCrop.x = Math.max(0, initialCrop.x + deltaX);
+          newCrop.y = Math.max(0, initialCrop.y + deltaY);
+          newCrop.width = initialCrop.width - (newCrop.x - initialCrop.x);
+          newCrop.height = initialCrop.height - (newCrop.y - initialCrop.y);
+          break;
+        case 'tr':
+          newCrop.y = Math.max(0, initialCrop.y + deltaY);
+          newCrop.width = Math.min(initialCrop.width + deltaX, imageSize.width - initialCrop.x);
+          newCrop.height = initialCrop.height - (newCrop.y - initialCrop.y);
+          break;
+        case 'bl':
+          newCrop.x = Math.max(0, initialCrop.x + deltaX);
+          newCrop.width = initialCrop.width - (newCrop.x - initialCrop.x);
+          newCrop.height = Math.min(initialCrop.height + deltaY, imageSize.height - initialCrop.y);
+          break;
+        case 'br':
+          newCrop.width = Math.min(initialCrop.width + deltaX, imageSize.width - initialCrop.x);
+          newCrop.height = Math.min(initialCrop.height + deltaY, imageSize.height - initialCrop.y);
+          break;
+      }
+      
+      // Ensure minimum size
+      if (newCrop.width >= 50 && newCrop.height >= 30) {
+        setCropArea(newCrop);
+      }
+    }
+  };
+
+  const handleCropMouseUp = () => {
+    setCropMode('none');
+    setActiveHandle('none');
+  };
+
+  // Select entire image
+  const selectEntireImage = () => {
+    setCropArea({ x: 0, y: 0, width: imageSize.width, height: imageSize.height });
+  };
+
+  // Clear selection
+  const clearSelection = () => {
+    setCropArea({ x: 0, y: 0, width: 0, height: 0 });
   };
 
   // Drag & Drop handlers (web only)
@@ -600,53 +790,6 @@ const AdManagerTab: React.FC = () => {
     );
   };
 
-  // Simple crop area adjustment
-  const adjustCropArea = (direction: 'left' | 'right' | 'up' | 'down', amount: number = 20) => {
-    setCropArea(prev => {
-      let newX = prev.x;
-      let newY = prev.y;
-      
-      switch (direction) {
-        case 'left':
-          newX = Math.max(0, prev.x - amount);
-          break;
-        case 'right':
-          newX = Math.min(imageSize.width - prev.width, prev.x + amount);
-          break;
-        case 'up':
-          newY = Math.max(0, prev.y - amount);
-          break;
-        case 'down':
-          newY = Math.min(imageSize.height - prev.height, prev.y + amount);
-          break;
-      }
-      
-      return { ...prev, x: newX, y: newY };
-    });
-  };
-
-  // Zoom crop area
-  const zoomCropArea = (zoomIn: boolean) => {
-    setCropArea(prev => {
-      const scaleFactor = zoomIn ? 0.9 : 1.1;
-      const newWidth = Math.max(100, Math.min(imageSize.width, prev.width * scaleFactor));
-      const newHeight = newWidth / AD_ASPECT_RATIO;
-      
-      // Keep it within bounds
-      if (newHeight > imageSize.height) {
-        return prev;
-      }
-      
-      // Center the new crop area relative to the old one
-      const centerX = prev.x + prev.width / 2;
-      const centerY = prev.y + prev.height / 2;
-      const newX = Math.max(0, Math.min(imageSize.width - newWidth, centerX - newWidth / 2));
-      const newY = Math.max(0, Math.min(imageSize.height - newHeight, centerY - newHeight / 2));
-      
-      return { x: newX, y: newY, width: newWidth, height: newHeight };
-    });
-  };
-
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
@@ -657,10 +800,11 @@ const AdManagerTab: React.FC = () => {
   }
 
   // Calculate crop overlay position for display
-  const cropDisplayX = (cropArea.x / imageSize.width) * displaySize.width;
-  const cropDisplayY = (cropArea.y / imageSize.height) * displaySize.height;
-  const cropDisplayWidth = (cropArea.width / imageSize.width) * displaySize.width;
-  const cropDisplayHeight = (cropArea.height / imageSize.height) * displaySize.height;
+  const cropDisplayX = imageSize.width > 0 ? (cropArea.x / imageSize.width) * displaySize.width : 0;
+  const cropDisplayY = imageSize.height > 0 ? (cropArea.y / imageSize.height) * displaySize.height : 0;
+  const cropDisplayWidth = imageSize.width > 0 ? (cropArea.width / imageSize.width) * displaySize.width : 0;
+  const cropDisplayHeight = imageSize.height > 0 ? (cropArea.height / imageSize.height) * displaySize.height : 0;
+  const hasSelection = cropArea.width > 0 && cropArea.height > 0;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
@@ -1029,102 +1173,125 @@ const AdManagerTab: React.FC = () => {
             </View>
 
             <Text style={styles.cropInstructions}>
-              Use the controls below to position and size the crop area. The ad will use the highlighted region.
+              {hasSelection 
+                ? '✓ Selection ready! Drag to move, use corners to resize, or draw a new area.'
+                : '👆 Click and drag on the image to select the area you want to use for your ad.'}
             </Text>
 
-            <View style={styles.cropDimensionInfo}>
-              <AlertCircle size={14} color="#F59E0B" />
-              <Text style={styles.cropDimensionText}>
-                Output: {AD_WIDTH} × {AD_HEIGHT}px (aspect ratio {AD_ASPECT_RATIO.toFixed(1)}:1)
-              </Text>
+            {/* Quick Actions */}
+            <View style={styles.cropQuickActions}>
+              <TouchableOpacity style={styles.quickActionButton} onPress={selectEntireImage}>
+                <Text style={styles.quickActionText}>📷 Use Entire Image</Text>
+              </TouchableOpacity>
+              {hasSelection && (
+                <TouchableOpacity style={styles.quickActionButtonClear} onPress={clearSelection}>
+                  <Text style={styles.quickActionTextClear}>✕ Clear Selection</Text>
+                </TouchableOpacity>
+              )}
             </View>
 
-            {/* Image with crop overlay */}
+            {/* Interactive Image with crop overlay */}
             <View style={styles.cropImageContainer}>
               {originalImage && (
-                <View style={{ width: displaySize.width, height: displaySize.height }}>
+                <View 
+                  style={[styles.cropInteractiveArea, { width: displaySize.width, height: displaySize.height }]}
+                  // @ts-ignore - web events
+                  onMouseDown={Platform.OS === 'web' ? handleCropMouseDown : undefined}
+                  onMouseMove={Platform.OS === 'web' ? handleCropMouseMove : undefined}
+                  onMouseUp={Platform.OS === 'web' ? handleCropMouseUp : undefined}
+                  onMouseLeave={Platform.OS === 'web' ? handleCropMouseUp : undefined}
+                  onTouchStart={Platform.OS !== 'web' ? handleCropMouseDown : undefined}
+                  onTouchMove={Platform.OS !== 'web' ? handleCropMouseMove : undefined}
+                  onTouchEnd={Platform.OS !== 'web' ? handleCropMouseUp : undefined}
+                >
                   <Image 
                     source={{ uri: originalImage }} 
                     style={{ width: displaySize.width, height: displaySize.height }}
                     resizeMode="contain"
                   />
                   
-                  {/* Dark overlay */}
-                  <View style={[styles.cropOverlay, { width: displaySize.width, height: displaySize.height }]}>
-                    {/* Top dark area */}
-                    <View style={[styles.cropDark, { 
-                      top: 0, 
-                      left: 0, 
-                      right: 0, 
-                      height: cropDisplayY 
-                    }]} />
-                    {/* Bottom dark area */}
-                    <View style={[styles.cropDark, { 
-                      top: cropDisplayY + cropDisplayHeight, 
-                      left: 0, 
-                      right: 0, 
-                      bottom: 0 
-                    }]} />
-                    {/* Left dark area */}
-                    <View style={[styles.cropDark, { 
-                      top: cropDisplayY, 
-                      left: 0, 
-                      width: cropDisplayX, 
-                      height: cropDisplayHeight 
-                    }]} />
-                    {/* Right dark area */}
-                    <View style={[styles.cropDark, { 
-                      top: cropDisplayY, 
-                      left: cropDisplayX + cropDisplayWidth, 
-                      right: 0, 
-                      height: cropDisplayHeight 
-                    }]} />
-                    
-                    {/* Crop frame */}
-                    <View style={[styles.cropFrame, {
-                      top: cropDisplayY,
-                      left: cropDisplayX,
-                      width: cropDisplayWidth,
-                      height: cropDisplayHeight
-                    }]}>
-                      <View style={[styles.cropCorner, styles.cropCornerTL]} />
-                      <View style={[styles.cropCorner, styles.cropCornerTR]} />
-                      <View style={[styles.cropCorner, styles.cropCornerBL]} />
-                      <View style={[styles.cropCorner, styles.cropCornerBR]} />
+                  {/* Dark overlay for non-selected areas */}
+                  {hasSelection && (
+                    <View style={[styles.cropOverlay, { width: displaySize.width, height: displaySize.height }]} pointerEvents="none">
+                      {/* Top dark area */}
+                      <View style={[styles.cropDark, { 
+                        top: 0, left: 0, right: 0, 
+                        height: cropDisplayY 
+                      }]} />
+                      {/* Bottom dark area */}
+                      <View style={[styles.cropDark, { 
+                        top: cropDisplayY + cropDisplayHeight, 
+                        left: 0, right: 0, bottom: 0 
+                      }]} />
+                      {/* Left dark area */}
+                      <View style={[styles.cropDark, { 
+                        top: cropDisplayY, left: 0, 
+                        width: cropDisplayX, 
+                        height: cropDisplayHeight 
+                      }]} />
+                      {/* Right dark area */}
+                      <View style={[styles.cropDark, { 
+                        top: cropDisplayY, 
+                        left: cropDisplayX + cropDisplayWidth, 
+                        right: 0, 
+                        height: cropDisplayHeight 
+                      }]} />
+                      
+                      {/* Crop frame with handles */}
+                      <View style={[styles.cropFrame, {
+                        top: cropDisplayY,
+                        left: cropDisplayX,
+                        width: cropDisplayWidth,
+                        height: cropDisplayHeight
+                      }]}>
+                        {/* Corner handles */}
+                        <View style={[styles.cropHandle, styles.handleTL]} />
+                        <View style={[styles.cropHandle, styles.handleTR]} />
+                        <View style={[styles.cropHandle, styles.handleBL]} />
+                        <View style={[styles.cropHandle, styles.handleBR]} />
+                        
+                        {/* Center move icon */}
+                        <View style={styles.cropMoveHint}>
+                          <Move size={20} color="rgba(255,255,255,0.8)" />
+                        </View>
+                      </View>
                     </View>
-                  </View>
+                  )}
+                  
+                  {/* Drawing hint when no selection */}
+                  {!hasSelection && (
+                    <View style={[styles.cropDrawHint, { width: displaySize.width, height: displaySize.height }]} pointerEvents="none">
+                      <Text style={styles.cropDrawHintText}>Click & Drag to Select</Text>
+                    </View>
+                  )}
                 </View>
               )}
             </View>
 
-            {/* Crop Controls */}
-            <View style={styles.cropControls}>
-              <Text style={styles.cropControlLabel}>Position</Text>
-              <View style={styles.cropControlRow}>
-                <TouchableOpacity style={styles.cropControlButton} onPress={() => adjustCropArea('left')}>
-                  <Text style={styles.cropControlButtonText}>← Left</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.cropControlButton} onPress={() => adjustCropArea('up')}>
-                  <Text style={styles.cropControlButtonText}>↑ Up</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.cropControlButton} onPress={() => adjustCropArea('down')}>
-                  <Text style={styles.cropControlButtonText}>↓ Down</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.cropControlButton} onPress={() => adjustCropArea('right')}>
-                  <Text style={styles.cropControlButtonText}>Right →</Text>
-                </TouchableOpacity>
+            {/* Live Preview */}
+            {hasSelection && (
+              <View style={styles.livePreviewSection}>
+                <Text style={styles.livePreviewLabel}>📱 Ad Preview</Text>
+                <View style={styles.livePreviewCard}>
+                  <View style={styles.livePreviewImage}>
+                    <Image 
+                      source={{ uri: originalImage || '' }} 
+                      style={styles.livePreviewImageInner}
+                      resizeMode="cover"
+                    />
+                    {(newAd.title || newAd.subtitle) && (
+                      <View style={styles.livePreviewOverlay}>
+                        {newAd.title && <Text style={styles.livePreviewTitle}>{newAd.title}</Text>}
+                        {newAd.subtitle && <Text style={styles.livePreviewSubtitle}>{newAd.subtitle}</Text>}
+                      </View>
+                    )}
+                  </View>
+                  <Text style={styles.livePreviewHint}>
+                    Selection: {Math.round(cropArea.width)} × {Math.round(cropArea.height)}px
+                  </Text>
+                </View>
               </View>
-              
-              <Text style={styles.cropControlLabel}>Zoom</Text>
-              <View style={styles.cropControlRow}>
-                <TouchableOpacity style={[styles.cropControlButton, styles.zoomButton]} onPress={() => zoomCropArea(true)}>
-                  <Text style={styles.cropControlButtonText}>+ Zoom In</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.cropControlButton, styles.zoomButton]} onPress={() => zoomCropArea(false)}>
-                  <Text style={styles.cropControlButtonText}>- Zoom Out</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
+            )}
 
             {/* Modal Actions */}
             <View style={styles.cropModalActions}>
@@ -1133,22 +1300,23 @@ const AdManagerTab: React.FC = () => {
                 onPress={() => {
                   setShowCropModal(false);
                   setOriginalImage(null);
+                  setCropArea({ x: 0, y: 0, width: 0, height: 0 });
                 }}
               >
                 <Text style={styles.cancelCropText}>Cancel</Text>
               </TouchableOpacity>
               
               <TouchableOpacity 
-                style={[styles.applyCropButton, isUploading && styles.buttonDisabled]}
+                style={[styles.applyCropButton, (!hasSelection || isUploading) && styles.buttonDisabled]}
                 onPress={uploadCroppedImage}
-                disabled={isUploading}
+                disabled={!hasSelection || isUploading}
               >
                 {isUploading ? (
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (
                   <>
                     <Check size={18} color="#fff" />
-                    <Text style={styles.applyCropText}>Apply & Upload</Text>
+                    <Text style={styles.applyCropText}>{hasSelection ? 'Apply & Upload' : 'Select an area first'}</Text>
                   </>
                 )}
               </TouchableOpacity>
@@ -1584,45 +1752,156 @@ const styles = StyleSheet.create({
     position: 'absolute',
     backgroundColor: 'rgba(0,0,0,0.5)',
   },
+  cropInteractiveArea: {
+    position: 'relative',
+    cursor: 'crosshair',
+  },
   cropFrame: {
     position: 'absolute',
     borderWidth: 2,
     borderColor: '#3B82F6',
     backgroundColor: 'transparent',
+    borderStyle: 'solid',
   },
-  cropCorner: {
+  cropHandle: {
     position: 'absolute',
-    width: 16,
-    height: 16,
+    width: 14,
+    height: 14,
+    backgroundColor: '#3B82F6',
+    borderWidth: 2,
     borderColor: '#fff',
-    borderWidth: 3,
+    borderRadius: 2,
   },
-  cropCornerTL: {
-    top: -2,
-    left: -2,
-    borderRightWidth: 0,
-    borderBottomWidth: 0,
+  handleTL: {
+    top: -7,
+    left: -7,
+    cursor: 'nwse-resize',
   },
-  cropCornerTR: {
-    top: -2,
-    right: -2,
-    borderLeftWidth: 0,
-    borderBottomWidth: 0,
+  handleTR: {
+    top: -7,
+    right: -7,
+    cursor: 'nesw-resize',
   },
-  cropCornerBL: {
-    bottom: -2,
-    left: -2,
-    borderRightWidth: 0,
-    borderTopWidth: 0,
+  handleBL: {
+    bottom: -7,
+    left: -7,
+    cursor: 'nesw-resize',
   },
-  cropCornerBR: {
-    bottom: -2,
-    right: -2,
-    borderLeftWidth: 0,
-    borderTopWidth: 0,
+  handleBR: {
+    bottom: -7,
+    right: -7,
+    cursor: 'nwse-resize',
   },
-  cropControls: {
-    marginBottom: 16,
+  cropMoveHint: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    transform: [{ translateX: -10 }, { translateY: -10 }],
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    borderRadius: 20,
+    padding: 5,
+  },
+  cropDrawHint: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.2)',
+  },
+  cropDrawHintText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  cropQuickActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 12,
+  },
+  quickActionButton: {
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  quickActionText: {
+    color: '#1D4ED8',
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  quickActionButtonClear: {
+    backgroundColor: '#FEF2F2',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+  },
+  quickActionTextClear: {
+    color: '#DC2626',
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  livePreviewSection: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  livePreviewLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+    marginBottom: 10,
+  },
+  livePreviewCard: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    padding: 12,
+    alignItems: 'center',
+  },
+  livePreviewImage: {
+    width: '100%',
+    maxWidth: 350,
+    height: 90,
+    borderRadius: 8,
+    overflow: 'hidden',
+    position: 'relative',
+    backgroundColor: '#E5E7EB',
+  },
+  livePreviewImageInner: {
+    width: '100%',
+    height: '100%',
+  },
+  livePreviewOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    padding: 8,
+  },
+  livePreviewTitle: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  livePreviewSubtitle: {
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  livePreviewHint: {
+    marginTop: 8,
+    fontSize: 11,
+    color: COLORS.textSecondary,
   },
   cropControlLabel: {
     fontSize: 13,
