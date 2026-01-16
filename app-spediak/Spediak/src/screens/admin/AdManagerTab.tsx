@@ -36,7 +36,9 @@ import {
   Eye,
   EyeOff,
   Clock,
-  Settings
+  Settings,
+  Edit3,
+  Save
 } from 'lucide-react-native';
 
 interface Ad {
@@ -95,6 +97,18 @@ const AdManagerTab: React.FC = () => {
   
   // Drag & Drop state (web only)
   const [isDragging, setIsDragging] = useState(false);
+
+  // Edit ad state
+  const [editingAd, setEditingAd] = useState<Ad | null>(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editForm, setEditForm] = useState({
+    title: '',
+    subtitle: '',
+    destinationUrl: '',
+    imageUrl: ''
+  });
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [editImagePreview, setEditImagePreview] = useState<string | null>(null);
 
   // Promotion state
   const [promotion, setPromotion] = useState<{
@@ -758,6 +772,120 @@ const AdManagerTab: React.FC = () => {
     }
   };
 
+  // Open edit modal with ad data
+  const handleEditAd = (ad: Ad) => {
+    setEditingAd(ad);
+    setEditForm({
+      title: ad.title || '',
+      subtitle: ad.subtitle || '',
+      destinationUrl: ad.destination_url || '',
+      imageUrl: ad.image_url || ''
+    });
+    setEditImagePreview(ad.image_url || null);
+    setShowEditModal(true);
+  };
+
+  // Save edited ad
+  const handleUpdateAd = async () => {
+    if (!editingAd) return;
+
+    if (!editForm.destinationUrl.trim()) {
+      if (Platform.OS === 'web') {
+        alert('Destination URL is required');
+      } else {
+        Alert.alert('Error', 'Destination URL is required');
+      }
+      return;
+    }
+
+    // Normalize URL
+    let urlToUse = editForm.destinationUrl.trim();
+    if (!urlToUse.startsWith('http://') && !urlToUse.startsWith('https://')) {
+      urlToUse = 'https://' + urlToUse;
+    }
+
+    try {
+      setIsUpdating(true);
+      const token = await getToken();
+      if (!token) return;
+
+      await axios.put(`${BASE_URL}/api/admin/ads/${editingAd.id}`, {
+        title: editForm.title.trim() || 'Ad',
+        subtitle: editForm.subtitle.trim(),
+        destination_url: urlToUse,
+        image_url: editImagePreview || editForm.imageUrl
+      }, {
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 15000
+      });
+
+      // Close modal and refresh
+      setShowEditModal(false);
+      setEditingAd(null);
+      setEditImagePreview(null);
+      await fetchAds();
+
+      if (Platform.OS === 'web') {
+        alert('Ad updated successfully!');
+      } else {
+        Alert.alert('Success', 'Ad updated successfully');
+      }
+    } catch (error: any) {
+      console.error('Error updating ad:', error);
+      const errorMessage = error.response?.data?.message || 'Failed to update ad';
+      if (Platform.OS === 'web') {
+        alert('Error: ' + errorMessage);
+      } else {
+        Alert.alert('Error', errorMessage);
+      }
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  // Pick image for edit
+  const pickEditImage = async () => {
+    try {
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      
+      if (!permissionResult.granted) {
+        Alert.alert('Permission Required', 'Please allow access to your photo library.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [16, 9],
+        quality: 0.9,
+        base64: true,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        const asset = result.assets[0];
+        // Upload the image
+        setIsUpdating(true);
+        const token = await getToken();
+        if (!token) return;
+
+        const response = await axios.post(`${BASE_URL}/api/upload/ad-image`, {
+          image: `data:image/jpeg;base64,${asset.base64}`,
+          crop: { x: 0, y: 0, width: asset.width, height: asset.height },
+          originalSize: { width: asset.width, height: asset.height }
+        }, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        setEditImagePreview(response.data.url);
+        setIsUpdating(false);
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      setIsUpdating(false);
+      Alert.alert('Error', 'Failed to upload image');
+    }
+  };
+
   const handleDeleteAd = async (adId: number) => {
     const deleteAction = async () => {
       try {
@@ -804,7 +932,7 @@ const AdManagerTab: React.FC = () => {
       const token = await getToken();
       if (!token) return;
 
-      await axios.put(`${BASE_URL}/api/admin/ads/${adId}`, {
+      await axios.put(`${BASE_URL}/api/admin/ads/${adId}/status`, {
         is_active: !currentStatus
       }, {
         headers: { Authorization: `Bearer ${token}` }
@@ -1122,6 +1250,12 @@ const AdManagerTab: React.FC = () => {
                 </View>
               </View>
               <View style={styles.adActions}>
+                <TouchableOpacity 
+                  style={styles.editAdButton}
+                  onPress={() => handleEditAd(ad)}
+                >
+                  <Edit3 size={16} color={COLORS.primary} />
+                </TouchableOpacity>
                 <TouchableOpacity 
                   style={styles.toggleButton}
                   onPress={() => handleToggleAdStatus(ad.id, ad.is_active)}
@@ -1468,6 +1602,132 @@ const AdManagerTab: React.FC = () => {
                 )}
               </TouchableOpacity>
               </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Edit Ad Modal */}
+      <Modal
+        visible={showEditModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowEditModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.editModal}>
+            <View style={styles.editModalHeader}>
+              <Text style={styles.editModalTitle}>Edit Ad</Text>
+              <TouchableOpacity 
+                onPress={() => {
+                  setShowEditModal(false);
+                  setEditingAd(null);
+                  setEditImagePreview(null);
+                }}
+                style={styles.editModalClose}
+              >
+                <X size={24} color={COLORS.textPrimary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.editModalContent} showsVerticalScrollIndicator={false}>
+              {/* Current Image */}
+              <View style={styles.editImageSection}>
+                <Text style={styles.editLabel}>Ad Image</Text>
+                {editImagePreview || editForm.imageUrl ? (
+                  <View style={styles.editImagePreviewContainer}>
+                    <Image 
+                      source={{ uri: editImagePreview || editForm.imageUrl }} 
+                      style={styles.editImagePreview}
+                      resizeMode="cover"
+                    />
+                    <TouchableOpacity 
+                      style={styles.editChangeImageButton}
+                      onPress={pickEditImage}
+                      disabled={isUpdating}
+                    >
+                      <Edit3 size={14} color="#fff" />
+                      <Text style={styles.editChangeImageText}>Change</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <TouchableOpacity 
+                    style={styles.editUploadButton}
+                    onPress={pickEditImage}
+                    disabled={isUpdating}
+                  >
+                    <Upload size={20} color={COLORS.primary} />
+                    <Text style={styles.editUploadText}>Upload Image</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {/* Destination URL */}
+              <View style={styles.editFieldGroup}>
+                <Text style={styles.editLabel}>Destination URL *</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={editForm.destinationUrl}
+                  onChangeText={(text) => setEditForm({ ...editForm, destinationUrl: text })}
+                  autoCapitalize="none"
+                  keyboardType="url"
+                />
+              </View>
+
+              {/* Title */}
+              <View style={styles.editFieldGroup}>
+                <Text style={styles.editLabel}>Title (Optional)</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={editForm.title}
+                  onChangeText={(text) => setEditForm({ ...editForm, title: text })}
+                  maxLength={40}
+                />
+                <Text style={styles.editCharCount}>{editForm.title.length}/40</Text>
+              </View>
+
+              {/* Subtitle */}
+              <View style={styles.editFieldGroup}>
+                <Text style={styles.editLabel}>Description (Optional)</Text>
+                <TextInput
+                  style={[styles.editInput, styles.editTextArea]}
+                  value={editForm.subtitle}
+                  onChangeText={(text) => setEditForm({ ...editForm, subtitle: text })}
+                  maxLength={100}
+                  multiline
+                  numberOfLines={2}
+                />
+                <Text style={styles.editCharCount}>{editForm.subtitle.length}/100</Text>
+              </View>
+            </ScrollView>
+
+            {/* Modal Actions */}
+            <View style={styles.editModalActions}>
+              <TouchableOpacity 
+                style={styles.editCancelButton}
+                onPress={() => {
+                  setShowEditModal(false);
+                  setEditingAd(null);
+                  setEditImagePreview(null);
+                }}
+              >
+                <Text style={styles.editCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={[styles.editSaveButton, isUpdating && styles.buttonDisabled]}
+                onPress={handleUpdateAd}
+                disabled={isUpdating}
+              >
+                {isUpdating ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <>
+                    <Save size={18} color="#fff" />
+                    <Text style={styles.editSaveText}>Save Changes</Text>
+                  </>
+                )}
+              </TouchableOpacity>
             </View>
           </View>
         </View>
@@ -1918,6 +2178,12 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: COLORS.textPrimary,
   },
+  editAdButton: {
+    padding: 8,
+    backgroundColor: '#EFF6FF',
+    borderRadius: 6,
+    marginRight: 4,
+  },
   deleteAdButton: {
     padding: 8,
   },
@@ -2322,6 +2588,148 @@ const styles = StyleSheet.create({
   savePromoText: {
     fontSize: 15,
     fontWeight: '600',
+    color: '#fff',
+  },
+  // Edit Modal Styles
+  editModal: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    width: '100%',
+    maxWidth: 480,
+    maxHeight: '85%',
+  },
+  editModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  editModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1E3A5F',
+  },
+  editModalClose: {
+    padding: 4,
+  },
+  editModalContent: {
+    flex: 1,
+  },
+  editImageSection: {
+    marginBottom: 20,
+  },
+  editLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+    marginBottom: 8,
+  },
+  editImagePreviewContainer: {
+    position: 'relative',
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  editImagePreview: {
+    width: '100%',
+    height: 140,
+    borderRadius: 10,
+    backgroundColor: '#F0F0F0',
+  },
+  editChangeImageButton: {
+    position: 'absolute',
+    bottom: 10,
+    right: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  editChangeImageText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  editUploadButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+    borderStyle: 'dashed',
+    borderRadius: 10,
+    paddingVertical: 24,
+    backgroundColor: '#FAFAFA',
+  },
+  editUploadText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: COLORS.primary,
+  },
+  editFieldGroup: {
+    marginBottom: 16,
+  },
+  editInput: {
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: COLORS.textPrimary,
+  },
+  editTextArea: {
+    minHeight: 70,
+    textAlignVertical: 'top',
+    paddingTop: 12,
+  },
+  editCharCount: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    textAlign: 'right',
+    marginTop: 4,
+  },
+  editModalActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  editCancelButton: {
+    flex: 1,
+    paddingVertical: 14,
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    borderRadius: 10,
+  },
+  editCancelText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+  },
+  editSaveButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    backgroundColor: COLORS.primary,
+    borderRadius: 10,
+  },
+  editSaveText: {
+    fontSize: 15,
+    fontWeight: '700',
     color: '#fff',
   },
 });

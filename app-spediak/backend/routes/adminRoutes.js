@@ -167,7 +167,8 @@ router.delete('/sop/organizations/:id', sopController.deleteOrganization);
 // Ad Management Routes (Admin only)
 router.get('/ads', adController.getAllAds);
 router.post('/ads', adController.createAd);
-router.put('/ads/:id', adController.updateAdStatus);
+router.put('/ads/:id/status', adController.updateAdStatus);
+router.put('/ads/:id', adController.updateAd);
 router.delete('/ads/:id', adController.deleteAd);
 
 // Ad Settings Routes (Admin only)

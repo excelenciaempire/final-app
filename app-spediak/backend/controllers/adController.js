@@ -101,6 +101,79 @@ const updateAdStatus = async (req, res) => {
 };
 
 /**
+ * Update ad details (Admin only)
+ */
+const updateAd = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const title = req.body.title;
+    const subtitle = req.body.subtitle || '';
+    const destinationUrl = req.body.destinationUrl || req.body.destination_url;
+    const imageUrl = req.body.imageUrl || req.body.image_url;
+
+    if (!destinationUrl) {
+      return res.status(400).json({ message: 'Destination URL is required' });
+    }
+
+    // Build dynamic update query based on what's provided
+    let updateFields = [];
+    let values = [];
+    let paramIndex = 1;
+
+    if (title !== undefined) {
+      updateFields.push(`title = $${paramIndex}`);
+      values.push(title || 'Ad');
+      paramIndex++;
+    }
+
+    if (subtitle !== undefined) {
+      updateFields.push(`subtitle = $${paramIndex}`);
+      values.push(subtitle);
+      paramIndex++;
+    }
+
+    if (destinationUrl !== undefined) {
+      updateFields.push(`destination_url = $${paramIndex}`);
+      values.push(destinationUrl);
+      paramIndex++;
+    }
+
+    if (imageUrl !== undefined) {
+      updateFields.push(`image_url = $${paramIndex}`);
+      values.push(imageUrl);
+      paramIndex++;
+    }
+
+    if (updateFields.length === 0) {
+      return res.status(400).json({ message: 'No fields to update' });
+    }
+
+    values.push(id);
+    const query = `
+      UPDATE ad_inventory
+      SET ${updateFields.join(', ')}
+      WHERE id = $${paramIndex}
+      RETURNING *
+    `;
+
+    const result = await pool.query(query, values);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Ad not found' });
+    }
+
+    res.json({
+      message: 'Ad updated successfully',
+      ad: result.rows[0]
+    });
+
+  } catch (error) {
+    console.error('Error updating ad:', error);
+    res.status(500).json({ message: 'Failed to update ad', error: error.message });
+  }
+};
+
+/**
  * Delete an ad (Admin only)
  */
 const deleteAd = async (req, res) => {
@@ -271,6 +344,7 @@ module.exports = {
   getActiveAds,
   createAd,
   updateAdStatus,
+  updateAd,
   deleteAd,
   trackAdClick,
   getAllAds,
