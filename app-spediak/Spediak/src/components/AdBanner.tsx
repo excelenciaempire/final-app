@@ -132,11 +132,24 @@ const AdBanner: React.FC = () => {
         activeOpacity={0.8}
       >
         {currentAd.image_url ? (
-          <Image 
-            source={{ uri: currentAd.image_url }} 
-            style={styles.adImage}
-            resizeMode="cover"
-          />
+          <View style={styles.imageContainer}>
+            <Image 
+              source={{ uri: currentAd.image_url }} 
+              style={styles.adImage}
+              resizeMode="cover"
+            />
+            {/* Text overlay if title or subtitle provided */}
+            {(currentAd.title && currentAd.title !== 'Ad') || currentAd.subtitle ? (
+              <View style={styles.textOverlay}>
+                {currentAd.title && currentAd.title !== 'Ad' && (
+                  <Text style={styles.overlayTitle}>{currentAd.title}</Text>
+                )}
+                {currentAd.subtitle && (
+                  <Text style={styles.overlaySubtitle}>{currentAd.subtitle}</Text>
+                )}
+              </View>
+            ) : null}
+          </View>
         ) : (
           <View style={styles.adContent}>
             <Text style={styles.adTitle}>{currentAd.title}</Text>
@@ -217,10 +230,39 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     backgroundColor: '#F5F5F5',
   },
+  imageContainer: {
+    position: 'relative',
+    width: '100%',
+  },
   adImage: {
     width: '100%',
     height: 120,
     backgroundColor: '#E0E0E0',
+  },
+  textOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+  },
+  overlayTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  overlaySubtitle: {
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.9)',
+    marginTop: 2,
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   adContent: {
     padding: 16,

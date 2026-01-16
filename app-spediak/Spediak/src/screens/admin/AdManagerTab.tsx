@@ -464,14 +464,19 @@ const AdManagerTab: React.FC = () => {
         return;
       }
 
+      const adTitle = newAd.title.trim() || 'Ad';
+      const adSubtitle = newAd.subtitle.trim() || '';
+
       console.log('[AdManager] Creating ad with:', { 
-        title: 'Ad', 
+        title: adTitle, 
+        subtitle: adSubtitle,
         destination_url: urlToUse, 
         image_url: imageUrlToUse 
       });
 
       const response = await axios.post(`${BASE_URL}/api/admin/ads`, {
-        title: 'Ad',  // Simple default title for internal use
+        title: adTitle,
+        subtitle: adSubtitle,
         destination_url: urlToUse,
         image_url: imageUrlToUse
       }, {
@@ -746,6 +751,40 @@ const AdManagerTab: React.FC = () => {
           autoCapitalize="none"
           keyboardType="url"
         />
+
+        {/* Optional Title & Description */}
+        <View style={styles.optionalSection}>
+          <Text style={styles.optionalLabel}>✨ Optional: Add text overlay</Text>
+          <Text style={styles.optionalHint}>
+            Add a catchy title and description that will appear on the ad banner
+          </Text>
+          
+          <View style={styles.optionalInputGroup}>
+            <Text style={styles.smallLabel}>Ad Title</Text>
+            <TextInput
+              style={[styles.input, styles.optionalInput]}
+              placeholder="e.g., 'Get 50% Off!'"
+              value={newAd.title}
+              onChangeText={(text) => setNewAd({ ...newAd, title: text })}
+              maxLength={40}
+            />
+            <Text style={styles.charCount}>{newAd.title.length}/40</Text>
+          </View>
+
+          <View style={styles.optionalInputGroup}>
+            <Text style={styles.smallLabel}>Ad Description</Text>
+            <TextInput
+              style={[styles.input, styles.optionalInput, styles.textArea]}
+              placeholder="e.g., 'Upgrade to Pro and unlock unlimited statements'"
+              value={newAd.subtitle}
+              onChangeText={(text) => setNewAd({ ...newAd, subtitle: text })}
+              maxLength={100}
+              multiline
+              numberOfLines={2}
+            />
+            <Text style={styles.charCount}>{newAd.subtitle.length}/100</Text>
+          </View>
+        </View>
 
         <TouchableOpacity 
           style={[styles.createButton, isSaving && styles.buttonDisabled]} 
@@ -1293,6 +1332,52 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: COLORS.textPrimary,
     minHeight: 48,
+  },
+  optionalSection: {
+    backgroundColor: '#F0F9FF',
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    borderStyle: 'dashed',
+  },
+  optionalLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0369A1',
+    marginBottom: 4,
+  },
+  optionalHint: {
+    fontSize: 12,
+    color: '#0284C7',
+    marginBottom: 12,
+    opacity: 0.8,
+  },
+  optionalInputGroup: {
+    marginBottom: 12,
+  },
+  smallLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: COLORS.textSecondary,
+    marginBottom: 4,
+  },
+  optionalInput: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#7DD3FC',
+  },
+  textArea: {
+    minHeight: 60,
+    textAlignVertical: 'top',
+    paddingTop: 12,
+  },
+  charCount: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    textAlign: 'right',
+    marginTop: 4,
+    opacity: 0.7,
   },
   buttonRow: {
     flexDirection: 'row',

@@ -1207,7 +1207,7 @@ const UserSearchTab: React.FC = () => {
         <View style={styles.searchRow}>
           <TextInput
             style={[styles.input, styles.searchInput]}
-            placeholder="chipspra@gmail.com"
+            placeholder="Enter user email..."
             value={searchEmail}
             onChangeText={setSearchEmail}
             keyboardType="email-address"

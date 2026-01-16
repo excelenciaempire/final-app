@@ -334,10 +334,26 @@ const ProfileSettingsScreen: React.FC = () => {
             });
 
             if (verifiedEmailAddress.verification.status === 'verified') {
+                // Get the old email before changing primary
+                const oldEmailAddress = clerkUser.primaryEmailAddress;
+                const oldEmailString = oldEmailAddress?.emailAddress;
+                const oldEmailId = oldEmailAddress?.id;
+                
                 // Set as primary email
                 await clerkUser.update({ 
                     primaryEmailAddressId: verifiedEmailAddress.id 
                 });
+
+                // Delete the OLD email address so user cannot login with it anymore
+                if (oldEmailId && oldEmailId !== verifiedEmailAddress.id) {
+                    try {
+                        await oldEmailAddress?.destroy();
+                        console.log('[ProfileSettings] Old email deleted from Clerk:', oldEmailString);
+                    } catch (deleteErr) {
+                        console.warn('[ProfileSettings] Could not delete old email:', deleteErr);
+                        // Not critical - email change still worked
+                    }
+                }
 
                 // Sync with backend database
                 try {
@@ -350,14 +366,14 @@ const ProfileSettingsScreen: React.FC = () => {
                         },
                         body: JSON.stringify({ 
                             newEmail: newEmail.trim(),
-                            oldEmail: clerkUser.primaryEmailAddress?.emailAddress
+                            oldEmail: oldEmailString
                         }),
                     });
                 } catch (syncError) {
                     console.warn('Backend sync will be handled by webhook:', syncError);
                 }
 
-                setEmailChangeSuccess('Email changed successfully!');
+                setEmailChangeSuccess('Email changed successfully! You can no longer use your old email to log in.');
                 setIsVerifyingEmail(false);
                 setNewEmail('');
                 setVerificationCode('');
