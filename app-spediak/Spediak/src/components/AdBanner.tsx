@@ -5,7 +5,7 @@ import { useAuth } from '@clerk/clerk-expo';
 import { BASE_URL } from '../config/api';
 import { COLORS } from '../styles/colors';
 import { useSubscription } from '../context/SubscriptionContext';
-import { Megaphone } from 'lucide-react-native';
+import { Megaphone, ExternalLink } from 'lucide-react-native';
 
 interface AdData {
   id: number;
@@ -15,6 +15,10 @@ interface AdData {
   image_url?: string;
 }
 
+interface AdSettings {
+  rotation_interval: number;
+}
+
 const AdBanner: React.FC = () => {
   const { getToken } = useAuth();
   const { subscription, adminPreviewMode } = useSubscription();
@@ -22,6 +26,7 @@ const AdBanner: React.FC = () => {
   const [currentAdIndex, setCurrentAdIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [rotationInterval, setRotationInterval] = useState(10); // Default 10 seconds
 
   // Show ads for free tier users OR when admin preview mode is enabled
   const isAdmin = subscription?.is_admin;
@@ -38,13 +43,24 @@ const AdBanner: React.FC = () => {
         return;
       }
 
-      const response = await axios.get(`${BASE_URL}/api/ads/active`, {
-        headers: { Authorization: `Bearer ${token}` },
-        timeout: 8000
-      });
+      // Fetch ads and settings in parallel
+      const [adsResponse, settingsResponse] = await Promise.all([
+        axios.get(`${BASE_URL}/api/ads/active`, {
+          headers: { Authorization: `Bearer ${token}` },
+          timeout: 8000
+        }),
+        axios.get(`${BASE_URL}/api/ads/settings`, {
+          headers: { Authorization: `Bearer ${token}` },
+          timeout: 8000
+        }).catch(() => ({ data: { settings: { rotation_interval: 10 } } }))
+      ]);
 
-      if (response.data.ads && response.data.ads.length > 0) {
-        setAds(response.data.ads);
+      if (adsResponse.data.ads && adsResponse.data.ads.length > 0) {
+        setAds(adsResponse.data.ads);
+      }
+
+      if (settingsResponse.data.settings?.rotation_interval) {
+        setRotationInterval(settingsResponse.data.settings.rotation_interval);
       }
     } catch (err: any) {
       console.log('No active ads or error fetching:', err.message);
@@ -62,15 +78,15 @@ const AdBanner: React.FC = () => {
     }
   }, [shouldShowAds]); // Remove fetchAds from deps
 
-  // Rotate ads every 10 seconds
+  // Rotate ads based on settings interval
   useEffect(() => {
     if (ads.length > 1) {
       const interval = setInterval(() => {
         setCurrentAdIndex((prevIndex) => (prevIndex + 1) % ads.length);
-      }, 10000);
+      }, rotationInterval * 1000);
       return () => clearInterval(interval);
     }
-  }, [ads.length]);
+  }, [ads.length, rotationInterval]);
 
   const handleAdClick = async (ad: AdData) => {
     try {
@@ -123,14 +139,16 @@ const AdBanner: React.FC = () => {
   }
 
   const currentAd = ads[currentAdIndex];
+  const hasTextContent = (currentAd.title && currentAd.title !== 'Ad') || currentAd.subtitle;
 
   return (
     <View style={styles.card}>
       <TouchableOpacity 
         style={styles.adContainer} 
         onPress={() => handleAdClick(currentAd)}
-        activeOpacity={0.8}
+        activeOpacity={0.9}
       >
+        {/* Image Section */}
         {currentAd.image_url ? (
           <View style={styles.imageContainer}>
             <Image 
@@ -138,43 +156,54 @@ const AdBanner: React.FC = () => {
               style={styles.adImage}
               resizeMode="cover"
             />
-            {/* Text overlay if title or subtitle provided */}
-            {(currentAd.title && currentAd.title !== 'Ad') || currentAd.subtitle ? (
-              <View style={styles.textOverlay}>
-                {currentAd.title && currentAd.title !== 'Ad' && (
-                  <Text style={styles.overlayTitle}>{currentAd.title}</Text>
-                )}
-                {currentAd.subtitle && (
-                  <Text style={styles.overlaySubtitle}>{currentAd.subtitle}</Text>
-                )}
-              </View>
-            ) : null}
+            {/* Gradient overlay for better text readability */}
+            {hasTextContent && <View style={styles.imageGradient} />}
           </View>
         ) : (
-          <View style={styles.adContent}>
-            <Text style={styles.adTitle}>{currentAd.title}</Text>
-            {currentAd.subtitle && (
-              <Text style={styles.adSubtitle}>{currentAd.subtitle}</Text>
-            )}
+          <View style={styles.noImageContainer}>
+            <Megaphone size={32} color="#9CA3AF" />
           </View>
         )}
-        <View style={styles.sponsoredRow}>
-          <Text style={styles.sponsoredLabel}>Sponsored</Text>
-          {adminPreviewMode && (
-            <View style={styles.previewBadge}>
-              <Text style={styles.previewBadgeText}>👁 Admin Preview</Text>
+
+        {/* Bottom Section - Title, Description & Indicators */}
+        <View style={styles.bottomSection}>
+          {/* Text Content */}
+          {hasTextContent ? (
+            <View style={styles.textContent}>
+              {currentAd.title && currentAd.title !== 'Ad' && (
+                <Text style={styles.adTitle} numberOfLines={1}>{currentAd.title}</Text>
+              )}
+              {currentAd.subtitle && (
+                <Text style={styles.adSubtitle} numberOfLines={1}>{currentAd.subtitle}</Text>
+              )}
+            </View>
+          ) : (
+            <View style={styles.textContent}>
+              <View style={styles.tapToVisitRow}>
+                <ExternalLink size={14} color={COLORS.textSecondary} />
+                <Text style={styles.tapToVisitText}>Tap to visit</Text>
+              </View>
             </View>
           )}
-          {ads.length > 1 && (
-            <View style={styles.dotContainer}>
-              {ads.map((_, index) => (
-                <View
-                  key={index}
-                  style={[styles.dot, index === currentAdIndex && styles.dotActive]}
-                />
-              ))}
-            </View>
-          )}
+
+          {/* Right side: Preview badge & dots */}
+          <View style={styles.rightSection}>
+            {adminPreviewMode && (
+              <View style={styles.previewBadge}>
+                <Text style={styles.previewBadgeText}>👁 Admin Preview</Text>
+              </View>
+            )}
+            {ads.length > 1 && (
+              <View style={styles.dotContainer}>
+                {ads.map((_, index) => (
+                  <View
+                    key={index}
+                    style={[styles.dot, index === currentAdIndex && styles.dotActive]}
+                  />
+                ))}
+              </View>
+            )}
+          </View>
         </View>
       </TouchableOpacity>
     </View>
@@ -185,13 +214,13 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
-    padding: 16,
+    overflow: 'hidden',
     marginBottom: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 3,
     width: '100%',
     maxWidth: 500,
     alignSelf: 'center',
@@ -212,6 +241,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: '#F9FAFB',
     minHeight: 100,
+    margin: 16,
   },
   placeholderText: {
     fontSize: 14,
@@ -226,9 +256,8 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   adContainer: {
-    borderRadius: 8,
     overflow: 'hidden',
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#FFFFFF',
   },
   imageContainer: {
     position: 'relative',
@@ -236,71 +265,71 @@ const styles = StyleSheet.create({
   },
   adImage: {
     width: '100%',
-    height: 120,
-    backgroundColor: '#E0E0E0',
+    height: 130,
+    backgroundColor: '#E5E7EB',
   },
-  textOverlay: {
+  imageGradient: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    height: 40,
+    backgroundColor: 'transparent',
   },
-  overlayTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    textShadowColor: 'rgba(0, 0, 0, 0.5)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
-  },
-  overlaySubtitle: {
-    fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.9)',
-    marginTop: 2,
-    textShadowColor: 'rgba(0, 0, 0, 0.5)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
-  },
-  adContent: {
-    padding: 16,
-    backgroundColor: '#F0F4F8',
-    minHeight: 80,
+  noImageContainer: {
+    height: 100,
+    backgroundColor: '#F3F4F6',
     justifyContent: 'center',
+    alignItems: 'center',
   },
-  adTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: COLORS.textPrimary,
-    marginBottom: 4,
-  },
-  adSubtitle: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
-  },
-  sponsoredRow: {
+  bottomSection: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     backgroundColor: '#FAFAFA',
+    borderTopWidth: 1,
+    borderTopColor: '#F0F0F0',
   },
-  sponsoredLabel: {
-    fontSize: 11,
-    color: '#999',
+  textContent: {
+    flex: 1,
+    marginRight: 12,
+  },
+  adTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+    marginBottom: 2,
+  },
+  adSubtitle: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    lineHeight: 16,
+  },
+  tapToVisitRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  tapToVisitText: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
     fontStyle: 'italic',
+  },
+  rightSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   dotContainer: {
     flexDirection: 'row',
     gap: 6,
   },
   dot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+    width: 7,
+    height: 7,
+    borderRadius: 4,
     backgroundColor: '#D0D0D0',
   },
   dotActive: {
@@ -309,7 +338,7 @@ const styles = StyleSheet.create({
   previewBadge: {
     backgroundColor: '#FEF3C7',
     paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingVertical: 4,
     borderRadius: 4,
     borderWidth: 1,
     borderColor: '#F59E0B',

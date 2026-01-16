@@ -34,7 +34,9 @@ import {
   Info,
   Move,
   Eye,
-  EyeOff
+  EyeOff,
+  Clock,
+  Settings
 } from 'lucide-react-native';
 
 interface Ad {
@@ -45,6 +47,10 @@ interface Ad {
   image_url?: string;
   is_active: boolean;
   created_at: string;
+}
+
+interface AdSettings {
+  rotation_interval: number; // in seconds
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -108,6 +114,10 @@ const AdManagerTab: React.FC = () => {
     freeStatements: '10'
   });
 
+  // Ad settings state
+  const [adSettings, setAdSettings] = useState<AdSettings>({ rotation_interval: 10 });
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
+
   const fetchAds = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -134,7 +144,59 @@ const AdManagerTab: React.FC = () => {
   useEffect(() => {
     fetchAds();
     fetchActivePromotion();
+    fetchAdSettings();
   }, []); // Only run once on mount
+
+  // Fetch ad settings
+  const fetchAdSettings = async () => {
+    try {
+      const token = await getToken();
+      if (!token) return;
+
+      const response = await axios.get(`${BASE_URL}/api/admin/ads/settings`, {
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 10000
+      });
+
+      if (response.data.settings) {
+        setAdSettings(response.data.settings);
+      }
+    } catch (error) {
+      console.log('No ad settings found, using defaults');
+    }
+  };
+
+  // Save ad settings
+  const handleSaveAdSettings = async () => {
+    setIsSavingSettings(true);
+    try {
+      const token = await getToken();
+      if (!token) return;
+
+      await axios.post(`${BASE_URL}/api/admin/ads/settings`, {
+        rotation_interval: adSettings.rotation_interval
+      }, {
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 10000
+      });
+
+      if (Platform.OS === 'web') {
+        alert('Ad settings saved successfully!');
+      } else {
+        Alert.alert('Success', 'Ad settings saved successfully!');
+      }
+    } catch (error: any) {
+      console.error('Error saving ad settings:', error);
+      const errorMsg = error.response?.data?.message || 'Failed to save settings';
+      if (Platform.OS === 'web') {
+        alert('Error: ' + errorMsg);
+      } else {
+        Alert.alert('Error', errorMsg);
+      }
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
 
   // Fetch active promotion
   const fetchActivePromotion = async () => {
@@ -631,15 +693,10 @@ const AdManagerTab: React.FC = () => {
       return;
     }
 
-    // Basic URL validation
-    const urlToUse = newAd.destinationUrl.trim();
+    // Normalize URL - add https:// if not present
+    let urlToUse = newAd.destinationUrl.trim();
     if (!urlToUse.startsWith('http://') && !urlToUse.startsWith('https://')) {
-      if (Platform.OS === 'web') {
-        alert('Please enter a valid URL starting with http:// or https://');
-      } else {
-        Alert.alert('Error', 'Please enter a valid URL starting with http:// or https://');
-      }
-      return;
+      urlToUse = 'https://' + urlToUse;
     }
 
     try {
@@ -835,6 +892,79 @@ const AdManagerTab: React.FC = () => {
         </Text>
       </View>
 
+      {/* Ad Rotation Settings */}
+      <View style={styles.settingsCard}>
+        <View style={styles.settingsHeader}>
+          <View style={styles.settingsTitleRow}>
+            <Settings size={20} color={COLORS.primary} />
+            <Text style={styles.settingsTitle}>Ad Rotation Settings</Text>
+          </View>
+        </View>
+        <Text style={styles.settingsDescription}>
+          Configure how often ads rotate for users. Active ads will cycle at this interval.
+        </Text>
+        
+        <View style={styles.rotationSettingRow}>
+          <View style={styles.rotationLabelRow}>
+            <Clock size={16} color={COLORS.textSecondary} />
+            <Text style={styles.rotationLabel}>Rotation Interval</Text>
+          </View>
+          <View style={styles.rotationInputRow}>
+            <TouchableOpacity 
+              style={styles.rotationButton}
+              onPress={() => setAdSettings({ ...adSettings, rotation_interval: Math.max(3, adSettings.rotation_interval - 1) })}
+            >
+              <Text style={styles.rotationButtonText}>−</Text>
+            </TouchableOpacity>
+            <View style={styles.rotationValueContainer}>
+              <Text style={styles.rotationValue}>{adSettings.rotation_interval}</Text>
+              <Text style={styles.rotationUnit}>seconds</Text>
+            </View>
+            <TouchableOpacity 
+              style={styles.rotationButton}
+              onPress={() => setAdSettings({ ...adSettings, rotation_interval: Math.min(120, adSettings.rotation_interval + 1) })}
+            >
+              <Text style={styles.rotationButtonText}>+</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <View style={styles.rotationPresets}>
+          {[5, 10, 15, 30, 60].map((seconds) => (
+            <TouchableOpacity 
+              key={seconds}
+              style={[
+                styles.presetButton, 
+                adSettings.rotation_interval === seconds && styles.presetButtonActive
+              ]}
+              onPress={() => setAdSettings({ ...adSettings, rotation_interval: seconds })}
+            >
+              <Text style={[
+                styles.presetButtonText,
+                adSettings.rotation_interval === seconds && styles.presetButtonTextActive
+              ]}>
+                {seconds}s
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <TouchableOpacity
+          style={[styles.saveSettingsButton, isSavingSettings && { opacity: 0.5 }]}
+          onPress={handleSaveAdSettings}
+          disabled={isSavingSettings}
+        >
+          {isSavingSettings ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <>
+              <Check size={16} color="#fff" />
+              <Text style={styles.saveSettingsText}>Save Settings</Text>
+            </>
+          )}
+        </TouchableOpacity>
+      </View>
+
       {/* Create New Ad */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Create New Ad</Text>
@@ -889,7 +1019,6 @@ const AdManagerTab: React.FC = () => {
         <Text style={styles.label}>Destination URL *</Text>
         <TextInput
           style={styles.input}
-          placeholder="https://example.com"
           value={newAd.destinationUrl}
           onChangeText={(text) => setNewAd({ ...newAd, destinationUrl: text })}
           autoCapitalize="none"
@@ -907,7 +1036,6 @@ const AdManagerTab: React.FC = () => {
             <Text style={styles.smallLabel}>Ad Title</Text>
             <TextInput
               style={[styles.input, styles.optionalInput]}
-              placeholder="e.g., 'Get 50% Off!'"
               value={newAd.title}
               onChangeText={(text) => setNewAd({ ...newAd, title: text })}
               maxLength={40}
@@ -919,7 +1047,6 @@ const AdManagerTab: React.FC = () => {
             <Text style={styles.smallLabel}>Ad Description</Text>
             <TextInput
               style={[styles.input, styles.optionalInput, styles.textArea]}
-              placeholder="e.g., 'Upgrade to Pro and unlock unlimited statements'"
               value={newAd.subtitle}
               onChangeText={(text) => setNewAd({ ...newAd, subtitle: text })}
               maxLength={100}
@@ -1172,126 +1299,153 @@ const AdManagerTab: React.FC = () => {
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.cropInstructions}>
-              {hasSelection 
-                ? '✓ Selection ready! Drag to move, use corners to resize, or draw a new area.'
-                : '👆 Click and drag on the image to select the area you want to use for your ad.'}
-            </Text>
-
-            {/* Quick Actions */}
-            <View style={styles.cropQuickActions}>
-              <TouchableOpacity style={styles.quickActionButton} onPress={selectEntireImage}>
-                <Text style={styles.quickActionText}>📷 Use Entire Image</Text>
-              </TouchableOpacity>
-              {hasSelection && (
-                <TouchableOpacity style={styles.quickActionButtonClear} onPress={clearSelection}>
-                  <Text style={styles.quickActionTextClear}>✕ Clear Selection</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-
-            {/* Interactive Image with crop overlay */}
-            <View style={styles.cropImageContainer}>
-              {originalImage && (
-                <View 
-                  style={[styles.cropInteractiveArea, { width: displaySize.width, height: displaySize.height }]}
-                  // @ts-ignore - web events
-                  onMouseDown={Platform.OS === 'web' ? handleCropMouseDown : undefined}
-                  onMouseMove={Platform.OS === 'web' ? handleCropMouseMove : undefined}
-                  onMouseUp={Platform.OS === 'web' ? handleCropMouseUp : undefined}
-                  onMouseLeave={Platform.OS === 'web' ? handleCropMouseUp : undefined}
-                  onTouchStart={Platform.OS !== 'web' ? handleCropMouseDown : undefined}
-                  onTouchMove={Platform.OS !== 'web' ? handleCropMouseMove : undefined}
-                  onTouchEnd={Platform.OS !== 'web' ? handleCropMouseUp : undefined}
-                >
-                  <Image 
-                    source={{ uri: originalImage }} 
-                    style={{ width: displaySize.width, height: displaySize.height }}
-                    resizeMode="contain"
-                  />
-                  
-                  {/* Dark overlay for non-selected areas */}
-                  {hasSelection && (
-                    <View style={[styles.cropOverlay, { width: displaySize.width, height: displaySize.height }]} pointerEvents="none">
-                      {/* Top dark area */}
-                      <View style={[styles.cropDark, { 
-                        top: 0, left: 0, right: 0, 
-                        height: cropDisplayY 
-                      }]} />
-                      {/* Bottom dark area */}
-                      <View style={[styles.cropDark, { 
-                        top: cropDisplayY + cropDisplayHeight, 
-                        left: 0, right: 0, bottom: 0 
-                      }]} />
-                      {/* Left dark area */}
-                      <View style={[styles.cropDark, { 
-                        top: cropDisplayY, left: 0, 
-                        width: cropDisplayX, 
-                        height: cropDisplayHeight 
-                      }]} />
-                      {/* Right dark area */}
-                      <View style={[styles.cropDark, { 
-                        top: cropDisplayY, 
-                        left: cropDisplayX + cropDisplayWidth, 
-                        right: 0, 
-                        height: cropDisplayHeight 
-                      }]} />
-                      
-                      {/* Crop frame with handles */}
-                      <View style={[styles.cropFrame, {
-                        top: cropDisplayY,
-                        left: cropDisplayX,
-                        width: cropDisplayWidth,
-                        height: cropDisplayHeight
-                      }]}>
-                        {/* Corner handles */}
-                        <View style={[styles.cropHandle, styles.handleTL]} />
-                        <View style={[styles.cropHandle, styles.handleTR]} />
-                        <View style={[styles.cropHandle, styles.handleBL]} />
-                        <View style={[styles.cropHandle, styles.handleBR]} />
-                        
-                        {/* Center move icon */}
-                        <View style={styles.cropMoveHint}>
-                          <Move size={20} color="rgba(255,255,255,0.8)" />
-                        </View>
-                      </View>
-                    </View>
-                  )}
-                  
-                  {/* Drawing hint when no selection */}
-                  {!hasSelection && (
-                    <View style={[styles.cropDrawHint, { width: displaySize.width, height: displaySize.height }]} pointerEvents="none">
-                      <Text style={styles.cropDrawHintText}>Click & Drag to Select</Text>
-                    </View>
-                  )}
+            <ScrollView style={styles.cropModalContent} showsVerticalScrollIndicator={false}>
+              {/* Main Crop Area Container */}
+              <View style={styles.cropMainSection}>
+                {/* Instructions and Quick Actions Row */}
+                <View style={styles.cropHeaderRow}>
+                  <Text style={styles.cropInstructions}>
+                    {hasSelection 
+                      ? '✓ Selection ready! Drag to move, use corners to resize.'
+                      : '👆 Click and drag to select the area for your ad.'}
+                  </Text>
+                  <View style={styles.cropQuickActions}>
+                    <TouchableOpacity style={styles.quickActionButton} onPress={selectEntireImage}>
+                      <Text style={styles.quickActionText}>📷 Use Entire Image</Text>
+                    </TouchableOpacity>
+                    {hasSelection && (
+                      <TouchableOpacity style={styles.quickActionButtonClear} onPress={clearSelection}>
+                        <Text style={styles.quickActionTextClear}>✕ Clear Selection</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
                 </View>
-              )}
-            </View>
 
-            {/* Live Preview */}
-            {hasSelection && (
-              <View style={styles.livePreviewSection}>
-                <Text style={styles.livePreviewLabel}>📱 Ad Preview</Text>
-                <View style={styles.livePreviewCard}>
-                  <View style={styles.livePreviewImage}>
-                    <Image 
-                      source={{ uri: originalImage || '' }} 
-                      style={styles.livePreviewImageInner}
-                      resizeMode="cover"
-                    />
-                    {(newAd.title || newAd.subtitle) && (
-                      <View style={styles.livePreviewOverlay}>
-                        {newAd.title && <Text style={styles.livePreviewTitle}>{newAd.title}</Text>}
-                        {newAd.subtitle && <Text style={styles.livePreviewSubtitle}>{newAd.subtitle}</Text>}
+                {/* Image Container with Crop Overlay */}
+                <View style={styles.cropImageWrapper}>
+                  <View style={styles.cropImageContainer}>
+                    {originalImage && (
+                      <View 
+                        style={[styles.cropInteractiveArea, { width: displaySize.width, height: displaySize.height }]}
+                        // @ts-ignore - web events
+                        onMouseDown={Platform.OS === 'web' ? handleCropMouseDown : undefined}
+                        onMouseMove={Platform.OS === 'web' ? handleCropMouseMove : undefined}
+                        onMouseUp={Platform.OS === 'web' ? handleCropMouseUp : undefined}
+                        onMouseLeave={Platform.OS === 'web' ? handleCropMouseUp : undefined}
+                        onTouchStart={Platform.OS !== 'web' ? handleCropMouseDown : undefined}
+                        onTouchMove={Platform.OS !== 'web' ? handleCropMouseMove : undefined}
+                        onTouchEnd={Platform.OS !== 'web' ? handleCropMouseUp : undefined}
+                      >
+                        <Image 
+                          source={{ uri: originalImage }} 
+                          style={{ width: displaySize.width, height: displaySize.height }}
+                          resizeMode="contain"
+                        />
+                        
+                        {/* Dark overlay for non-selected areas */}
+                        {hasSelection && (
+                          <View style={[styles.cropOverlay, { width: displaySize.width, height: displaySize.height }]} pointerEvents="none">
+                            {/* Top dark area */}
+                            <View style={[styles.cropDark, { 
+                              top: 0, left: 0, right: 0, 
+                              height: cropDisplayY 
+                            }]} />
+                            {/* Bottom dark area */}
+                            <View style={[styles.cropDark, { 
+                              top: cropDisplayY + cropDisplayHeight, 
+                              left: 0, right: 0, bottom: 0 
+                            }]} />
+                            {/* Left dark area */}
+                            <View style={[styles.cropDark, { 
+                              top: cropDisplayY, left: 0, 
+                              width: cropDisplayX, 
+                              height: cropDisplayHeight 
+                            }]} />
+                            {/* Right dark area */}
+                            <View style={[styles.cropDark, { 
+                              top: cropDisplayY, 
+                              left: cropDisplayX + cropDisplayWidth, 
+                              right: 0, 
+                              height: cropDisplayHeight 
+                            }]} />
+                            
+                            {/* Crop frame with handles */}
+                            <View style={[styles.cropFrame, {
+                              top: cropDisplayY,
+                              left: cropDisplayX,
+                              width: cropDisplayWidth,
+                              height: cropDisplayHeight
+                            }]}>
+                              {/* Corner handles */}
+                              <View style={[styles.cropHandle, styles.handleTL]} />
+                              <View style={[styles.cropHandle, styles.handleTR]} />
+                              <View style={[styles.cropHandle, styles.handleBL]} />
+                              <View style={[styles.cropHandle, styles.handleBR]} />
+                              
+                              {/* Center move icon */}
+                              <View style={styles.cropMoveHint}>
+                                <Move size={20} color="rgba(255,255,255,0.8)" />
+                              </View>
+                            </View>
+                          </View>
+                        )}
+                        
+                        {/* Drawing hint when no selection */}
+                        {!hasSelection && (
+                          <View style={[styles.cropDrawHint, { width: displaySize.width, height: displaySize.height }]} pointerEvents="none">
+                            <Text style={styles.cropDrawHintText}>Click & Drag to Select</Text>
+                          </View>
+                        )}
                       </View>
                     )}
                   </View>
-                  <Text style={styles.livePreviewHint}>
-                    Selection: {Math.round(cropArea.width)} × {Math.round(cropArea.height)}px
-                  </Text>
                 </View>
               </View>
-            )}
+
+              {/* Real-time Live Preview - Shows exactly what will appear as ad */}
+              <View style={styles.livePreviewSection}>
+                <Text style={styles.livePreviewLabel}>📱 Live Ad Preview</Text>
+                <View style={styles.livePreviewCard}>
+                  <View style={styles.livePreviewAdContainer}>
+                    {hasSelection && originalImage ? (
+                      <View style={styles.livePreviewCroppedImage}>
+                        {/* Show exactly the cropped area */}
+                        <View style={styles.livePreviewImageWrapper}>
+                          <Image 
+                            source={{ uri: originalImage }} 
+                            style={{
+                              width: (displaySize.width / cropDisplayWidth) * 320,
+                              height: (displaySize.height / cropDisplayHeight) * 100,
+                              marginLeft: -(cropDisplayX / cropDisplayWidth) * 320,
+                              marginTop: -(cropDisplayY / cropDisplayHeight) * 100,
+                            }}
+                            resizeMode="cover"
+                          />
+                        </View>
+                        {/* Text overlay matching AdBanner style */}
+                        {(newAd.title || newAd.subtitle) && (
+                          <View style={styles.livePreviewTextOverlay}>
+                            {newAd.title && <Text style={styles.livePreviewTitle}>{newAd.title}</Text>}
+                            {newAd.subtitle && <Text style={styles.livePreviewSubtitle}>{newAd.subtitle}</Text>}
+                          </View>
+                        )}
+                      </View>
+                    ) : (
+                      <View style={styles.livePreviewPlaceholder}>
+                        <Text style={styles.livePreviewPlaceholderText}>
+                          Select an area to see preview
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                  {hasSelection && (
+                    <Text style={styles.livePreviewHint}>
+                      Selection: {Math.round(cropArea.width)} × {Math.round(cropArea.height)}px
+                    </Text>
+                  )}
+                </View>
+              </View>
+            </ScrollView>
 
             {/* Modal Actions */}
             <View style={styles.cropModalActions}>
@@ -1395,6 +1549,128 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#92400E',
     lineHeight: 18,
+  },
+  settingsCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  settingsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  settingsTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  settingsTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1E3A5F',
+  },
+  settingsDescription: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    marginBottom: 16,
+    lineHeight: 18,
+  },
+  rotationSettingRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 10,
+    marginBottom: 12,
+  },
+  rotationLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  rotationLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: COLORS.textPrimary,
+  },
+  rotationInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  rotationButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: '#E5E7EB',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  rotationButtonText: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+  },
+  rotationValueContainer: {
+    alignItems: 'center',
+    minWidth: 60,
+  },
+  rotationValue: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: COLORS.primary,
+  },
+  rotationUnit: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    marginTop: -2,
+  },
+  rotationPresets: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 16,
+    flexWrap: 'wrap',
+  },
+  presetButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  presetButtonActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  presetButtonText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: COLORS.textSecondary,
+  },
+  presetButtonTextActive: {
+    color: '#FFFFFF',
+  },
+  saveSettingsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: COLORS.primary,
+    paddingVertical: 12,
+    borderRadius: 10,
+  },
+  saveSettingsText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
   card: {
     backgroundColor: '#FFFFFF',
@@ -1701,25 +1977,45 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 20,
     width: '100%',
-    maxWidth: 540,
-    maxHeight: '90%',
+    maxWidth: 640,
+    maxHeight: '95%',
   },
   cropModalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
   },
   cropModalTitle: {
     fontSize: 20,
     fontWeight: '700',
     color: '#1E3A5F',
   },
+  cropModalContent: {
+    flex: 1,
+    maxHeight: '80%',
+  },
+  cropMainSection: {
+    marginBottom: 16,
+  },
+  cropHeaderRow: {
+    marginBottom: 12,
+  },
   cropInstructions: {
     fontSize: 13,
     color: COLORS.textSecondary,
-    marginBottom: 12,
+    marginBottom: 10,
     lineHeight: 18,
+  },
+  cropImageWrapper: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   cropDimensionInfo: {
     flexDirection: 'row',
@@ -1850,7 +2146,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   livePreviewSection: {
-    marginTop: 16,
     paddingTop: 16,
     borderTopWidth: 1,
     borderTopColor: '#E5E7EB',
@@ -1864,43 +2159,71 @@ const styles = StyleSheet.create({
   livePreviewCard: {
     backgroundColor: '#F9FAFB',
     borderRadius: 12,
-    padding: 12,
+    padding: 16,
     alignItems: 'center',
   },
-  livePreviewImage: {
+  livePreviewAdContainer: {
     width: '100%',
-    maxWidth: 350,
-    height: 90,
-    borderRadius: 8,
+    maxWidth: 400,
+    borderRadius: 10,
+    overflow: 'hidden',
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  livePreviewCroppedImage: {
+    width: '100%',
+    height: 120,
     overflow: 'hidden',
     position: 'relative',
     backgroundColor: '#E5E7EB',
   },
-  livePreviewImageInner: {
+  livePreviewImageWrapper: {
     width: '100%',
     height: '100%',
+    overflow: 'hidden',
   },
-  livePreviewOverlay: {
+  livePreviewTextOverlay: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    padding: 8,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  livePreviewPlaceholder: {
+    height: 120,
+    backgroundColor: '#E5E7EB',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  livePreviewPlaceholderText: {
+    fontSize: 13,
+    color: '#9CA3AF',
   },
   livePreviewTitle: {
     color: '#fff',
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   livePreviewSubtitle: {
     color: 'rgba(255,255,255,0.9)',
-    fontSize: 11,
+    fontSize: 12,
     marginTop: 2,
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   livePreviewHint: {
-    marginTop: 8,
-    fontSize: 11,
+    marginTop: 10,
+    fontSize: 12,
     color: COLORS.textSecondary,
   },
   cropControlLabel: {

@@ -71,6 +71,7 @@ router.get('/sop/extraction-status', sopController.getExtractionStatus);
 
 // Ad Routes
 router.get('/ads/active', adController.getActiveAds);
+router.get('/ads/settings', adController.getAdSettings);
 router.post('/ads/:id/click', adController.trackAdClick);
 
 // Discord Routes

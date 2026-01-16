@@ -170,4 +170,8 @@ router.post('/ads', adController.createAd);
 router.put('/ads/:id', adController.updateAdStatus);
 router.delete('/ads/:id', adController.deleteAd);
 
+// Ad Settings Routes (Admin only)
+router.get('/ads/settings', adController.getAdSettings);
+router.post('/ads/settings', adController.updateAdSettings);
+
 module.exports = router; 
