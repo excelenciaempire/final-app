@@ -230,9 +230,9 @@ const updateAdSettings = async (req, res) => {
 
     // Validate rotation interval
     const interval = parseInt(rotation_interval, 10);
-    if (isNaN(interval) || interval < 3 || interval > 120) {
+    if (isNaN(interval) || interval < 1 || interval > 120) {
       return res.status(400).json({ 
-        message: 'Rotation interval must be between 3 and 120 seconds' 
+        message: 'Rotation interval must be between 1 and 120 seconds' 
       });
     }
 

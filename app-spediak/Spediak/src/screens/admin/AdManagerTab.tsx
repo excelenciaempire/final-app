@@ -896,73 +896,80 @@ const AdManagerTab: React.FC = () => {
       <View style={styles.settingsCard}>
         <View style={styles.settingsHeader}>
           <View style={styles.settingsTitleRow}>
-            <Settings size={20} color={COLORS.primary} />
-            <Text style={styles.settingsTitle}>Ad Rotation Settings</Text>
+            <Clock size={18} color={COLORS.primary} />
+            <Text style={styles.settingsTitle}>Ad Rotation</Text>
           </View>
+          <TouchableOpacity
+            style={[styles.saveSettingsButtonSmall, isSavingSettings && { opacity: 0.5 }]}
+            onPress={handleSaveAdSettings}
+            disabled={isSavingSettings}
+          >
+            {isSavingSettings ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.saveSettingsTextSmall}>Save</Text>
+            )}
+          </TouchableOpacity>
         </View>
-        <Text style={styles.settingsDescription}>
-          Configure how often ads rotate for users. Active ads will cycle at this interval.
-        </Text>
         
         <View style={styles.rotationSettingRow}>
-          <View style={styles.rotationLabelRow}>
-            <Clock size={16} color={COLORS.textSecondary} />
-            <Text style={styles.rotationLabel}>Rotation Interval</Text>
-          </View>
+          <Text style={styles.rotationLabel}>Rotate ads every</Text>
           <View style={styles.rotationInputRow}>
             <TouchableOpacity 
               style={styles.rotationButton}
-              onPress={() => setAdSettings({ ...adSettings, rotation_interval: Math.max(3, adSettings.rotation_interval - 1) })}
+              onPress={() => setAdSettings({ ...adSettings, rotation_interval: Math.max(1, adSettings.rotation_interval - 1) })}
             >
               <Text style={styles.rotationButtonText}>−</Text>
             </TouchableOpacity>
-            <View style={styles.rotationValueContainer}>
-              <Text style={styles.rotationValue}>{adSettings.rotation_interval}</Text>
-              <Text style={styles.rotationUnit}>seconds</Text>
-            </View>
+            {Platform.OS === 'web' ? (
+              // @ts-ignore - web-only input
+              <input
+                type="number"
+                min="1"
+                max="120"
+                value={adSettings.rotation_interval}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value, 10);
+                  if (!isNaN(val) && val >= 1 && val <= 120) {
+                    setAdSettings({ ...adSettings, rotation_interval: val });
+                  }
+                }}
+                style={{
+                  width: 60,
+                  textAlign: 'center',
+                  fontSize: 18,
+                  fontWeight: '700',
+                  color: COLORS.primary,
+                  border: '1px solid #E5E7EB',
+                  borderRadius: 8,
+                  padding: '8px 4px',
+                  backgroundColor: '#F9FAFB',
+                }}
+              />
+            ) : (
+              <TextInput
+                style={styles.rotationInput}
+                value={String(adSettings.rotation_interval)}
+                onChangeText={(text) => {
+                  const val = parseInt(text, 10);
+                  if (!isNaN(val) && val >= 1 && val <= 120) {
+                    setAdSettings({ ...adSettings, rotation_interval: val });
+                  }
+                }}
+                keyboardType="numeric"
+                maxLength={3}
+              />
+            )}
             <TouchableOpacity 
               style={styles.rotationButton}
               onPress={() => setAdSettings({ ...adSettings, rotation_interval: Math.min(120, adSettings.rotation_interval + 1) })}
             >
               <Text style={styles.rotationButtonText}>+</Text>
             </TouchableOpacity>
+            <Text style={styles.rotationUnit}>seconds</Text>
           </View>
         </View>
-
-        <View style={styles.rotationPresets}>
-          {[5, 10, 15, 30, 60].map((seconds) => (
-            <TouchableOpacity 
-              key={seconds}
-              style={[
-                styles.presetButton, 
-                adSettings.rotation_interval === seconds && styles.presetButtonActive
-              ]}
-              onPress={() => setAdSettings({ ...adSettings, rotation_interval: seconds })}
-            >
-              <Text style={[
-                styles.presetButtonText,
-                adSettings.rotation_interval === seconds && styles.presetButtonTextActive
-              ]}>
-                {seconds}s
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        <TouchableOpacity
-          style={[styles.saveSettingsButton, isSavingSettings && { opacity: 0.5 }]}
-          onPress={handleSaveAdSettings}
-          disabled={isSavingSettings}
-        >
-          {isSavingSettings ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <>
-              <Check size={16} color="#fff" />
-              <Text style={styles.saveSettingsText}>Save Settings</Text>
-            </>
-          )}
-        </TouchableOpacity>
+        <Text style={styles.rotationHint}>Min: 1s • Max: 120s</Text>
       </View>
 
       {/* Create New Ad */}
@@ -1293,112 +1300,97 @@ const AdManagerTab: React.FC = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.cropModal}>
             <View style={styles.cropModalHeader}>
-              <Text style={styles.cropModalTitle}>Crop Ad Image</Text>
-              <TouchableOpacity onPress={() => setShowCropModal(false)}>
+              <View>
+                <Text style={styles.cropModalTitle}>Crop Ad Image</Text>
+                <Text style={styles.cropModalSubtitle}>
+                  {hasSelection 
+                    ? '✓ Drag to move, use corners to resize'
+                    : 'Click and drag to select the area'}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowCropModal(false)} style={styles.cropModalClose}>
                 <X size={24} color={COLORS.textPrimary} />
               </TouchableOpacity>
             </View>
 
             <ScrollView style={styles.cropModalContent} showsVerticalScrollIndicator={false}>
-              {/* Main Crop Area Container */}
-              <View style={styles.cropMainSection}>
-                {/* Instructions and Quick Actions Row */}
-                <View style={styles.cropHeaderRow}>
-                  <Text style={styles.cropInstructions}>
-                    {hasSelection 
-                      ? '✓ Selection ready! Drag to move, use corners to resize.'
-                      : '👆 Click and drag to select the area for your ad.'}
-                  </Text>
-                  <View style={styles.cropQuickActions}>
-                    <TouchableOpacity style={styles.quickActionButton} onPress={selectEntireImage}>
-                      <Text style={styles.quickActionText}>📷 Use Entire Image</Text>
-                    </TouchableOpacity>
-                    {hasSelection && (
-                      <TouchableOpacity style={styles.quickActionButtonClear} onPress={clearSelection}>
-                        <Text style={styles.quickActionTextClear}>✕ Clear Selection</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                </View>
-
-                {/* Image Container with Crop Overlay */}
-                <View style={styles.cropImageWrapper}>
-                  <View style={styles.cropImageContainer}>
-                    {originalImage && (
-                      <View 
-                        style={[styles.cropInteractiveArea, { width: displaySize.width, height: displaySize.height }]}
-                        // @ts-ignore - web events
-                        onMouseDown={Platform.OS === 'web' ? handleCropMouseDown : undefined}
-                        onMouseMove={Platform.OS === 'web' ? handleCropMouseMove : undefined}
-                        onMouseUp={Platform.OS === 'web' ? handleCropMouseUp : undefined}
-                        onMouseLeave={Platform.OS === 'web' ? handleCropMouseUp : undefined}
-                        onTouchStart={Platform.OS !== 'web' ? handleCropMouseDown : undefined}
-                        onTouchMove={Platform.OS !== 'web' ? handleCropMouseMove : undefined}
-                        onTouchEnd={Platform.OS !== 'web' ? handleCropMouseUp : undefined}
-                      >
-                        <Image 
-                          source={{ uri: originalImage }} 
-                          style={{ width: displaySize.width, height: displaySize.height }}
-                          resizeMode="contain"
-                        />
-                        
-                        {/* Dark overlay for non-selected areas */}
-                        {hasSelection && (
-                          <View style={[styles.cropOverlay, { width: displaySize.width, height: displaySize.height }]} pointerEvents="none">
-                            {/* Top dark area */}
-                            <View style={[styles.cropDark, { 
-                              top: 0, left: 0, right: 0, 
-                              height: cropDisplayY 
-                            }]} />
-                            {/* Bottom dark area */}
-                            <View style={[styles.cropDark, { 
-                              top: cropDisplayY + cropDisplayHeight, 
-                              left: 0, right: 0, bottom: 0 
-                            }]} />
-                            {/* Left dark area */}
-                            <View style={[styles.cropDark, { 
-                              top: cropDisplayY, left: 0, 
-                              width: cropDisplayX, 
-                              height: cropDisplayHeight 
-                            }]} />
-                            {/* Right dark area */}
-                            <View style={[styles.cropDark, { 
-                              top: cropDisplayY, 
-                              left: cropDisplayX + cropDisplayWidth, 
-                              right: 0, 
-                              height: cropDisplayHeight 
-                            }]} />
+              {/* Image Container with Crop Overlay */}
+              <View style={styles.cropImageWrapper}>
+                <View style={styles.cropImageContainer}>
+                  {originalImage && (
+                    <View 
+                      style={[styles.cropInteractiveArea, { width: displaySize.width, height: displaySize.height }]}
+                      // @ts-ignore - web events
+                      onMouseDown={Platform.OS === 'web' ? handleCropMouseDown : undefined}
+                      onMouseMove={Platform.OS === 'web' ? handleCropMouseMove : undefined}
+                      onMouseUp={Platform.OS === 'web' ? handleCropMouseUp : undefined}
+                      onMouseLeave={Platform.OS === 'web' ? handleCropMouseUp : undefined}
+                      onTouchStart={Platform.OS !== 'web' ? handleCropMouseDown : undefined}
+                      onTouchMove={Platform.OS !== 'web' ? handleCropMouseMove : undefined}
+                      onTouchEnd={Platform.OS !== 'web' ? handleCropMouseUp : undefined}
+                    >
+                      <Image 
+                        source={{ uri: originalImage }} 
+                        style={{ width: displaySize.width, height: displaySize.height }}
+                        resizeMode="contain"
+                      />
+                      
+                      {/* Dark overlay for non-selected areas */}
+                      {hasSelection && (
+                        <View style={[styles.cropOverlay, { width: displaySize.width, height: displaySize.height }]} pointerEvents="none">
+                          {/* Top dark area */}
+                          <View style={[styles.cropDark, { 
+                            top: 0, left: 0, right: 0, 
+                            height: cropDisplayY 
+                          }]} />
+                          {/* Bottom dark area */}
+                          <View style={[styles.cropDark, { 
+                            top: cropDisplayY + cropDisplayHeight, 
+                            left: 0, right: 0, bottom: 0 
+                          }]} />
+                          {/* Left dark area */}
+                          <View style={[styles.cropDark, { 
+                            top: cropDisplayY, left: 0, 
+                            width: cropDisplayX, 
+                            height: cropDisplayHeight 
+                          }]} />
+                          {/* Right dark area */}
+                          <View style={[styles.cropDark, { 
+                            top: cropDisplayY, 
+                            left: cropDisplayX + cropDisplayWidth, 
+                            right: 0, 
+                            height: cropDisplayHeight 
+                          }]} />
+                          
+                          {/* Crop frame with handles */}
+                          <View style={[styles.cropFrame, {
+                            top: cropDisplayY,
+                            left: cropDisplayX,
+                            width: cropDisplayWidth,
+                            height: cropDisplayHeight
+                          }]}>
+                            {/* Corner handles */}
+                            <View style={[styles.cropHandle, styles.handleTL]} />
+                            <View style={[styles.cropHandle, styles.handleTR]} />
+                            <View style={[styles.cropHandle, styles.handleBL]} />
+                            <View style={[styles.cropHandle, styles.handleBR]} />
                             
-                            {/* Crop frame with handles */}
-                            <View style={[styles.cropFrame, {
-                              top: cropDisplayY,
-                              left: cropDisplayX,
-                              width: cropDisplayWidth,
-                              height: cropDisplayHeight
-                            }]}>
-                              {/* Corner handles */}
-                              <View style={[styles.cropHandle, styles.handleTL]} />
-                              <View style={[styles.cropHandle, styles.handleTR]} />
-                              <View style={[styles.cropHandle, styles.handleBL]} />
-                              <View style={[styles.cropHandle, styles.handleBR]} />
-                              
-                              {/* Center move icon */}
-                              <View style={styles.cropMoveHint}>
-                                <Move size={20} color="rgba(255,255,255,0.8)" />
-                              </View>
+                            {/* Center move icon */}
+                            <View style={styles.cropMoveHint}>
+                              <Move size={20} color="rgba(255,255,255,0.8)" />
                             </View>
                           </View>
-                        )}
-                        
-                        {/* Drawing hint when no selection */}
-                        {!hasSelection && (
-                          <View style={[styles.cropDrawHint, { width: displaySize.width, height: displaySize.height }]} pointerEvents="none">
-                            <Text style={styles.cropDrawHintText}>Click & Drag to Select</Text>
-                          </View>
-                        )}
-                      </View>
-                    )}
-                  </View>
+                        </View>
+                      )}
+                      
+                      {/* Drawing hint when no selection */}
+                      {!hasSelection && (
+                        <View style={[styles.cropDrawHint, { width: displaySize.width, height: displaySize.height }]} pointerEvents="none">
+                          <Text style={styles.cropDrawHintText}>Click & Drag to Select</Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
                 </View>
               </View>
 
@@ -1409,15 +1401,15 @@ const AdManagerTab: React.FC = () => {
                   <View style={styles.livePreviewAdContainer}>
                     {hasSelection && originalImage ? (
                       <View style={styles.livePreviewCroppedImage}>
-                        {/* Show exactly the cropped area */}
+                        {/* Show exactly the cropped area - matching ad banner dimensions */}
                         <View style={styles.livePreviewImageWrapper}>
                           <Image 
                             source={{ uri: originalImage }} 
                             style={{
-                              width: (displaySize.width / cropDisplayWidth) * 320,
-                              height: (displaySize.height / cropDisplayHeight) * 100,
-                              marginLeft: -(cropDisplayX / cropDisplayWidth) * 320,
-                              marginTop: -(cropDisplayY / cropDisplayHeight) * 100,
+                              width: (displaySize.width / cropDisplayWidth) * 400,
+                              height: (displaySize.height / cropDisplayHeight) * 130,
+                              marginLeft: -(cropDisplayX / cropDisplayWidth) * 400,
+                              marginTop: -(cropDisplayY / cropDisplayHeight) * 130,
                             }}
                             resizeMode="cover"
                           />
@@ -1447,8 +1439,9 @@ const AdManagerTab: React.FC = () => {
               </View>
             </ScrollView>
 
-            {/* Modal Actions */}
-            <View style={styles.cropModalActions}>
+            {/* Modal Actions - Separated from preview */}
+            <View style={styles.cropModalActionsContainer}>
+              <View style={styles.cropModalActions}>
               <TouchableOpacity 
                 style={styles.cancelCropButton}
                 onPress={() => {
@@ -1474,6 +1467,7 @@ const AdManagerTab: React.FC = () => {
                   </>
                 )}
               </TouchableOpacity>
+              </View>
             </View>
           </View>
         </View>
@@ -1562,7 +1556,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 12,
   },
   settingsTitleRow: {
     flexDirection: 'row',
@@ -1570,105 +1564,68 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   settingsTitle: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '600',
     color: '#1E3A5F',
   },
-  settingsDescription: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    marginBottom: 16,
-    lineHeight: 18,
-  },
   rotationSettingRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    backgroundColor: '#F9FAFB',
-    borderRadius: 10,
-    marginBottom: 12,
-  },
-  rotationLabelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  rotationLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: COLORS.textPrimary,
-  },
-  rotationInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
   },
+  rotationLabel: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+  },
+  rotationInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   rotationButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
+    width: 32,
+    height: 32,
+    borderRadius: 6,
     backgroundColor: '#E5E7EB',
     justifyContent: 'center',
     alignItems: 'center',
   },
   rotationButtonText: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '600',
     color: COLORS.textPrimary,
   },
-  rotationValueContainer: {
-    alignItems: 'center',
-    minWidth: 60,
-  },
-  rotationValue: {
-    fontSize: 24,
+  rotationInput: {
+    width: 60,
+    textAlign: 'center',
+    fontSize: 18,
     fontWeight: '700',
     color: COLORS.primary,
-  },
-  rotationUnit: {
-    fontSize: 11,
-    color: COLORS.textSecondary,
-    marginTop: -2,
-  },
-  rotationPresets: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 16,
-    flexWrap: 'wrap',
-  },
-  presetButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: '#F3F4F6',
     borderWidth: 1,
     borderColor: '#E5E7EB',
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+    backgroundColor: '#F9FAFB',
   },
-  presetButtonActive: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
-  },
-  presetButtonText: {
+  rotationUnit: {
     fontSize: 13,
-    fontWeight: '500',
     color: COLORS.textSecondary,
+    marginLeft: 4,
   },
-  presetButtonTextActive: {
-    color: '#FFFFFF',
+  rotationHint: {
+    fontSize: 11,
+    color: '#9CA3AF',
+    marginTop: 8,
   },
-  saveSettingsButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
+  saveSettingsButtonSmall: {
     backgroundColor: COLORS.primary,
-    paddingVertical: 12,
-    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
   },
-  saveSettingsText: {
-    fontSize: 14,
+  saveSettingsTextSmall: {
+    fontSize: 13,
     fontWeight: '600',
     color: '#FFFFFF',
   },
@@ -1983,32 +1940,27 @@ const styles = StyleSheet.create({
   cropModalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 16,
     paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
   },
   cropModalTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '700',
     color: '#1E3A5F',
   },
-  cropModalContent: {
-    flex: 1,
-    maxHeight: '80%',
-  },
-  cropMainSection: {
-    marginBottom: 16,
-  },
-  cropHeaderRow: {
-    marginBottom: 12,
-  },
-  cropInstructions: {
+  cropModalSubtitle: {
     fontSize: 13,
     color: COLORS.textSecondary,
-    marginBottom: 10,
-    lineHeight: 18,
+    marginTop: 4,
+  },
+  cropModalClose: {
+    padding: 4,
+  },
+  cropModalContent: {
+    flex: 1,
   },
   cropImageWrapper: {
     backgroundColor: '#1a1a1a',
@@ -2016,6 +1968,7 @@ const styles = StyleSheet.create({
     padding: 16,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 16,
   },
   cropDimensionInfo: {
     flexDirection: 'row',
@@ -2114,52 +2067,19 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 20,
   },
-  cropQuickActions: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 12,
-  },
-  quickActionButton: {
-    backgroundColor: '#EFF6FF',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#BFDBFE',
-  },
-  quickActionText: {
-    color: '#1D4ED8',
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  quickActionButtonClear: {
-    backgroundColor: '#FEF2F2',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#FECACA',
-  },
-  quickActionTextClear: {
-    color: '#DC2626',
-    fontSize: 13,
-    fontWeight: '500',
-  },
   livePreviewSection: {
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
-  },
-  livePreviewLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.textPrimary,
-    marginBottom: 10,
-  },
-  livePreviewCard: {
     backgroundColor: '#F9FAFB',
     borderRadius: 12,
     padding: 16,
+  },
+  livePreviewLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  livePreviewCard: {
     alignItems: 'center',
   },
   livePreviewAdContainer: {
@@ -2176,7 +2096,7 @@ const styles = StyleSheet.create({
   },
   livePreviewCroppedImage: {
     width: '100%',
-    height: 120,
+    height: 130, // Match AdBanner height
     overflow: 'hidden',
     position: 'relative',
     backgroundColor: '#E5E7EB',
@@ -2196,7 +2116,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   livePreviewPlaceholder: {
-    height: 120,
+    height: 130,
     backgroundColor: '#E5E7EB',
     justifyContent: 'center',
     alignItems: 'center',
@@ -2223,7 +2143,7 @@ const styles = StyleSheet.create({
   },
   livePreviewHint: {
     marginTop: 10,
-    fontSize: 12,
+    fontSize: 11,
     color: COLORS.textSecondary,
   },
   cropControlLabel: {
@@ -2254,6 +2174,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '500',
     color: COLORS.textPrimary,
+  },
+  cropModalActionsContainer: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
   },
   cropModalActions: {
     flexDirection: 'row',
