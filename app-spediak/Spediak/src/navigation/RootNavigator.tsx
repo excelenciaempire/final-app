@@ -242,7 +242,6 @@ const SidebarContent: React.FC<SidebarContentProps> = ({ onNavigate, activeScree
         />
         <Text style={styles.userName}>{user?.fullName || 'User Name'}</Text>
         <Text style={styles.userEmail}>{user?.primaryEmailAddress?.emailAddress || 'Email Address'}</Text>
-        <Text style={styles.userState}>{`State: ${sidebarUserStateDisplay}`}</Text>
       </View>
       
       {/* Desktop State Selector */}

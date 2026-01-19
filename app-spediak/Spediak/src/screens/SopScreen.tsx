@@ -571,6 +571,19 @@ const styles = StyleSheet.create({
     height: 48,
     width: '100%',
     color: COLORS.textPrimary,
+    // @ts-ignore - Web-specific CSS for cross-browser compatibility (Chrome, Safari, Firefox)
+    ...(Platform.OS === 'web' && {
+      WebkitAppearance: 'none',
+      MozAppearance: 'none',
+      appearance: 'none',
+      backgroundColor: 'transparent',
+      border: 'none',
+      outline: 'none',
+      fontSize: 15,
+      paddingLeft: 14,
+      paddingRight: 36,
+      cursor: 'pointer',
+    }),
   },
   pickerIcon: {
     position: 'absolute',

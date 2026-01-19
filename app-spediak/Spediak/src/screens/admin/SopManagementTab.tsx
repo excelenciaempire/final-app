@@ -1084,6 +1084,20 @@ const styles = StyleSheet.create({
   picker: {
     height: 48,
     color: '#1F2937',
+    // @ts-ignore - Cross-browser compatible styles (Chrome, Safari, Firefox)
+    ...(Platform.OS === 'web' && {
+      WebkitAppearance: 'none',
+      MozAppearance: 'none',
+      appearance: 'none',
+      backgroundColor: 'transparent',
+      border: 'none',
+      outline: 'none',
+      width: '100%',
+      fontSize: 15,
+      paddingLeft: 14,
+      paddingRight: 36,
+      cursor: 'pointer',
+    }),
   },
   pickerIcon: {
     position: 'absolute',

@@ -350,15 +350,19 @@ const styles = StyleSheet.create({
         width: '100%',
         height: '100%',
         color: '#333', // Text color
-        // Note: Direct styling of Picker appearance (like removing underline) is limited
-        // and platform-dependent. Styling the container is the primary approach.
-        // On web, some default browser styles might still apply.
+        // Cross-browser compatible styles (Chrome, Safari, Firefox)
         ...(Platform.OS === 'web' && {
-             borderWidth: 0, // Try removing web border
-             backgroundColor: 'transparent', // Try making background transparent
-             appearance: 'none', // Try hiding default dropdown arrow on web
-             paddingLeft: 15, // Indent text like TextInput
+             WebkitAppearance: 'none',
+             MozAppearance: 'none',
+             appearance: 'none',
+             borderWidth: 0,
+             border: 'none',
+             outline: 'none',
+             backgroundColor: 'transparent',
+             paddingLeft: 15,
+             paddingRight: 30,
              fontSize: 16,
+             cursor: 'pointer',
         })
     },
     pickerPlaceholder: {

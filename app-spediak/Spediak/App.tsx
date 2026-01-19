@@ -9,6 +9,7 @@ import AuthNavigator from "./src/navigation/AuthNavigator";
 import RootNavigator from "./src/navigation/RootNavigator";
 import { GlobalStateProvider } from "./src/context/GlobalStateContext";
 import { SubscriptionProvider } from "./src/context/SubscriptionContext";
+import { AdRotationProvider } from "./src/context/AdRotationContext";
 
 // Version: 2.1.0 - Production Ready
 // Error #130 resolved: Fixed imports in newInspection.tsx
@@ -119,17 +120,19 @@ export default function App() {
         >
           <GlobalStateProvider>
             <SubscriptionProvider>
-              <SignedIn>
-                <NavigationContainer>
-                  <RootNavigator />
-                </NavigationContainer>
-              </SignedIn>
-              <SignedOut>
-                <NavigationContainer>
-                  <AuthNavigator />
-                </NavigationContainer>
-              </SignedOut>
-              <StatusBar style="auto" />
+              <AdRotationProvider>
+                <SignedIn>
+                  <NavigationContainer>
+                    <RootNavigator />
+                  </NavigationContainer>
+                </SignedIn>
+                <SignedOut>
+                  <NavigationContainer>
+                    <AuthNavigator />
+                  </NavigationContainer>
+                </SignedOut>
+                <StatusBar style="auto" />
+              </AdRotationProvider>
             </SubscriptionProvider>
           </GlobalStateProvider>
         </ClerkProvider>

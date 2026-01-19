@@ -97,6 +97,7 @@ const AdManagerTab: React.FC = () => {
   
   // Drag & Drop state (web only)
   const [isDragging, setIsDragging] = useState(false);
+  const uploadDropZoneRef = useRef<View>(null);
 
   // Edit ad state
   const [editingAd, setEditingAd] = useState<Ad | null>(null);
@@ -609,49 +610,63 @@ const AdManagerTab: React.FC = () => {
     setCropArea({ x: 0, y: 0, width: 0, height: 0 });
   };
 
-  // Drag & Drop handlers (web only)
-  const handleDragOver = (event: any) => {
-    if (Platform.OS !== 'web') return;
-    event.preventDefault();
-    event.stopPropagation();
-    setIsDragging(true);
-  };
+  // Attach native DOM event listeners for drag and drop on web
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !uploadDropZoneRef.current) return;
 
-  const handleDragLeave = (event: any) => {
-    if (Platform.OS !== 'web') return;
-    event.preventDefault();
-    event.stopPropagation();
-    setIsDragging(false);
-  };
+    const node = uploadDropZoneRef.current as unknown as HTMLElement;
+    if (!node || !node.addEventListener) return;
 
-  const handleDrop = (event: any) => {
-    if (Platform.OS !== 'web') return;
-    event.preventDefault();
-    event.stopPropagation();
-    setIsDragging(false);
+    const handleDragOver = (event: DragEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setIsDragging(true);
+    };
 
-    const files = event.dataTransfer?.files;
-    if (files && files.length > 0) {
-      const file = files[0];
-      if (file.type.startsWith('image/')) {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          const dataUrl = reader.result as string;
-          const base64 = dataUrl.split(',')[1];
-          
-          // Get image dimensions
-          const img = new (window as any).Image();
-          img.onload = () => {
-            handleImageData(base64, img.width, img.height);
+    const handleDragLeave = (event: DragEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setIsDragging(false);
+    };
+
+    const handleDropEvent = (event: DragEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setIsDragging(false);
+
+      const files = event.dataTransfer?.files;
+      if (files && files.length > 0) {
+        const file = files[0];
+        if (file.type.startsWith('image/')) {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const dataUrl = reader.result as string;
+            const base64 = dataUrl.split(',')[1];
+            
+            // Get image dimensions
+            const img = new (window as any).Image();
+            img.onload = () => {
+              handleImageData(base64, img.width, img.height);
+            };
+            img.src = dataUrl;
           };
-          img.src = dataUrl;
-        };
-        reader.readAsDataURL(file);
-      } else {
-        Alert.alert('Invalid File', 'Please drop an image file (JPG, PNG, etc.)');
+          reader.readAsDataURL(file);
+        } else {
+          Alert.alert('Invalid File', 'Please drop an image file (JPG, PNG, etc.)');
+        }
       }
-    }
-  };
+    };
+
+    node.addEventListener('dragover', handleDragOver);
+    node.addEventListener('dragleave', handleDragLeave);
+    node.addEventListener('drop', handleDropEvent);
+
+    return () => {
+      node.removeEventListener('dragover', handleDragOver);
+      node.removeEventListener('dragleave', handleDragLeave);
+      node.removeEventListener('drop', handleDropEvent);
+    };
+  }, [showCropModal, previewUrl, newAd.imageUrl]);
 
   const uploadCroppedImage = async () => {
     if (!originalImage) return;
@@ -1130,10 +1145,7 @@ const AdManagerTab: React.FC = () => {
             </View>
           ) : Platform.OS === 'web' ? (
             <View
-              // @ts-ignore - web-only drag/drop events  
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
+              ref={uploadDropZoneRef}
               style={[styles.uploadButton, isDragging && styles.uploadButtonDragging]}
             >
               <TouchableOpacity onPress={pickImage} style={styles.uploadButtonInner}>

@@ -884,6 +884,20 @@ const styles = StyleSheet.create({
         flex: 1,
         height: 48,
         color: COLORS.textPrimary,
+        // @ts-ignore - Cross-browser compatible styles (Chrome, Safari, Firefox)
+        ...(Platform.OS === 'web' && {
+            WebkitAppearance: 'none',
+            MozAppearance: 'none',
+            appearance: 'none',
+            backgroundColor: 'transparent',
+            border: 'none',
+            outline: 'none',
+            width: '100%',
+            fontSize: 15,
+            paddingLeft: 14,
+            paddingRight: 36,
+            cursor: 'pointer',
+        }),
     },
     fieldLabel: {
         fontSize: 14,
@@ -911,6 +925,20 @@ const styles = StyleSheet.create({
     secondaryStatePicker: {
         height: 50,
         color: COLORS.textPrimary,
+        // @ts-ignore - Cross-browser compatible styles (Chrome, Safari, Firefox)
+        ...(Platform.OS === 'web' && {
+            WebkitAppearance: 'none',
+            MozAppearance: 'none',
+            appearance: 'none',
+            backgroundColor: 'transparent',
+            border: 'none',
+            outline: 'none',
+            width: '100%',
+            fontSize: 15,
+            paddingLeft: 14,
+            paddingRight: 36,
+            cursor: 'pointer',
+        }),
     },
     organizationsContainer: {
         flexDirection: 'row',

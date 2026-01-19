@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity, ActivityIndicator, Linking, Platform } from 'react-native';
 import axios from 'axios';
 import { useAuth } from '@clerk/clerk-expo';
 import { BASE_URL } from '../config/api';
 import { COLORS } from '../styles/colors';
 import { useSubscription } from '../context/SubscriptionContext';
+import { useAdRotation } from '../context/AdRotationContext';
 import { Megaphone, ExternalLink } from 'lucide-react-native';
 
 interface AdData {
@@ -15,78 +16,21 @@ interface AdData {
   image_url?: string;
 }
 
-interface AdSettings {
-  rotation_interval: number;
-}
-
 const AdBanner: React.FC = () => {
   const { getToken } = useAuth();
   const { subscription, adminPreviewMode } = useSubscription();
-  const [ads, setAds] = useState<AdData[]>([]);
-  const [currentAdIndex, setCurrentAdIndex] = useState(0);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(false);
-  const [rotationInterval, setRotationInterval] = useState(10); // Default 10 seconds
+  const { ads, currentAdIndex, isLoading, error, fetchAds } = useAdRotation();
 
   // Show ads for free tier users OR when admin preview mode is enabled
   const isAdmin = subscription?.is_admin;
   const shouldShowAds = (subscription?.plan_type === 'free' && !isAdmin) || adminPreviewMode;
 
-  const fetchAds = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      setError(false);
-      const token = await getToken();
-      
-      if (!token) {
-        setIsLoading(false);
-        return;
-      }
-
-      // Fetch ads and settings in parallel
-      const [adsResponse, settingsResponse] = await Promise.all([
-        axios.get(`${BASE_URL}/api/ads/active`, {
-          headers: { Authorization: `Bearer ${token}` },
-          timeout: 8000
-        }),
-        axios.get(`${BASE_URL}/api/ads/settings`, {
-          headers: { Authorization: `Bearer ${token}` },
-          timeout: 8000
-        }).catch(() => ({ data: { settings: { rotation_interval: 10 } } }))
-      ]);
-
-      if (adsResponse.data.ads && adsResponse.data.ads.length > 0) {
-        setAds(adsResponse.data.ads);
-      }
-
-      if (settingsResponse.data.settings?.rotation_interval) {
-        setRotationInterval(settingsResponse.data.settings.rotation_interval);
-      }
-    } catch (err: any) {
-      console.log('No active ads or error fetching:', err.message);
-      setError(true);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []); // Remove getToken from deps to prevent infinite loops
-
+  // Trigger fetch when component mounts (only fetches once due to context logic)
   useEffect(() => {
     if (shouldShowAds) {
       fetchAds();
-    } else {
-      setIsLoading(false);
     }
-  }, [shouldShowAds]); // Remove fetchAds from deps
-
-  // Rotate ads based on settings interval
-  useEffect(() => {
-    if (ads.length > 1) {
-      const interval = setInterval(() => {
-        setCurrentAdIndex((prevIndex) => (prevIndex + 1) % ads.length);
-      }, rotationInterval * 1000);
-      return () => clearInterval(interval);
-    }
-  }, [ads.length, rotationInterval]);
+  }, [shouldShowAds, fetchAds]);
 
   const handleAdClick = async (ad: AdData) => {
     try {

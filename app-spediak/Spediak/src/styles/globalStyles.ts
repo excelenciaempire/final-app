@@ -90,6 +90,7 @@ export const globalStyles = StyleSheet.create({
   },
   
   // ============ PICKERS / DROPDOWNS ============
+  // Cross-browser compatible styles (Chrome, Safari, Firefox, mobile)
   pickerContainer: {
     marginBottom: 16,
   },
@@ -109,12 +110,31 @@ export const globalStyles = StyleSheet.create({
     overflow: 'hidden',
     minHeight: 48,
     justifyContent: 'center',
+    // @ts-ignore - Web-specific CSS for Safari/Chrome/Firefox compatibility
+    ...(Platform.OS === 'web' && {
+      WebkitAppearance: 'none',
+      MozAppearance: 'none',
+      appearance: 'none',
+    }),
   },
   
   picker: {
     height: 48,
     color: COLORS.textPrimary,
     paddingHorizontal: 10,
+    // @ts-ignore - Web-specific CSS for cross-browser compatibility
+    ...(Platform.OS === 'web' && {
+      WebkitAppearance: 'none',
+      MozAppearance: 'none',
+      appearance: 'none',
+      backgroundColor: 'transparent',
+      border: 'none',
+      outline: 'none',
+      width: '100%',
+      fontSize: 15,
+      paddingRight: 30,
+      cursor: 'pointer',
+    }),
   },
   
   // ============ SEARCH INPUTS ============

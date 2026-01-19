@@ -944,61 +944,72 @@ export default function NewInspectionScreen() {
     }, []);
 
     const [isDragging, setIsDragging] = useState(false);
+    const dropZoneRef = useRef<View>(null);
 
-    const handleDragOver = (event: any) => {
-        if (Platform.OS !== 'web') return;
-        event.preventDefault();
-        event.stopPropagation();
-        setIsDragging(true);
-    };
+    // Attach native DOM event listeners for drag and drop on web
+    useEffect(() => {
+        if (Platform.OS !== 'web' || !dropZoneRef.current) return;
 
-    const handleDragLeave = (event: any) => {
-        if (Platform.OS !== 'web') return;
-        event.preventDefault();
-        event.stopPropagation();
-        setIsDragging(false);
-    };
+        // Get the underlying DOM node from the React Native View
+        const node = dropZoneRef.current as unknown as HTMLElement;
+        if (!node || !node.addEventListener) return;
 
-    const handleDrop = async (event: any) => {
-        if (Platform.OS !== 'web' || typeof FileReader === 'undefined') {
-            return;
-        }
-        
-        event.preventDefault();
-        event.stopPropagation();
-        setIsDragging(false);
-        console.log('File dropped!');
+        const handleDragOver = (event: DragEvent) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setIsDragging(true);
+        };
 
-        const files = event.dataTransfer?.files || event.nativeEvent?.dataTransfer?.files;
-        if (files && files.length > 0) {
-            const file = files[0];
-            console.log('Dropped file:', file.name, file.type);
+        const handleDragLeave = (event: DragEvent) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setIsDragging(false);
+        };
 
-            if (file.type.startsWith('image/')) {
-                try {
-                    const reader = new FileReader();
-                    reader.onloadend = () => {
-                        const uri = reader.result as string;
-                        const base64 = uri.split(',')[1];
-                        handleImageResult({ assets: [{ uri, base64 }] });
-                    };
-                    reader.onerror = (error) => {
-                        console.error("Error reading dropped file:", error);
-                        setError('Failed to read dropped image.');
-                        Alert.alert('Error', 'Could not read the dropped image.');
-                    };
-                    reader.readAsDataURL(file);
-                } catch (error) {
-                    handleImageError(error);
+        const handleDropEvent = async (event: DragEvent) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setIsDragging(false);
+            console.log('File dropped!');
+
+            const files = event.dataTransfer?.files;
+            if (files && files.length > 0) {
+                const file = files[0];
+                console.log('Dropped file:', file.name, file.type);
+
+                if (file.type.startsWith('image/')) {
+                    try {
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                            const uri = reader.result as string;
+                            const base64 = uri.split(',')[1];
+                            handleImageResult({ assets: [{ uri, base64 }] });
+                        };
+                        reader.onerror = (error) => {
+                            console.error("Error reading dropped file:", error);
+                            setError('Failed to read dropped image.');
+                            Alert.alert('Error', 'Could not read the dropped image.');
+                        };
+                        reader.readAsDataURL(file);
+                    } catch (error) {
+                        handleImageError(error);
+                    }
+                } else {
+                    Alert.alert('Invalid File Type', 'Please drop an image file.');
                 }
-            } else {
-                Alert.alert('Invalid File Type', 'Please drop an image file.');
             }
-            if (event.dataTransfer?.clearData) {
-                event.dataTransfer.clearData();
-            }
-        }
-    };
+        };
+
+        node.addEventListener('dragover', handleDragOver);
+        node.addEventListener('dragleave', handleDragLeave);
+        node.addEventListener('drop', handleDropEvent);
+
+        return () => {
+            node.removeEventListener('dragover', handleDragOver);
+            node.removeEventListener('dragleave', handleDragLeave);
+            node.removeEventListener('drop', handleDropEvent);
+        };
+    }, []);
 
     // --- NEW: Function to launch camera directly on WEB ---
     const launchWebCamera = () => {
@@ -1080,10 +1091,7 @@ export default function NewInspectionScreen() {
 
                 {Platform.OS === 'web' ? (
                     <View 
-                        // @ts-ignore - web-only drag/drop events
-                        onDragOver={handleDragOver} 
-                        onDragLeave={handleDragLeave}
-                        onDrop={handleDrop} 
+                        ref={dropZoneRef}
                         style={[webDropZoneStyleRN, isDragging && webDropZoneDraggingStyle]}
                     >
                         <TouchableOpacity 
