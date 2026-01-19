@@ -61,29 +61,25 @@ const LastStatementCard: React.FC = () => {
   }, []); // Only run once on mount
 
   const handleViewHistory = () => {
-    // For web (both desktop and mobile), use app navigation context if available
-    if (Platform.OS === 'web') {
-      if (navigateTo) {
-        navigateTo('InspectionHistory');
-        return;
-      }
-      // Fallback: use React Navigation if context not available
-      if (navigation && navigation.navigate) {
-        navigation.navigate('InspectionHistory');
-        return;
-      }
-      // Last resort: direct URL navigation
-      window.location.href = '/statement-history';
+    // For web desktop, use app navigation context (state-based)
+    if (Platform.OS === 'web' && isWebDesktop && navigateTo) {
+      navigateTo('InspectionHistory');
       return;
     }
     
-    // For native, use React Navigation
+    // For all other cases (mobile web, native), use React Navigation
     try {
       if (navigation && navigation.navigate) {
         navigation.navigate('InspectionHistory');
+        return;
       }
     } catch (err) {
       console.error('Error navigating to statement history:', err);
+    }
+    
+    // Last resort for web: direct URL navigation (shouldn't reach here normally)
+    if (Platform.OS === 'web') {
+      window.location.href = '/statement-history';
     }
   };
 
