@@ -1,6 +1,9 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
+import { useAuth, useUser } from '@clerk/clerk-expo';
+
+const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5000';
 
 // US States list
 export const US_STATES = [
@@ -82,33 +85,88 @@ const ORG_STORAGE_KEY = '@spediak_selected_organization';
 const STALE_FLAG_KEY = '@spediak_content_stale';
 
 export const GlobalStateProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [selectedState, setSelectedStateInternal] = useState<string | null>('NC');
-  const [selectedOrganization, setSelectedOrganizationInternal] = useState<string | null>('None');
+  const [selectedState, setSelectedStateInternal] = useState<string | null>(null);
+  const [selectedOrganization, setSelectedOrganizationInternal] = useState<string | null>(null);
   const [isContentStale, setIsContentStale] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [profileLoaded, setProfileLoaded] = useState(false);
+  
+  const { getToken, isSignedIn } = useAuth();
+  const { user } = useUser();
+
+  // Fetch user profile from backend to get their configured state/org
+  const fetchUserProfile = useCallback(async () => {
+    if (!isSignedIn) return;
+    
+    try {
+      const token = await getToken();
+      if (!token) return;
+      
+      const response = await fetch(`${API_URL}/api/user/profile`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.profile) {
+          const profileState = data.profile.primary_state;
+          const profileOrgs = data.profile.organizations || [];
+          const profileOrg = profileOrgs.length > 0 ? profileOrgs[0] : 'None';
+          
+          // Only set if we don't have a value yet (respect local changes)
+          if (!selectedState && profileState) {
+            setSelectedStateInternal(profileState);
+            // Also persist to storage
+            if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
+              localStorage.setItem(STORAGE_KEY, profileState);
+            } else if (Platform.OS !== 'web') {
+              await AsyncStorage.setItem(STORAGE_KEY, profileState);
+            }
+          }
+          
+          if (!selectedOrganization && profileOrg) {
+            setSelectedOrganizationInternal(profileOrg);
+            if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
+              localStorage.setItem(ORG_STORAGE_KEY, profileOrg);
+            } else if (Platform.OS !== 'web') {
+              await AsyncStorage.setItem(ORG_STORAGE_KEY, profileOrg);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching user profile for global state:', error);
+    } finally {
+      setProfileLoaded(true);
+    }
+  }, [isSignedIn, getToken, selectedState, selectedOrganization]);
 
   // Load persisted state and organization on mount
   useEffect(() => {
     const loadPersistedState = async () => {
       try {
+        let savedState: string | null = null;
+        let savedOrg: string | null = null;
+        
         if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
-          const savedState = localStorage.getItem(STORAGE_KEY);
-          const savedOrg = localStorage.getItem(ORG_STORAGE_KEY);
-          if (savedState) {
-            setSelectedStateInternal(savedState);
-          }
-          if (savedOrg) {
-            setSelectedOrganizationInternal(savedOrg);
-          }
+          savedState = localStorage.getItem(STORAGE_KEY);
+          savedOrg = localStorage.getItem(ORG_STORAGE_KEY);
         } else if (Platform.OS !== 'web') {
-          const savedState = await AsyncStorage.getItem(STORAGE_KEY);
-          const savedOrg = await AsyncStorage.getItem(ORG_STORAGE_KEY);
-          if (savedState) {
-            setSelectedStateInternal(savedState);
-          }
-          if (savedOrg) {
-            setSelectedOrganizationInternal(savedOrg);
-          }
+          savedState = await AsyncStorage.getItem(STORAGE_KEY);
+          savedOrg = await AsyncStorage.getItem(ORG_STORAGE_KEY);
+        }
+        
+        if (savedState) {
+          setSelectedStateInternal(savedState);
+        }
+        if (savedOrg) {
+          setSelectedOrganizationInternal(savedOrg);
+        }
+        
+        // Also try to use Clerk metadata as fallback
+        if (!savedState && user?.unsafeMetadata?.inspectionState) {
+          const clerkState = user.unsafeMetadata.inspectionState as string;
+          setSelectedStateInternal(clerkState);
         }
       } catch (error) {
         console.error('Error loading persisted state:', error);
@@ -118,7 +176,14 @@ export const GlobalStateProvider: React.FC<{ children: ReactNode }> = ({ childre
     };
 
     loadPersistedState();
-  }, []);
+  }, [user]);
+
+  // Fetch profile from backend when signed in (to sync with profile settings)
+  useEffect(() => {
+    if (isSignedIn && isLoaded && !profileLoaded) {
+      fetchUserProfile();
+    }
+  }, [isSignedIn, isLoaded, profileLoaded, fetchUserProfile]);
 
   const setSelectedState = async (state: string) => {
     // If state is changing and we have existing content, mark as stale
@@ -210,9 +275,9 @@ export const useGlobalState = () => {
     // Return default values instead of throwing to prevent crashes during initialization
     console.warn('useGlobalState called outside of GlobalStateProvider - using defaults');
     return {
-      selectedState: 'NC',
+      selectedState: null,
       setSelectedState: () => {},
-      selectedOrganization: 'None',
+      selectedOrganization: null,
       setSelectedOrganization: () => {},
       isContentStale: false,
       markContentAsStale: () => {},

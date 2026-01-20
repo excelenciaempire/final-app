@@ -551,17 +551,37 @@ export default function InspectionHistoryScreen() {
             value={searchQuery}
             onChangeText={setSearchQuery}
             placeholderTextColor="#6c757d"
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="search"
           />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity 
+              onPress={() => setSearchQuery('')}
+              style={styles.clearSearchBtn}
+            >
+              <X size={18} color="#6c757d" />
+            </TouchableOpacity>
+          )}
         </View>
+
+        {/* Search results count for mobile */}
+        {searchQuery.length > 0 && !isLoading && (
+          <Text style={styles.searchResultsCount}>
+            {filteredInspections.length} result{filteredInspections.length !== 1 ? 's' : ''} found
+          </Text>
+        )}
 
         {/* List */}
         {isLoading && <ActivityIndicator size="large" color={COLORS.primary} style={styles.loader} />}
         {error && <Text style={styles.errorText}>{error}</Text>}
         {!isLoading && !error && (
           filteredInspections.length === 0 ? (
-            <Text style={styles.emptyText}>
-              {searchQuery ? 'No matching statements found.' : 'No statement history found.'}
-            </Text>
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>
+                {searchQuery ? 'No matching statements found.' : 'No statement history found.'}
+              </Text>
+            </View>
           ) : (
             <FlatList
               data={filteredInspections}
@@ -580,6 +600,9 @@ export default function InspectionHistoryScreen() {
               ListFooterComponent={renderFooter}
               onEndReached={handleLoadMore}
               onEndReachedThreshold={0.5}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={true}
+              removeClippedSubviews={Platform.OS === 'android'}
             />
           )
         )}
@@ -651,13 +674,29 @@ const styles = StyleSheet.create({
     height: 48,
     fontSize: 15,
     color: COLORS.textPrimary,
+    // @ts-ignore - Web specific
+    ...(Platform.OS === 'web' && {
+      outline: 'none',
+    }),
+  },
+  clearSearchBtn: {
+    padding: 8,
+    marginLeft: 4,
+  },
+  searchResultsCount: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    fontStyle: 'italic',
   },
   list: {
     flex: 1,
   },
   listContent: {
     paddingHorizontal: 16,
-    paddingBottom: 20,
+    paddingBottom: Platform.OS === 'web' ? 40 : 100, // Extra padding for mobile bottom nav
+    flexGrow: 1,
   },
   loader: {
     marginTop: 50,
@@ -668,9 +707,14 @@ const styles = StyleSheet.create({
     marginTop: 20,
     marginHorizontal: 20,
   },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingBottom: 100,
+  },
   emptyText: {
     textAlign: 'center',
-    marginTop: 50,
     color: '#6c757d',
     fontSize: 16,
   },
