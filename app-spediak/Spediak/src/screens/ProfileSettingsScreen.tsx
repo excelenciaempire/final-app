@@ -7,6 +7,7 @@ import { COLORS } from '../styles/colors';
 import { Check, Edit2, User, Phone, Building, MapPin, Award, Mail, ChevronDown } from 'lucide-react-native';
 import StatementUsageCard from '../components/StatementUsageCard';
 import AdBanner from '../components/AdBanner';
+import { useGlobalState } from '../context/GlobalStateContext';
 
 // Define the states available for selection
 const availableStates = [
@@ -77,6 +78,7 @@ const ProfileSettingsScreen: React.FC = () => {
     const { isLoaded, isSignedIn, user } = useUser();
     const { signOut, getToken } = useAuth();
     const { width } = useWindowDimensions();
+    const { setSelectedState: setGlobalState, setSelectedOrganization: setGlobalOrganization } = useGlobalState();
 
     // State for editable fields
     const [firstName, setFirstName] = useState<string>('');
@@ -235,6 +237,14 @@ const ProfileSettingsScreen: React.FC = () => {
             if (!backendResponse.ok) {
                 const errorData = await backendResponse.json();
                 throw new Error(errorData.message || 'Failed to save profile to backend');
+            }
+
+            // Sync with global state so sidebar and other screens update immediately
+            if (selectedState) {
+                setGlobalState(selectedState);
+            }
+            if (organizations.length > 0) {
+                setGlobalOrganization(organizations[0]);
             }
 
             setSuccessMessage('Profile updated successfully!');

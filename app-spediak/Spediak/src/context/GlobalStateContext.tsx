@@ -113,8 +113,8 @@ export const GlobalStateProvider: React.FC<{ children: ReactNode }> = ({ childre
           const profileOrgs = data.profile.organizations || [];
           const profileOrg = profileOrgs.length > 0 ? profileOrgs[0] : 'None';
           
-          // Only set if we don't have a value yet (respect local changes)
-          if (!selectedState && profileState) {
+          // Backend profile is the source of truth - always update to match
+          if (profileState) {
             setSelectedStateInternal(profileState);
             // Also persist to storage
             if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
@@ -124,7 +124,7 @@ export const GlobalStateProvider: React.FC<{ children: ReactNode }> = ({ childre
             }
           }
           
-          if (!selectedOrganization && profileOrg) {
+          if (profileOrg) {
             setSelectedOrganizationInternal(profileOrg);
             if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
               localStorage.setItem(ORG_STORAGE_KEY, profileOrg);
@@ -139,7 +139,7 @@ export const GlobalStateProvider: React.FC<{ children: ReactNode }> = ({ childre
     } finally {
       setProfileLoaded(true);
     }
-  }, [isSignedIn, getToken, selectedState, selectedOrganization]);
+  }, [isSignedIn, getToken]);
 
   // Load persisted state and organization on mount
   useEffect(() => {
