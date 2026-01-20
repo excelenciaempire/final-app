@@ -488,6 +488,7 @@ const syncUserEmail = async (req, res) => {
 /**
  * Change user email using Clerk Admin API (bypasses 2FA requirement)
  * This is the easiest way for users to change their email
+ * IMPORTANT: This completely replaces the old email - user CANNOT login with old email anymore
  */
 const changeEmail = async (req, res) => {
   try {
@@ -512,50 +513,89 @@ const changeEmail = async (req, res) => {
 
     console.log(`[UserController] Changing email for user ${clerkId} to ${trimmedEmail}`);
 
-    // Get the current user from Clerk to get old email
+    // Get the current user from Clerk to get all existing emails
     const clerkUser = await clerkClient.users.getUser(clerkId);
-    const oldEmail = clerkUser.emailAddresses?.[0]?.emailAddress;
+    const existingEmails = clerkUser.emailAddresses || [];
+    const oldPrimaryEmail = clerkUser.primaryEmailAddress?.emailAddress;
 
-    // Check if the email is the same
-    if (oldEmail === trimmedEmail) {
+    // Check if the email is the same as current primary
+    if (oldPrimaryEmail?.toLowerCase() === trimmedEmail) {
       return res.status(400).json({ message: 'New email is the same as the current email' });
     }
 
-    // Create new email address in Clerk using Admin API
-    const newEmailAddress = await clerkClient.emailAddresses.createEmailAddress({
-      userId: clerkId,
-      emailAddress: trimmedEmail,
-      verified: true, // Mark as verified since we're using admin API
-      primary: true // Set as primary immediately
+    // Check if new email already exists for this user (just needs to be set as primary)
+    const existingNewEmail = existingEmails.find(e => e.emailAddress.toLowerCase() === trimmedEmail);
+    
+    let newEmailAddressId;
+    
+    if (existingNewEmail) {
+      // Email already exists on this account, just set it as primary
+      newEmailAddressId = existingNewEmail.id;
+      console.log(`[UserController] Email ${trimmedEmail} already exists on account, setting as primary`);
+    } else {
+      // Create new email address in Clerk using Admin API
+      const newEmailAddress = await clerkClient.emailAddresses.createEmailAddress({
+        userId: clerkId,
+        emailAddress: trimmedEmail,
+        verified: true, // Mark as verified since we're using admin API
+        primary: false // Will set as primary after creation
+      });
+      newEmailAddressId = newEmailAddress.id;
+      console.log(`[UserController] New email address created in Clerk: ${newEmailAddressId}`);
+    }
+
+    // Set the new email as primary
+    await clerkClient.users.updateUser(clerkId, {
+      primaryEmailAddressId: newEmailAddressId
     });
+    console.log(`[UserController] Set ${trimmedEmail} as primary email`);
 
-    console.log(`[UserController] New email address created in Clerk: ${newEmailAddress.id}`);
-
-    // Update in our database
+    // Update in our database FIRST (before deleting old emails from Clerk)
     await pool.query('UPDATE users SET email = $1, updated_at = NOW() WHERE clerk_id = $2', [trimmedEmail, clerkId]);
 
     // Update admin_user_overrides if exists
     await pool.query('UPDATE admin_user_overrides SET user_email = $1 WHERE user_clerk_id = $2', [trimmedEmail, clerkId]);
 
-    // Remove old email addresses (optional - keep only the new primary)
-    try {
-      for (const emailAddr of clerkUser.emailAddresses) {
-        if (emailAddr.id !== newEmailAddress.id) {
+    // CRITICAL: Delete ALL old email addresses from Clerk so user CANNOT login with them
+    const deletedEmails = [];
+    const failedDeletes = [];
+    
+    // Re-fetch user to get updated email list
+    const updatedClerkUser = await clerkClient.users.getUser(clerkId);
+    
+    for (const emailAddr of updatedClerkUser.emailAddresses) {
+      if (emailAddr.id !== newEmailAddressId) {
+        try {
           await clerkClient.emailAddresses.deleteEmailAddress(emailAddr.id);
-          console.log(`[UserController] Removed old email: ${emailAddr.emailAddress}`);
+          deletedEmails.push(emailAddr.emailAddress);
+          console.log(`[UserController] ✓ Deleted old email from Clerk: ${emailAddr.emailAddress}`);
+        } catch (deleteErr) {
+          failedDeletes.push({ email: emailAddr.emailAddress, error: deleteErr.message });
+          console.error(`[UserController] ✗ Failed to delete email ${emailAddr.emailAddress}:`, deleteErr.message);
         }
       }
-    } catch (deleteErr) {
-      console.warn('[UserController] Could not delete old email addresses:', deleteErr.message);
-      // Continue anyway - the new email is set as primary
     }
 
-    console.log(`[UserController] Email changed successfully for user ${clerkId}`);
+    // Verify the change was successful
+    const finalUser = await clerkClient.users.getUser(clerkId);
+    const remainingEmails = finalUser.emailAddresses.map(e => e.emailAddress);
     
+    console.log(`[UserController] Email change complete for ${clerkId}`);
+    console.log(`[UserController] - New primary: ${trimmedEmail}`);
+    console.log(`[UserController] - Deleted: ${deletedEmails.join(', ') || 'none'}`);
+    console.log(`[UserController] - Remaining emails in Clerk: ${remainingEmails.join(', ')}`);
+    
+    if (failedDeletes.length > 0) {
+      console.warn(`[UserController] ⚠ Some old emails could not be deleted:`, failedDeletes);
+    }
+
     res.json({ 
-      message: 'Email changed successfully', 
+      message: 'Email changed successfully. You can no longer login with your old email.', 
       newEmail: trimmedEmail,
-      oldEmail: oldEmail
+      oldEmail: oldPrimaryEmail,
+      deletedEmails: deletedEmails,
+      remainingEmails: remainingEmails,
+      warning: failedDeletes.length > 0 ? 'Some old emails could not be removed' : null
     });
 
   } catch (error) {
@@ -574,12 +614,63 @@ const changeEmail = async (req, res) => {
   }
 };
 
+/**
+ * Clean up old email addresses for a user (Admin/Support tool)
+ * Removes all email addresses except the current primary
+ */
+const cleanupOldEmails = async (req, res) => {
+  try {
+    const clerkId = req.auth.userId;
+
+    if (!clerkId) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    console.log(`[UserController] Cleaning up old emails for user ${clerkId}`);
+
+    const clerkUser = await clerkClient.users.getUser(clerkId);
+    const primaryEmailId = clerkUser.primaryEmailAddressId;
+    const primaryEmail = clerkUser.primaryEmailAddress?.emailAddress;
+
+    const deletedEmails = [];
+    const failedDeletes = [];
+
+    for (const emailAddr of clerkUser.emailAddresses) {
+      if (emailAddr.id !== primaryEmailId) {
+        try {
+          await clerkClient.emailAddresses.deleteEmailAddress(emailAddr.id);
+          deletedEmails.push(emailAddr.emailAddress);
+          console.log(`[UserController] ✓ Deleted old email: ${emailAddr.emailAddress}`);
+        } catch (deleteErr) {
+          failedDeletes.push({ email: emailAddr.emailAddress, error: deleteErr.message });
+          console.error(`[UserController] ✗ Failed to delete: ${emailAddr.emailAddress}`, deleteErr.message);
+        }
+      }
+    }
+
+    // Update database to ensure it matches Clerk primary
+    await pool.query('UPDATE users SET email = $1, updated_at = NOW() WHERE clerk_id = $2', [primaryEmail, clerkId]);
+
+    res.json({
+      message: deletedEmails.length > 0 ? 'Old emails cleaned up successfully' : 'No old emails to clean up',
+      currentEmail: primaryEmail,
+      deletedEmails: deletedEmails,
+      failedDeletes: failedDeletes.length > 0 ? failedDeletes : undefined
+    });
+
+  } catch (error) {
+    console.error('[UserController] Error cleaning up emails:', error);
+    res.status(500).json({ message: 'Failed to cleanup emails', error: error.message });
+  }
+};
+
 module.exports = {
   getUserProfile,
   updateProfile,
   getSubscriptionStatus,
   incrementStatementUsage,
   syncUserEmail,
-  changeEmail
+  changeEmail,
+  cleanupOldEmails
 };
 

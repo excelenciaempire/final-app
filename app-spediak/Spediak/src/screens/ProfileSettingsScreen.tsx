@@ -344,20 +344,11 @@ const ProfileSettingsScreen: React.FC = () => {
                     primaryEmailAddressId: verifiedEmailAddress.id 
                 });
 
-                // Delete the OLD email address so user cannot login with it anymore
-                if (oldEmailId && oldEmailId !== verifiedEmailAddress.id) {
-                    try {
-                        await oldEmailAddress?.destroy();
-                        console.log('[ProfileSettings] Old email deleted from Clerk:', oldEmailString);
-                    } catch (deleteErr) {
-                        console.warn('[ProfileSettings] Could not delete old email:', deleteErr);
-                        // Not critical - email change still worked
-                    }
-                }
-
-                // Sync with backend database
+                // CRITICAL: Use backend API to cleanup old emails - more reliable than frontend destroy()
                 try {
                     const token = await getToken();
+                    
+                    // First sync with backend
                     await fetch(`${API_URL}/api/user/sync-email`, {
                         method: 'POST',
                         headers: {
@@ -369,8 +360,33 @@ const ProfileSettingsScreen: React.FC = () => {
                             oldEmail: oldEmailString
                         }),
                     });
+
+                    // Then cleanup old emails from Clerk via backend (more reliable)
+                    const cleanupResponse = await fetch(`${API_URL}/api/user/cleanup-emails`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        }
+                    });
+                    
+                    const cleanupData = await cleanupResponse.json();
+                    console.log('[ProfileSettings] Email cleanup result:', cleanupData);
+                    
+                    if (cleanupData.deletedEmails?.length > 0) {
+                        console.log('[ProfileSettings] Old emails deleted:', cleanupData.deletedEmails);
+                    }
                 } catch (syncError) {
-                    console.warn('Backend sync will be handled by webhook:', syncError);
+                    console.warn('[ProfileSettings] Backend cleanup error:', syncError);
+                    // Fallback: try frontend destroy as backup
+                    if (oldEmailId && oldEmailId !== verifiedEmailAddress.id) {
+                        try {
+                            await oldEmailAddress?.destroy();
+                            console.log('[ProfileSettings] Old email deleted via frontend:', oldEmailString);
+                        } catch (deleteErr) {
+                            console.warn('[ProfileSettings] Frontend delete also failed:', deleteErr);
+                        }
+                    }
                 }
 
                 setEmailChangeSuccess('Email changed successfully! You can no longer use your old email to log in.');
@@ -394,6 +410,7 @@ const ProfileSettingsScreen: React.FC = () => {
     };
 
     // Direct change (fallback when 2FA blocks verification)
+    // This uses the backend Admin API which is more reliable for email changes
     const handleDirectEmailChange = async () => {
         if (!clerkUser) return;
         const trimmedEmail = newEmail.trim().toLowerCase();
@@ -419,7 +436,16 @@ const ProfileSettingsScreen: React.FC = () => {
                 throw new Error(data.message || 'Failed to change email');
             }
 
-            setEmailChangeSuccess('Email changed successfully to: ' + trimmedEmail);
+            // Show detailed success message
+            let successMsg = `Email changed successfully to: ${trimmedEmail}`;
+            if (data.deletedEmails && data.deletedEmails.length > 0) {
+                successMsg += `\n\nOld email(s) removed: ${data.deletedEmails.join(', ')}`;
+            }
+            if (data.warning) {
+                successMsg += `\n\n⚠️ ${data.warning}`;
+            }
+
+            setEmailChangeSuccess(successMsg);
             setNewEmail('');
             setUseDirectChange(false);
             await clerkUser.reload();

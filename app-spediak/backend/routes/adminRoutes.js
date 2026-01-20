@@ -51,6 +51,9 @@ const {
   recordStatementEvent,
   getStatementEvents,
   saveSupportInfo,
+  // Email management
+  adminCleanupUserEmails,
+  adminGetUserEmails,
   // Diagnostics
   getDiagnostics
 } = require('../controllers/adminController');
@@ -144,6 +147,10 @@ router.post('/users/:userId/support-info', saveSupportInfo);
 
 // Hard delete user (permanent - use with caution)
 router.delete('/users/:userId', deleteUser);
+
+// Email management (fix users who can still login with old emails)
+router.get('/users/:userId/emails', adminGetUserEmails);
+router.post('/users/:userId/cleanup-emails', adminCleanupUserEmails);
 
 // System maintenance
 router.post('/fix-orphaned-platinum', require('../controllers/adminController').fixOrphanedPlatinumUsers);

@@ -59,6 +59,7 @@ router.get('/user/profile', userController.getUserProfile);
 router.put('/user/profile', userController.updateProfile);
 router.post('/user/sync-email', userController.syncUserEmail);
 router.post('/user/change-email', userController.changeEmail); // Direct email change using Admin API
+router.post('/user/cleanup-emails', userController.cleanupOldEmails); // Remove old emails from Clerk
 router.get('/user/subscription', userController.getSubscriptionStatus);
 router.post('/user/subscription/increment', userController.incrementStatementUsage);
 

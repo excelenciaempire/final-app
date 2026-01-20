@@ -2301,6 +2301,108 @@ const getDiagnostics = async (req, res) => {
   }
 };
 
+/**
+ * Admin: Cleanup old email addresses for a user
+ * Removes all email addresses except the current primary from Clerk
+ * This fixes the issue where users can still login with old emails after changing
+ */
+const adminCleanupUserEmails = async (req, res) => {
+  const { userId } = req.params;
+  const adminClerkId = req.auth?.userId;
+
+  try {
+    console.log(`[Admin] Cleaning up old emails for user ${userId}`);
+
+    // Get user from Clerk
+    const clerkUser = await clerkClient.users.getUser(userId);
+    const primaryEmailId = clerkUser.primaryEmailAddressId;
+    const primaryEmail = clerkUser.primaryEmailAddress?.emailAddress;
+
+    if (!primaryEmail) {
+      return res.status(400).json({ message: 'User has no primary email set' });
+    }
+
+    const deletedEmails = [];
+    const failedDeletes = [];
+
+    // Delete all non-primary email addresses
+    for (const emailAddr of clerkUser.emailAddresses) {
+      if (emailAddr.id !== primaryEmailId) {
+        try {
+          await clerkClient.emailAddresses.deleteEmailAddress(emailAddr.id);
+          deletedEmails.push(emailAddr.emailAddress);
+          console.log(`[Admin] ✓ Deleted old email: ${emailAddr.emailAddress}`);
+        } catch (deleteErr) {
+          failedDeletes.push({ email: emailAddr.emailAddress, error: deleteErr.message });
+          console.error(`[Admin] ✗ Failed to delete: ${emailAddr.emailAddress}`, deleteErr.message);
+        }
+      }
+    }
+
+    // Update database to ensure it matches Clerk primary
+    await pool.query('UPDATE users SET email = $1, updated_at = NOW() WHERE clerk_id = $2', [primaryEmail, userId]);
+
+    // Update admin_user_overrides if exists
+    await pool.query('UPDATE admin_user_overrides SET user_email = $1 WHERE user_clerk_id = $2', [primaryEmail, userId]);
+
+    // Log audit
+    await pool.query(`
+      INSERT INTO admin_audit_log (admin_clerk_id, action_type, action_category, target_type, target_id, target_user_id, action_details)
+      VALUES ($1, 'cleanup_emails', 'user_management', 'user', $2, $2, $3)
+    `, [adminClerkId, userId, JSON.stringify({ 
+      primaryEmail,
+      deletedEmails,
+      failedDeletes: failedDeletes.length > 0 ? failedDeletes : undefined
+    })]);
+
+    res.json({
+      message: deletedEmails.length > 0 ? 'Old emails cleaned up successfully' : 'No old emails to clean up',
+      user: userId,
+      currentEmail: primaryEmail,
+      deletedEmails: deletedEmails,
+      failedDeletes: failedDeletes.length > 0 ? failedDeletes : undefined
+    });
+
+  } catch (error) {
+    console.error('[Admin] Error cleaning up emails:', error);
+    res.status(500).json({ message: 'Failed to cleanup emails', error: error.message });
+  }
+};
+
+/**
+ * Admin: Get all email addresses for a user from Clerk
+ * Useful for diagnosing email issues
+ */
+const adminGetUserEmails = async (req, res) => {
+  const { userId } = req.params;
+
+  try {
+    const clerkUser = await clerkClient.users.getUser(userId);
+    
+    const emails = clerkUser.emailAddresses.map(e => ({
+      id: e.id,
+      email: e.emailAddress,
+      isPrimary: e.id === clerkUser.primaryEmailAddressId,
+      verified: e.verification?.status === 'verified'
+    }));
+
+    // Also get database email for comparison
+    const dbResult = await pool.query('SELECT email FROM users WHERE clerk_id = $1', [userId]);
+    const dbEmail = dbResult.rows[0]?.email;
+
+    res.json({
+      user: userId,
+      clerkEmails: emails,
+      databaseEmail: dbEmail,
+      mismatch: dbEmail && dbEmail.toLowerCase() !== clerkUser.primaryEmailAddress?.emailAddress?.toLowerCase()
+    });
+
+  } catch (error) {
+    console.error('[Admin] Error fetching user emails:', error);
+    res.status(500).json({ message: 'Failed to fetch user emails', error: error.message });
+  }
+};
+
 module.exports = {
   getAllInspections: getAllInspectionsWithUserDetails,
   getUserInspections,
@@ -2352,6 +2454,9 @@ module.exports = {
   recordStatementEvent,
   getStatementEvents,
   saveSupportInfo,
+  // Email management
+  adminCleanupUserEmails,
+  adminGetUserEmails,
   // Diagnostics
   getDiagnostics
 }; 
