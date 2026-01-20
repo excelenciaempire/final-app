@@ -203,6 +203,25 @@ export const GlobalStateProvider: React.FC<{ children: ReactNode }> = ({ childre
     } catch (error) {
       console.error('Error persisting state:', error);
     }
+
+    // Save to backend (fire and forget - don't block UI)
+    if (isSignedIn) {
+      try {
+        const token = await getToken();
+        if (token) {
+          fetch(`${API_URL}/api/user/profile`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ primaryState: state })
+          }).catch(err => console.error('Error saving state to backend:', err));
+        }
+      } catch (error) {
+        console.error('Error getting token for state save:', error);
+      }
+    }
   };
 
   const setSelectedOrganization = async (org: string) => {
