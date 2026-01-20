@@ -69,6 +69,8 @@ router.get('/sop/documents', sopController.getSopDocuments);
 router.get('/sop/organizations', sopController.getOrganizations);
 router.get('/sop/text-context', sopController.getSopTextForContext);
 router.get('/sop/extraction-status', sopController.getExtractionStatus);
+router.get('/sop/state-with-default', sopController.getStateSopWithDefault);
+router.get('/sop/default-settings', sopController.getDefaultSopSettings);
 
 // Ad Routes
 router.get('/ads/active', adController.getActiveAds);

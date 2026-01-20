@@ -737,6 +737,7 @@ const retryPdfExtraction = async (req, res) => {
 /**
  * Get SOP text content for AI context (used by generate-statement endpoint)
  * Returns the extracted text from SOPs matching user's state and organization
+ * Now includes default SOP if the state is not excluded
  */
 const getSopTextForContext = async (req, res) => {
   try {
@@ -747,10 +748,11 @@ const getSopTextForContext = async (req, res) => {
     }
     
     let sopTexts = [];
+    let documentIds = new Set(); // Track document IDs to avoid duplicates
     
-    // Get state SOP text
+    // 1. Get manually assigned state SOP text
     const stateResult = await pool.query(`
-      SELECT sd.document_name, sd.extracted_text, sd.extraction_status
+      SELECT sd.id, sd.document_name, sd.extracted_text, sd.extraction_status
       FROM sop_assignments sa
       JOIN sop_documents sd ON sa.sop_document_id = sd.id
       WHERE sa.assignment_type = 'state' AND sa.assignment_value = $1
@@ -758,6 +760,7 @@ const getSopTextForContext = async (req, res) => {
     `, [state]);
     
     if (stateResult.rows.length > 0 && stateResult.rows[0].extracted_text) {
+      documentIds.add(stateResult.rows[0].id);
       sopTexts.push({
         type: 'state',
         name: stateResult.rows[0].document_name,
@@ -765,10 +768,35 @@ const getSopTextForContext = async (req, res) => {
       });
     }
     
-    // Get organization SOP text if provided
+    // 2. Get default SOP text if state is not excluded
+    const defaultResult = await pool.query(`
+      SELECT sd.id, sd.document_name, sd.extracted_text, dss.excluded_states
+      FROM default_sop_settings dss
+      JOIN sop_documents sd ON dss.default_document_id = sd.id
+      WHERE dss.default_document_id IS NOT NULL
+      AND sd.extracted_text IS NOT NULL
+      LIMIT 1
+    `);
+    
+    if (defaultResult.rows.length > 0) {
+      const defaultDoc = defaultResult.rows[0];
+      const excludedStates = defaultDoc.excluded_states || [];
+      
+      // Add default SOP if state is not excluded and not already included
+      if (!excludedStates.includes(state) && !documentIds.has(defaultDoc.id)) {
+        documentIds.add(defaultDoc.id);
+        sopTexts.push({
+          type: 'default',
+          name: defaultDoc.document_name,
+          text: defaultDoc.extracted_text
+        });
+      }
+    }
+    
+    // 3. Get organization SOP text if provided
     if (organization && organization !== 'None') {
       const orgResult = await pool.query(`
-        SELECT sd.document_name, sd.extracted_text, sd.extraction_status
+        SELECT sd.id, sd.document_name, sd.extracted_text, sd.extraction_status
         FROM sop_assignments sa
         JOIN sop_documents sd ON sa.sop_document_id = sd.id
         WHERE sa.assignment_type = 'organization' AND sa.assignment_value = $1
@@ -776,11 +804,15 @@ const getSopTextForContext = async (req, res) => {
       `, [organization]);
       
       if (orgResult.rows.length > 0 && orgResult.rows[0].extracted_text) {
-        sopTexts.push({
-          type: 'organization',
-          name: orgResult.rows[0].document_name,
-          text: orgResult.rows[0].extracted_text
-        });
+        // Only add if not already included
+        if (!documentIds.has(orgResult.rows[0].id)) {
+          documentIds.add(orgResult.rows[0].id);
+          sopTexts.push({
+            type: 'organization',
+            name: orgResult.rows[0].document_name,
+            text: orgResult.rows[0].extracted_text
+          });
+        }
       }
     }
     
@@ -1055,6 +1087,183 @@ const removeSopAssignment = async (req, res) => {
   }
 };
 
+/**
+ * Get default SOP settings
+ */
+const getDefaultSopSettings = async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT dss.*, sd.document_name
+      FROM default_sop_settings dss
+      LEFT JOIN sop_documents sd ON dss.default_document_id = sd.id
+      ORDER BY dss.id DESC
+      LIMIT 1
+    `);
+    
+    if (result.rows.length === 0) {
+      return res.json({
+        defaultDocumentId: null,
+        documentName: null,
+        excludedStates: []
+      });
+    }
+    
+    const settings = result.rows[0];
+    res.json({
+      id: settings.id,
+      defaultDocumentId: settings.default_document_id,
+      documentName: settings.document_name,
+      excludedStates: settings.excluded_states || []
+    });
+  } catch (error) {
+    console.error('Error fetching default SOP settings:', error);
+    res.status(500).json({ message: 'Failed to fetch default SOP settings', error: error.message });
+  }
+};
+
+/**
+ * Update default SOP settings
+ */
+const updateDefaultSopSettings = async (req, res) => {
+  try {
+    const { defaultDocumentId, excludedStates } = req.body;
+    const clerkId = req.auth?.userId;
+    
+    // Check if settings exist
+    const existingResult = await pool.query('SELECT id FROM default_sop_settings LIMIT 1');
+    
+    if (existingResult.rows.length > 0) {
+      // Update existing
+      await pool.query(`
+        UPDATE default_sop_settings 
+        SET default_document_id = $1, 
+            excluded_states = $2, 
+            updated_at = NOW()
+        WHERE id = $3
+      `, [defaultDocumentId, excludedStates || [], existingResult.rows[0].id]);
+    } else {
+      // Create new
+      await pool.query(`
+        INSERT INTO default_sop_settings (default_document_id, excluded_states, created_at, updated_at)
+        VALUES ($1, $2, NOW(), NOW())
+      `, [defaultDocumentId, excludedStates || []]);
+    }
+    
+    // Log to history
+    await pool.query(`
+      INSERT INTO sop_history (
+        action_type, 
+        sop_document_id, 
+        changed_by, 
+        change_details, 
+        created_at
+      ) VALUES ($1, $2, $3, $4, NOW())
+    `, [
+      'default_sop_updated',
+      defaultDocumentId,
+      clerkId,
+      JSON.stringify({ excluded_states: excludedStates })
+    ]);
+    
+    res.json({ message: 'Default SOP settings updated successfully' });
+  } catch (error) {
+    console.error('Error updating default SOP settings:', error);
+    res.status(500).json({ message: 'Failed to update default SOP settings', error: error.message });
+  }
+};
+
+/**
+ * Get SOP documents for a state (including default if applicable)
+ * This is for user-facing pages to know what SOPs apply
+ */
+const getStateSopWithDefault = async (req, res) => {
+  try {
+    const { state, organization } = req.query;
+    
+    if (!state) {
+      return res.status(400).json({ message: 'State parameter is required' });
+    }
+    
+    let sops = [];
+    
+    // 1. Get manually assigned state SOP
+    const stateResult = await pool.query(`
+      SELECT sa.id, sa.sop_document_id as document_id, sd.document_name, sd.file_url, 'state' as source
+      FROM sop_assignments sa
+      JOIN sop_documents sd ON sa.sop_document_id = sd.id
+      WHERE sa.assignment_type = 'state' AND sa.assignment_value = $1
+    `, [state]);
+    
+    if (stateResult.rows.length > 0) {
+      sops.push({
+        ...stateResult.rows[0],
+        isManuallyAssigned: true,
+        isDefault: false
+      });
+    }
+    
+    // 2. Get default SOP if state is not excluded
+    const defaultResult = await pool.query(`
+      SELECT dss.default_document_id as document_id, sd.document_name, sd.file_url, 
+             dss.excluded_states, 'default' as source
+      FROM default_sop_settings dss
+      LEFT JOIN sop_documents sd ON dss.default_document_id = sd.id
+      WHERE dss.default_document_id IS NOT NULL
+      LIMIT 1
+    `);
+    
+    if (defaultResult.rows.length > 0) {
+      const defaultSettings = defaultResult.rows[0];
+      const excludedStates = defaultSettings.excluded_states || [];
+      
+      // Check if state is NOT excluded
+      if (!excludedStates.includes(state)) {
+        // Don't duplicate if already manually assigned same document
+        const alreadyHas = sops.some(s => s.document_id === defaultSettings.document_id);
+        if (!alreadyHas) {
+          sops.push({
+            document_id: defaultSettings.document_id,
+            document_name: defaultSettings.document_name,
+            file_url: defaultSettings.file_url,
+            source: 'default',
+            isManuallyAssigned: false,
+            isDefault: true
+          });
+        }
+      }
+    }
+    
+    // 3. Get organization SOP if provided
+    if (organization && organization !== 'None') {
+      const orgResult = await pool.query(`
+        SELECT sa.id, sa.sop_document_id as document_id, sd.document_name, sd.file_url, 'organization' as source
+        FROM sop_assignments sa
+        JOIN sop_documents sd ON sa.sop_document_id = sd.id
+        WHERE sa.assignment_type = 'organization' AND sa.assignment_value = $1
+      `, [organization]);
+      
+      if (orgResult.rows.length > 0) {
+        sops.push({
+          ...orgResult.rows[0],
+          isManuallyAssigned: true,
+          isDefault: false
+        });
+      }
+    }
+    
+    res.json({
+      state,
+      organization: organization || null,
+      sops,
+      hasDefaultSop: sops.some(s => s.isDefault),
+      hasManualStateSop: sops.some(s => s.source === 'state' && s.isManuallyAssigned)
+    });
+  } catch (error) {
+    console.error('Error fetching state SOPs with default:', error);
+    res.status(500).json({ message: 'Failed to fetch SOPs', error: error.message });
+  }
+};
+
 module.exports = {
   uploadSopDocument,
   assignStateSop,
@@ -1071,6 +1280,9 @@ module.exports = {
   createOrganization,
   deleteOrganization,
   removeSopAssignment,
-  deleteSopDocument
+  deleteSopDocument,
+  getDefaultSopSettings,
+  updateDefaultSopSettings,
+  getStateSopWithDefault
 };
 

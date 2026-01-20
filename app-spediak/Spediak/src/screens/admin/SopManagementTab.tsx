@@ -74,10 +74,26 @@ interface Organization {
   created_at: string;
 }
 
+interface DefaultSopSettings {
+  id?: number;
+  defaultDocumentId: number | null;
+  documentName: string | null;
+  excludedStates: string[];
+}
+
 const SopManagementTab: React.FC = () => {
   const { getToken } = useAuth();
   const navigation = useNavigation<any>();
   const { navigateTo, isWebDesktop } = useAppNavigation();
+  
+  // Default SOP Settings
+  const [defaultSopSettings, setDefaultSopSettings] = useState<DefaultSopSettings>({
+    defaultDocumentId: null,
+    documentName: null,
+    excludedStates: []
+  });
+  const [savingDefaultSop, setSavingDefaultSop] = useState(false);
+  const [selectedDefaultDoc, setSelectedDefaultDoc] = useState<number | null>(null);
   
   // State SOP Management
   const [selectedState, setSelectedState] = useState<string>('NC');
@@ -119,7 +135,63 @@ const SopManagementTab: React.FC = () => {
   useEffect(() => {
     fetchData();
     fetchOrganizations();
+    fetchDefaultSopSettings();
   }, []);
+
+  const fetchDefaultSopSettings = async () => {
+    try {
+      const token = await getToken();
+      if (!token) return;
+      
+      const response = await axios.get(`${BASE_URL}/api/admin/sop/default-settings`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      const settings = response.data;
+      setDefaultSopSettings(settings);
+      setSelectedDefaultDoc(settings.defaultDocumentId);
+    } catch (error) {
+      console.log('Error fetching default SOP settings:', error);
+    }
+  };
+
+  const handleSaveDefaultSop = async () => {
+    try {
+      setSavingDefaultSop(true);
+      const token = await getToken();
+      if (!token) throw new Error('Not authenticated');
+      
+      await axios.put(`${BASE_URL}/api/admin/sop/default-settings`, {
+        defaultDocumentId: selectedDefaultDoc,
+        excludedStates: defaultSopSettings.excludedStates
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      await fetchDefaultSopSettings();
+      Alert.alert('Success', 'Default SOP settings saved');
+    } catch (error: any) {
+      console.error('Error saving default SOP:', error);
+      Alert.alert('Error', error.response?.data?.message || 'Failed to save default SOP settings');
+    } finally {
+      setSavingDefaultSop(false);
+    }
+  };
+
+  const toggleStateExclusion = (stateCode: string) => {
+    const currentExcluded = defaultSopSettings.excludedStates || [];
+    if (currentExcluded.includes(stateCode)) {
+      setDefaultSopSettings({
+        ...defaultSopSettings,
+        excludedStates: currentExcluded.filter(s => s !== stateCode)
+      });
+    } else {
+      setDefaultSopSettings({
+        ...defaultSopSettings,
+        excludedStates: [...currentExcluded, stateCode]
+      });
+    }
+  };
 
   const fetchOrganizations = async () => {
     try {
@@ -593,6 +665,92 @@ const SopManagementTab: React.FC = () => {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+      {/* ============== DEFAULT SOP SETTINGS ============== */}
+      <View style={[styles.card, styles.defaultSopCard]}>
+        <Text style={styles.cardTitle}>🌐 Default SOP for All States</Text>
+        <Text style={styles.cardDescription}>
+          This document applies to ALL 50 US states by default. States with manually assigned SOPs will have BOTH documents.
+          You can exclude specific states below.
+        </Text>
+
+        {/* Current Default */}
+        {defaultSopSettings.documentName ? (
+          <View style={styles.currentDefaultBanner}>
+            <Check size={16} color="#10B981" />
+            <Text style={styles.currentDefaultText}>
+              Current: <Text style={{ fontWeight: '700' }}>{defaultSopSettings.documentName}</Text>
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.noAssignmentBanner}>
+            <Text style={styles.noAssignmentText}>No default SOP configured</Text>
+          </View>
+        )}
+
+        {/* Select Default Document */}
+        <Text style={styles.stepLabel}>Select default document</Text>
+        <View style={styles.pickerContainer}>
+          <Picker
+            selectedValue={selectedDefaultDoc}
+            onValueChange={(value) => setSelectedDefaultDoc(value)}
+            style={styles.picker}
+          >
+            <Picker.Item label="Select document..." value={null} />
+            {sopDocuments.map((doc) => (
+              <Picker.Item key={doc.id} label={doc.document_name} value={doc.id} />
+            ))}
+          </Picker>
+          <ChevronDown size={20} color={COLORS.textSecondary} style={styles.pickerIcon} />
+        </View>
+
+        {/* Excluded States */}
+        <Text style={styles.stepLabel}>Exclude states from default</Text>
+        <Text style={styles.hintText}>
+          These states will NOT receive the default SOP (only manually assigned ones)
+        </Text>
+        <View style={styles.stateChipsContainer}>
+          {US_STATES.map((state) => {
+            const isExcluded = defaultSopSettings.excludedStates?.includes(state.value);
+            return (
+              <TouchableOpacity
+                key={state.value}
+                style={[
+                  styles.stateChip,
+                  isExcluded && styles.stateChipExcluded
+                ]}
+                onPress={() => toggleStateExclusion(state.value)}
+              >
+                <Text style={[
+                  styles.stateChipText,
+                  isExcluded && styles.stateChipTextExcluded
+                ]}>
+                  {state.value}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {defaultSopSettings.excludedStates?.length > 0 && (
+          <Text style={styles.excludedCountText}>
+            {defaultSopSettings.excludedStates.length} state(s) excluded
+          </Text>
+        )}
+
+        {/* Save Button */}
+        <TouchableOpacity
+          style={[styles.successButton, savingDefaultSop && styles.buttonDisabled]}
+          onPress={handleSaveDefaultSop}
+          disabled={savingDefaultSop}
+        >
+          {savingDefaultSop ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Text style={styles.successButtonText}>Save Default SOP Settings</Text>
+          )}
+        </TouchableOpacity>
+      </View>
+
       {/* ============== STATE SOP DOCUMENTS ============== */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>State SOP Documents</Text>
@@ -1050,6 +1208,63 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.06,
     shadowRadius: 6,
     elevation: 2,
+  },
+  defaultSopCard: {
+    borderWidth: 2,
+    borderColor: '#10B981',
+    backgroundColor: '#FAFFFC',
+  },
+  currentDefaultBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ECFDF5',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+    gap: 8,
+  },
+  currentDefaultText: {
+    fontSize: 14,
+    color: '#065F46',
+    flex: 1,
+  },
+  hintText: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginBottom: 10,
+    fontStyle: 'italic',
+  },
+  stateChipsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 12,
+  },
+  stateChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  stateChipExcluded: {
+    backgroundColor: '#FEE2E2',
+    borderColor: '#F87171',
+  },
+  stateChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  stateChipTextExcluded: {
+    color: '#DC2626',
+  },
+  excludedCountText: {
+    fontSize: 12,
+    color: '#DC2626',
+    fontStyle: 'italic',
+    marginBottom: 12,
   },
   cardTitle: {
     fontSize: 20,

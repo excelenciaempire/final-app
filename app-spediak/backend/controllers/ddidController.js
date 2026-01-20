@@ -30,19 +30,21 @@ const PROMPT_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
  * 
  * This function fetches the Standards of Practice (SOP) documents that apply
  * to the user's current inspection context. It retrieves:
- * 1. State-level SOP (e.g., North Carolina regulations)
- * 2. Organization-level SOP (e.g., ASHI or InterNACHI standards)
+ * 1. State-level SOP (e.g., North Carolina regulations) - manually assigned
+ * 2. Default SOP (e.g., InterNACHI) - applies to all states unless excluded
+ * 3. Organization-level SOP (e.g., ASHI standards) - based on user's organization
  * 
  * If no SOP is found, returns empty string (doesn't break the process)
  */
 async function getSopContext(state, organization) {
   let sopTexts = [];
+  let loadedDocumentIds = new Set(); // Track loaded document IDs to avoid duplicates
   
   try {
-    // Step A: Get STATE SOP text (primary authority)
+    // Step A: Get STATE SOP text (manually assigned - highest priority)
     console.log(`[SOP Context] Fetching State SOP for: ${state}`);
     const stateResult = await pool.query(`
-      SELECT sd.document_name, sd.extracted_text
+      SELECT sd.id, sd.document_name, sd.extracted_text
       FROM sop_assignments sa
       JOIN sop_documents sd ON sa.sop_document_id = sd.id
       WHERE sa.assignment_type = 'state' AND sa.assignment_value = $1
@@ -50,23 +52,58 @@ async function getSopContext(state, organization) {
     `, [state]);
     
     if (stateResult.rows.length > 0 && stateResult.rows[0].extracted_text) {
-      const stateText = stateResult.rows[0].extracted_text;
+      const stateDoc = stateResult.rows[0];
+      loadedDocumentIds.add(stateDoc.id);
       sopTexts.push({
         type: 'STATE',
-        name: stateResult.rows[0].document_name,
-        text: stateText.substring(0, 15000), // Limit to 15k chars per SOP
+        name: stateDoc.document_name,
+        text: stateDoc.extracted_text.substring(0, 15000), // Limit to 15k chars per SOP
         priority: 1 // Highest priority
       });
-      console.log(`[SOP Context] State SOP loaded: ${stateResult.rows[0].document_name} (${stateText.length} chars)`);
+      console.log(`[SOP Context] State SOP loaded: ${stateDoc.document_name} (${stateDoc.extracted_text.length} chars)`);
     } else {
       console.log(`[SOP Context] No State SOP found for: ${state}`);
     }
     
-    // Step B: Get ORGANIZATION SOP text (secondary authority)
+    // Step B: Get DEFAULT SOP (applies to all states unless excluded)
+    console.log(`[SOP Context] Checking Default SOP for: ${state}`);
+    const defaultResult = await pool.query(`
+      SELECT sd.id, sd.document_name, sd.extracted_text, dss.excluded_states
+      FROM default_sop_settings dss
+      JOIN sop_documents sd ON dss.default_document_id = sd.id
+      WHERE dss.default_document_id IS NOT NULL
+      AND sd.extracted_text IS NOT NULL AND sd.extracted_text != ''
+      LIMIT 1
+    `);
+    
+    if (defaultResult.rows.length > 0) {
+      const defaultDoc = defaultResult.rows[0];
+      const excludedStates = defaultDoc.excluded_states || [];
+      
+      // Add default SOP if state is not excluded and not already loaded
+      if (!excludedStates.includes(state) && !loadedDocumentIds.has(defaultDoc.id)) {
+        loadedDocumentIds.add(defaultDoc.id);
+        sopTexts.push({
+          type: 'DEFAULT',
+          name: defaultDoc.document_name,
+          text: defaultDoc.extracted_text.substring(0, 15000),
+          priority: 2 // Secondary priority - after state, before org
+        });
+        console.log(`[SOP Context] Default SOP loaded: ${defaultDoc.document_name} (${defaultDoc.extracted_text.length} chars)`);
+      } else if (excludedStates.includes(state)) {
+        console.log(`[SOP Context] State ${state} is excluded from default SOP`);
+      } else {
+        console.log(`[SOP Context] Default SOP already loaded via state assignment`);
+      }
+    } else {
+      console.log(`[SOP Context] No Default SOP configured`);
+    }
+    
+    // Step C: Get ORGANIZATION SOP text (tertiary authority)
     if (organization && organization !== 'None' && organization !== '') {
       console.log(`[SOP Context] Fetching Organization SOP for: ${organization}`);
       const orgResult = await pool.query(`
-        SELECT sd.document_name, sd.extracted_text
+        SELECT sd.id, sd.document_name, sd.extracted_text
         FROM sop_assignments sa
         JOIN sop_documents sd ON sa.sop_document_id = sd.id
         WHERE sa.assignment_type = 'organization' AND sa.assignment_value = $1
@@ -74,14 +111,20 @@ async function getSopContext(state, organization) {
       `, [organization]);
       
       if (orgResult.rows.length > 0 && orgResult.rows[0].extracted_text) {
-        const orgText = orgResult.rows[0].extracted_text;
-        sopTexts.push({
-          type: 'ORGANIZATION',
-          name: orgResult.rows[0].document_name,
-          text: orgText.substring(0, 15000),
-          priority: 2 // Secondary priority
-        });
-        console.log(`[SOP Context] Organization SOP loaded: ${orgResult.rows[0].document_name} (${orgText.length} chars)`);
+        const orgDoc = orgResult.rows[0];
+        // Only add if not already loaded
+        if (!loadedDocumentIds.has(orgDoc.id)) {
+          loadedDocumentIds.add(orgDoc.id);
+          sopTexts.push({
+            type: 'ORGANIZATION',
+            name: orgDoc.document_name,
+            text: orgDoc.extracted_text.substring(0, 15000),
+            priority: 3 // Tertiary priority
+          });
+          console.log(`[SOP Context] Organization SOP loaded: ${orgDoc.document_name} (${orgDoc.extracted_text.length} chars)`);
+        } else {
+          console.log(`[SOP Context] Organization SOP already loaded via another assignment`);
+        }
       } else {
         console.log(`[SOP Context] No Organization SOP found for: ${organization}`);
       }
@@ -98,12 +141,22 @@ async function getSopContext(state, organization) {
     return '';
   }
   
-  // Sort by priority (State first, then Organization) and format
+  console.log(`[SOP Context] Total SOPs loaded: ${sopTexts.length}`);
+  
+  // Sort by priority (State first, then Default, then Organization) and format
   sopTexts.sort((a, b) => a.priority - b.priority);
   
-  return sopTexts.map(sop => 
-    `=== ${sop.type} STANDARDS: ${sop.name} ===\n(Priority: ${sop.type === 'STATE' ? 'PRIMARY - Takes precedence in conflicts' : 'SECONDARY - Defer to State if conflict'})\n\n${sop.text}`
-  ).join('\n\n---\n\n');
+  return sopTexts.map(sop => {
+    let priorityNote = '';
+    if (sop.type === 'STATE') {
+      priorityNote = 'PRIMARY - Takes precedence in conflicts';
+    } else if (sop.type === 'DEFAULT') {
+      priorityNote = 'DEFAULT - Applies to all states';
+    } else {
+      priorityNote = 'SUPPLEMENTARY - Additional reference';
+    }
+    return `=== ${sop.type} STANDARDS: ${sop.name} ===\n(Priority: ${priorityNote})\n\n${sop.text}`;
+  }).join('\n\n---\n\n');
 }
 
 /**

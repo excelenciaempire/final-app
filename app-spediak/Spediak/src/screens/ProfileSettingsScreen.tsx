@@ -585,6 +585,21 @@ const ProfileSettingsScreen: React.FC = () => {
                     </Picker>
                 </View>
 
+                {/* InterNACHI Default SOP Notice */}
+                {selectedState && !organizations.includes('InterNACHI') && (
+                    <View style={styles.sopNoticeContainer}>
+                        <Award size={18} color="#0369A1" />
+                        <View style={styles.sopNoticeTextContainer}>
+                            <Text style={styles.sopNoticeTitle}>Standards of Practice Notice</Text>
+                            <Text style={styles.sopNoticeText}>
+                                Your reports will use <Text style={styles.sopNoticeHighlight}>InterNACHI Standards of Practice</Text> as 
+                                the default reference for {selectedState}. This applies to all inspections regardless of your organization 
+                                membership. If you belong to InterNACHI, select it below to ensure your membership is on record.
+                            </Text>
+                        </View>
+                    </View>
+                )}
+
                 {/* Secondary States */}
                 <Text style={styles.fieldLabel}>Secondary States (up to 3)</Text>
                 <Text style={styles.fieldHint}>Select additional states where you perform inspections</Text>
@@ -1119,6 +1134,35 @@ const styles = StyleSheet.create({
         fontSize: 14,
         fontWeight: '500',
         textDecorationLine: 'underline',
+    },
+    sopNoticeContainer: {
+        flexDirection: 'row',
+        backgroundColor: '#F0F9FF',
+        borderRadius: 10,
+        padding: 14,
+        marginBottom: 16,
+        borderWidth: 1,
+        borderColor: '#BAE6FD',
+        alignItems: 'flex-start',
+        gap: 12,
+    },
+    sopNoticeTextContainer: {
+        flex: 1,
+    },
+    sopNoticeTitle: {
+        fontSize: 14,
+        fontWeight: '700',
+        color: '#0369A1',
+        marginBottom: 4,
+    },
+    sopNoticeText: {
+        fontSize: 13,
+        color: '#0C4A6E',
+        lineHeight: 18,
+    },
+    sopNoticeHighlight: {
+        fontWeight: '700',
+        color: '#0369A1',
     },
 });
 

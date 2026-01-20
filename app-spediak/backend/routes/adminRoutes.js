@@ -171,6 +171,10 @@ router.get('/sop/organizations', sopController.getOrganizations);
 router.post('/sop/organizations', sopController.createOrganization);
 router.delete('/sop/organizations/:id', sopController.deleteOrganization);
 
+// Default SOP Settings (Admin only)
+router.get('/sop/default-settings', sopController.getDefaultSopSettings);
+router.put('/sop/default-settings', sopController.updateDefaultSopSettings);
+
 // Ad Management Routes (Admin only)
 router.get('/ads', adController.getAllAds);
 router.post('/ads', adController.createAd);
