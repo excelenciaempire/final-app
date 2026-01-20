@@ -78,12 +78,17 @@ const ProfileSettingsScreen: React.FC = () => {
     const { isLoaded, isSignedIn, user } = useUser();
     const { signOut, getToken } = useAuth();
     const { width } = useWindowDimensions();
-    const { setSelectedState: setGlobalState, setSelectedOrganization: setGlobalOrganization } = useGlobalState();
+    const { 
+        selectedState: globalState, 
+        setSelectedState: setGlobalState, 
+        selectedOrganization: globalOrganization,
+        setSelectedOrganization: setGlobalOrganization 
+    } = useGlobalState();
 
     // State for editable fields
     const [firstName, setFirstName] = useState<string>('');
     const [lastName, setLastName] = useState<string>('');
-    const [selectedState, setSelectedState] = useState<string | null>(null);
+    const [selectedState, setSelectedState] = useState<string | null>(globalState);
     const [secondaryStates, setSecondaryStates] = useState<string[]>([]);
     const [organizations, setOrganizations] = useState<string[]>([]);
     const [phoneNumber, setPhoneNumber] = useState<string>('');
@@ -145,13 +150,23 @@ const ProfileSettingsScreen: React.FC = () => {
         if (clerkUser) {
             setFirstName(clerkUser.firstName || '');
             setLastName(clerkUser.lastName || '');
-            setSelectedState(clerkUser.unsafeMetadata?.inspectionState as string || null);
+            // Only set from Clerk if globalState is not available
+            if (!globalState) {
+                setSelectedState(clerkUser.unsafeMetadata?.inspectionState as string || null);
+            }
             if (!newImageUri) {
                 setProfileImageUri(clerkUser.imageUrl || null);
             }
             loadProfile();
         }
     }, [clerkUser]);
+
+    // Sync local state with global state when sidebar changes
+    useEffect(() => {
+        if (globalState && globalState !== selectedState) {
+            setSelectedState(globalState);
+        }
+    }, [globalState]);
 
     const pickImage = async () => {
         const permissions = await ImagePicker.requestMediaLibraryPermissionsAsync();
