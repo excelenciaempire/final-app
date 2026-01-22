@@ -14,6 +14,7 @@ interface ActiveSop {
   stateSop: { 
     documentName: string; 
     fileUrl?: string;
+    isDefault?: boolean;
   } | null;
   orgSop: { 
     documentName: string; 
@@ -109,7 +110,8 @@ const SopAlignmentCard: React.FC = () => {
         setActiveSops({
           stateSop: response.data.stateSop ? {
             documentName: response.data.stateSop.documentName,
-            fileUrl: response.data.stateSop.fileUrl
+            fileUrl: response.data.stateSop.fileUrl,
+            isDefault: response.data.stateSop.isDefault || false
           } : null,
           orgSop: response.data.orgSop ? {
             documentName: response.data.orgSop.documentName,
@@ -188,7 +190,8 @@ const SopAlignmentCard: React.FC = () => {
               <View style={styles.sopSourcesList}>
                 {hasStateSop && (
                   <Text style={styles.sopSourceItem}>
-                    • State SOP: {selectedState} - {activeSops.stateSop?.documentName}
+                    • {activeSops.stateSop?.isDefault ? 'Default SOP' : `State SOP (${selectedState})`}: {activeSops.stateSop?.documentName}
+                    {activeSops.stateSop?.isDefault && <Text style={styles.defaultBadge}> (InterNACHI)</Text>}
                   </Text>
                 )}
                 {hasOrgSop && (
@@ -322,6 +325,10 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#E2E8F0',
     lineHeight: 18,
+  },
+  defaultBadge: {
+    color: '#22C55E',
+    fontWeight: '600',
   },
   configureHint: {
     fontSize: 13,
