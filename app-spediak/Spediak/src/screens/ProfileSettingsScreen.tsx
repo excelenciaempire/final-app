@@ -101,7 +101,7 @@ const ProfileSettingsScreen: React.FC = () => {
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
-    const [stateSopInfo, setStateSopInfo] = useState<{ hasSpecificSop: boolean; sopName: string | null; isDefault: boolean }>({ hasSpecificSop: false, sopName: null, isDefault: false });
+    const [stateSopInfo, setStateSopInfo] = useState<{ hasSpecificSop: boolean; sopName: string | null; isDefault: boolean; isLoading: boolean }>({ hasSpecificSop: false, sopName: null, isDefault: false, isLoading: true });
 
     // States for email change
     const [newEmail, setNewEmail] = useState('');
@@ -173,9 +173,10 @@ const ProfileSettingsScreen: React.FC = () => {
     useEffect(() => {
         const fetchStateSopInfo = async () => {
             if (!selectedState) {
-                setStateSopInfo({ hasSpecificSop: false, sopName: null, isDefault: false });
+                setStateSopInfo({ hasSpecificSop: false, sopName: null, isDefault: false, isLoading: false });
                 return;
             }
+            setStateSopInfo(prev => ({ ...prev, isLoading: true }));
             try {
                 const token = await getToken();
                 const response = await fetch(`${API_URL}/api/sop/active?state=${selectedState}`, {
@@ -187,14 +188,18 @@ const ProfileSettingsScreen: React.FC = () => {
                         setStateSopInfo({
                             hasSpecificSop: !data.stateSop.isDefault,
                             sopName: data.stateSop.documentName,
-                            isDefault: data.stateSop.isDefault || false
+                            isDefault: data.stateSop.isDefault || false,
+                            isLoading: false
                         });
                     } else {
-                        setStateSopInfo({ hasSpecificSop: false, sopName: null, isDefault: false });
+                        setStateSopInfo({ hasSpecificSop: false, sopName: null, isDefault: false, isLoading: false });
                     }
+                } else {
+                    setStateSopInfo(prev => ({ ...prev, isLoading: false }));
                 }
             } catch (err) {
                 console.error('Error fetching SOP info:', err);
+                setStateSopInfo(prev => ({ ...prev, isLoading: false }));
             }
         };
         fetchStateSopInfo();
@@ -649,7 +654,7 @@ const ProfileSettingsScreen: React.FC = () => {
                 </View>
 
                 {/* Standards of Practice Notice - Dynamic based on state SOP */}
-                {selectedState && (
+                {selectedState && !stateSopInfo.isLoading && (
                     <View style={[styles.sopNoticeContainer, stateSopInfo.hasSpecificSop && styles.sopNoticeContainerState]}>
                         <Award size={18} color={stateSopInfo.hasSpecificSop ? "#059669" : "#0369A1"} />
                         <View style={styles.sopNoticeTextContainer}>
