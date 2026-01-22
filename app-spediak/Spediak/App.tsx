@@ -122,12 +122,22 @@ export default function App() {
             <SubscriptionProvider>
               <AdRotationProvider>
                 <SignedIn>
-                  <NavigationContainer>
+                  <NavigationContainer
+                    documentTitle={{
+                      enabled: true,
+                      formatter: () => 'Spediak',
+                    }}
+                  >
                     <RootNavigator />
                   </NavigationContainer>
                 </SignedIn>
                 <SignedOut>
-                  <NavigationContainer>
+                  <NavigationContainer
+                    documentTitle={{
+                      enabled: true,
+                      formatter: () => 'Spediak',
+                    }}
+                  >
                     <AuthNavigator />
                   </NavigationContainer>
                 </SignedOut>
