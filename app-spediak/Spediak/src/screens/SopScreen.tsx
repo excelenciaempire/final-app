@@ -382,8 +382,8 @@ const SopScreen: React.FC = () => {
               {/* State SOP Row */}
               <View style={styles.sopRow}>
                 <View style={styles.sopRowLeft}>
-                  <View style={[styles.sopTypeTag, styles.stateTag]}>
-                    <Text style={styles.sopTypeTagText}>STATE</Text>
+                  <View style={[styles.sopTypeTag, activeStateSop?.isDefault ? styles.defaultTag : styles.stateTag]}>
+                    <Text style={styles.sopTypeTagText}>{activeStateSop?.isDefault ? 'DEFAULT' : 'STATE'}</Text>
                   </View>
                   <View style={styles.sopInfo}>
                     <Text style={styles.sopLabel}>{selectedState || 'NC'} SOP</Text>
@@ -391,7 +391,11 @@ const SopScreen: React.FC = () => {
                       styles.sopStatus,
                       hasStateSop ? styles.sopStatusAssigned : styles.sopStatusMissing
                     ]}>
-                      {hasStateSop ? activeStateSop.documentName : 'Not assigned'}
+                      {hasStateSop 
+                        ? (activeStateSop.isDefault 
+                            ? `Using ${activeStateSop.documentName}` 
+                            : activeStateSop.documentName)
+                        : 'Not assigned'}
                     </Text>
                   </View>
                 </View>
@@ -662,6 +666,9 @@ const styles = StyleSheet.create({
   },
   stateTag: {
     backgroundColor: '#DBEAFE',
+  },
+  defaultTag: {
+    backgroundColor: '#D1FAE5',
   },
   orgTag: {
     backgroundColor: '#E0E7FF',

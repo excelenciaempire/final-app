@@ -101,6 +101,7 @@ const ProfileSettingsScreen: React.FC = () => {
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
+    const [stateSopInfo, setStateSopInfo] = useState<{ hasSpecificSop: boolean; sopName: string | null; isDefault: boolean }>({ hasSpecificSop: false, sopName: null, isDefault: false });
 
     // States for email change
     const [newEmail, setNewEmail] = useState('');
@@ -167,6 +168,37 @@ const ProfileSettingsScreen: React.FC = () => {
             setSelectedState(globalState);
         }
     }, [globalState]);
+
+    // Fetch SOP info for the selected state
+    useEffect(() => {
+        const fetchStateSopInfo = async () => {
+            if (!selectedState) {
+                setStateSopInfo({ hasSpecificSop: false, sopName: null, isDefault: false });
+                return;
+            }
+            try {
+                const token = await getToken();
+                const response = await fetch(`${API_URL}/api/sop/active?state=${selectedState}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.stateSop) {
+                        setStateSopInfo({
+                            hasSpecificSop: !data.stateSop.isDefault,
+                            sopName: data.stateSop.documentName,
+                            isDefault: data.stateSop.isDefault || false
+                        });
+                    } else {
+                        setStateSopInfo({ hasSpecificSop: false, sopName: null, isDefault: false });
+                    }
+                }
+            } catch (err) {
+                console.error('Error fetching SOP info:', err);
+            }
+        };
+        fetchStateSopInfo();
+    }, [selectedState, getToken]);
 
     const pickImage = async () => {
         const permissions = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -610,16 +642,26 @@ const ProfileSettingsScreen: React.FC = () => {
                     </Picker>
                 </View>
 
-                {/* InterNACHI Default SOP Notice */}
-                {selectedState && !organizations.includes('InterNACHI') && (
-                    <View style={styles.sopNoticeContainer}>
-                        <Award size={18} color="#0369A1" />
+                {/* Standards of Practice Notice - Dynamic based on state SOP */}
+                {selectedState && (
+                    <View style={[styles.sopNoticeContainer, stateSopInfo.hasSpecificSop && styles.sopNoticeContainerState]}>
+                        <Award size={18} color={stateSopInfo.hasSpecificSop ? "#059669" : "#0369A1"} />
                         <View style={styles.sopNoticeTextContainer}>
                             <Text style={styles.sopNoticeTitle}>Standards of Practice Notice</Text>
                             <Text style={styles.sopNoticeText}>
-                                Your reports will use <Text style={styles.sopNoticeHighlight}>InterNACHI Standards of Practice</Text> as 
-                                the default reference for {selectedState}. This applies to all inspections regardless of your organization 
-                                membership. If you belong to InterNACHI, select it below to ensure your membership is on record.
+                                {stateSopInfo.hasSpecificSop ? (
+                                    <>
+                                        Your reports will use <Text style={styles.sopNoticeHighlight}>{stateSopInfo.sopName}</Text> as 
+                                        the reference for {availableStates.find(s => s.value === selectedState)?.label || selectedState}. 
+                                        This is a state-specific standard.
+                                    </>
+                                ) : (
+                                    <>
+                                        Your reports will use <Text style={styles.sopNoticeHighlight}>{stateSopInfo.sopName || 'InterNACHI Standards of Practice'}</Text> as 
+                                        the default reference for {availableStates.find(s => s.value === selectedState)?.label || selectedState}. 
+                                        {!organizations.includes('InterNACHI') && ' If you belong to InterNACHI, select it below to ensure your membership is on record.'}
+                                    </>
+                                )}
                             </Text>
                         </View>
                     </View>
@@ -1170,6 +1212,10 @@ const styles = StyleSheet.create({
         borderColor: '#BAE6FD',
         alignItems: 'flex-start',
         gap: 12,
+    },
+    sopNoticeContainerState: {
+        backgroundColor: '#ECFDF5',
+        borderColor: '#A7F3D0',
     },
     sopNoticeTextContainer: {
         flex: 1,

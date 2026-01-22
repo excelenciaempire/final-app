@@ -315,9 +315,43 @@ const getActiveSops = async (req, res) => {
 
       if (stateResult.rows.length > 0) {
         stateSop = stateResult.rows[0];
+        stateSop.isDefault = false;
       }
     } catch (stateErr) {
       console.log('Note: State SOP query failed (table may be empty or structure differs):', stateErr.message);
+    }
+
+    // If no state-specific SOP, check for default SOP
+    let defaultSop = null;
+    if (!stateSop) {
+      try {
+        const defaultResult = await pool.query(`
+          SELECT dss.default_document_id, dss.excluded_states, 
+                 sd.document_name, sd.document_type, sd.file_url
+          FROM default_sop_settings dss
+          LEFT JOIN sop_documents sd ON dss.default_document_id = sd.id
+          WHERE dss.default_document_id IS NOT NULL
+          LIMIT 1
+        `);
+
+        if (defaultResult.rows.length > 0) {
+          const defaultRow = defaultResult.rows[0];
+          const excludedStates = defaultRow.excluded_states || [];
+          
+          // Only use default if state is not excluded
+          if (!excludedStates.includes(state)) {
+            defaultSop = {
+              document_name: defaultRow.document_name,
+              document_type: defaultRow.document_type,
+              file_url: defaultRow.file_url,
+              sop_document_id: defaultRow.default_document_id,
+              isDefault: true
+            };
+          }
+        }
+      } catch (defaultErr) {
+        console.log('Note: Default SOP query failed:', defaultErr.message);
+      }
     }
 
     // Get organization SOP if provided
@@ -340,16 +374,20 @@ const getActiveSops = async (req, res) => {
       }
     }
 
+    // Use state SOP or default SOP
+    const effectiveStateSop = stateSop || defaultSop;
+
     res.json({
       state,
       organization: organization || null,
-      stateSop: stateSop ? {
-        id: stateSop.id,
-        documentId: stateSop.sop_document_id,
-        documentName: stateSop.document_name || 'Unknown Document',
-        documentType: stateSop.document_type,
-        fileUrl: stateSop.file_url,
-        assignedAt: stateSop.created_at
+      stateSop: effectiveStateSop ? {
+        id: effectiveStateSop.id || null,
+        documentId: effectiveStateSop.sop_document_id,
+        documentName: effectiveStateSop.document_name || 'Unknown Document',
+        documentType: effectiveStateSop.document_type,
+        fileUrl: effectiveStateSop.file_url,
+        assignedAt: effectiveStateSop.created_at || null,
+        isDefault: effectiveStateSop.isDefault || false
       } : null,
       orgSop: orgSop ? {
         id: orgSop.id,
