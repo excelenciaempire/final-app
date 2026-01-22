@@ -707,26 +707,26 @@ const SopManagementTab: React.FC = () => {
           )}
           
           {/* Manual Assignment */}
-          {currentStateAssignment ? (
-            <View style={styles.currentAssignment}>
+        {currentStateAssignment ? (
+          <View style={styles.currentAssignment}>
               <Text style={styles.manualAssignmentLabel}>State-specific:</Text>
-              <Text style={styles.currentAssignmentText} numberOfLines={1}>
-                {currentStateAssignment.document_name || 'Document assigned'}
-              </Text>
-              {currentStateAssignment.file_url && (
-                <TouchableOpacity 
-                  style={styles.viewButton}
-                  onPress={() => handleViewDocument(currentStateAssignment.file_url!)}
-                >
-                  <Eye size={14} color={COLORS.primary} />
-                  <Text style={styles.viewButtonText}>View</Text>
-                </TouchableOpacity>
-              )}
-            </View>
+            <Text style={styles.currentAssignmentText} numberOfLines={1}>
+              {currentStateAssignment.document_name || 'Document assigned'}
+            </Text>
+            {currentStateAssignment.file_url && (
+              <TouchableOpacity 
+                style={styles.viewButton}
+                onPress={() => handleViewDocument(currentStateAssignment.file_url!)}
+              >
+                <Eye size={14} color={COLORS.primary} />
+                <Text style={styles.viewButtonText}>View</Text>
+              </TouchableOpacity>
+            )}
+          </View>
           ) : !hasDefaultSop ? (
-            <View style={styles.noAssignmentBanner}>
-              <Text style={styles.noAssignmentText}>No SOP assigned to {selectedState}</Text>
-            </View>
+          <View style={styles.noAssignmentBanner}>
+            <Text style={styles.noAssignmentText}>No SOP assigned to {selectedState}</Text>
+          </View>
           ) : null}
         </View>
 

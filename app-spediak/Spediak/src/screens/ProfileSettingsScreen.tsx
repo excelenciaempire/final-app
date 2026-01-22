@@ -630,7 +630,13 @@ const ProfileSettingsScreen: React.FC = () => {
                     <MapPin size={18} color={COLORS.primary} style={styles.inputIcon} />
                     <Picker
                         selectedValue={selectedState}
-                        onValueChange={(itemValue) => setSelectedState(itemValue)}
+                        onValueChange={(itemValue) => {
+                            setSelectedState(itemValue);
+                            // Immediately sync with global state (which auto-saves to backend)
+                            if (itemValue) {
+                                setGlobalState(itemValue);
+                            }
+                        }}
                         style={styles.picker}
                         dropdownIconColor={COLORS.primary}
                         enabled={!isLoading}
