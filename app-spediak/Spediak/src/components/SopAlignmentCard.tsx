@@ -140,20 +140,18 @@ const SopAlignmentCard: React.FC = () => {
       navigateTo('SOP');
       return;
     }
-    
-    // For web mobile or native, use navigation or URL
-    if (Platform.OS === 'web') {
-      window.location.href = '/sop';
-      return;
-    }
-    
-    // For native, use React Navigation
+
+    // For web mobile and native, use React Navigation
     try {
       if (navigation && navigation.navigate) {
         navigation.navigate('SOP');
       }
     } catch (err) {
       console.error('Error navigating to SOP:', err);
+      // Fallback to URL navigation for web if React Navigation fails
+      if (Platform.OS === 'web') {
+        window.location.href = '/sop';
+      }
     }
   };
 
