@@ -11,15 +11,16 @@ import { useAppNavigation } from '../context/AppNavigationContext';
 import { useSubscription } from '../context/SubscriptionContext';
 
 interface ActiveSop {
-  stateSop: { 
-    documentName: string; 
+  stateSop: {
+    documentName: string;
     fileUrl?: string;
     isDefault?: boolean;
   } | null;
-  orgSop: { 
-    documentName: string; 
+  orgSop: {
+    documentName: string;
     fileUrl?: string;
   } | null;
+  isStateExcluded?: boolean;
 }
 
 const SopAlignmentCard: React.FC = () => {
@@ -29,7 +30,7 @@ const SopAlignmentCard: React.FC = () => {
   const navigation = useNavigation<any>();
   const { navigateTo, isWebDesktop } = useAppNavigation();
   const { subscription } = useSubscription();
-  const [activeSops, setActiveSops] = useState<ActiveSop>({ stateSop: null, orgSop: null });
+  const [activeSops, setActiveSops] = useState<ActiveSop>({ stateSop: null, orgSop: null, isStateExcluded: false });
   const [isLoading, setIsLoading] = useState(false);
   const [localOrganization, setLocalOrganization] = useState<string | null>(null);
   
@@ -116,11 +117,12 @@ const SopAlignmentCard: React.FC = () => {
           orgSop: response.data.orgSop ? {
             documentName: response.data.orgSop.documentName,
             fileUrl: response.data.orgSop.fileUrl
-          } : null
+          } : null,
+          isStateExcluded: response.data.isStateExcluded || false
         });
       } catch (err: any) {
         // Silently handle errors
-        setActiveSops({ stateSop: null, orgSop: null });
+        setActiveSops({ stateSop: null, orgSop: null, isStateExcluded: false });
       } finally {
         setIsLoading(false);
         hasFetchedRef.current = true;
@@ -157,6 +159,7 @@ const SopAlignmentCard: React.FC = () => {
 
   const hasStateSop = activeSops?.stateSop !== null;
   const hasOrgSop = activeSops?.orgSop !== null;
+  const isStateExcluded = activeSops?.isStateExcluded || false;
   const hasAnySop = hasStateSop || hasOrgSop;
 
   return (
@@ -188,12 +191,34 @@ const SopAlignmentCard: React.FC = () => {
             
             {hasAnySop ? (
               <View style={styles.sopSourcesList}>
-                {hasStateSop && (
+                {hasStateSop && !isStateExcluded && (
                   <Text style={styles.sopSourceItem}>
                     • {activeSops.stateSop?.isDefault ? 'Default SOP' : `State SOP (${selectedState})`}: {activeSops.stateSop?.documentName}
                     {activeSops.stateSop?.isDefault && <Text style={styles.defaultBadge}> (InterNACHI)</Text>}
                   </Text>
                 )}
+                {hasOrgSop && (
+                  <Text style={styles.sopSourceItem}>
+                    • Organization SOP: {organization} - {activeSops.orgSop?.documentName}
+                  </Text>
+                )}
+                {!hasOrgSop && organization && organization !== 'None' && (
+                  <Text style={styles.sopSourceItem}>
+                    • Organization: {organization} (no SOP document assigned)
+                  </Text>
+                )}
+              </View>
+            ) : isStateExcluded && hasOrgSop ? (
+              <View style={styles.sopSourcesList}>
+                <Text style={styles.sopSourceItem}>
+                  • Organization SOP: {organization} - {activeSops.orgSop?.documentName}
+                </Text>
+              </View>
+            ) : isStateExcluded ? (
+              <View style={styles.sopSourcesList}>
+                <Text style={styles.sopBannerText}>
+                  No State SOP required for {selectedState}. Using Spediak's best-practice guidance.
+                </Text>
                 {hasOrgSop && (
                   <Text style={styles.sopSourceItem}>
                     • Organization SOP: {organization} - {activeSops.orgSop?.documentName}

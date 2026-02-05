@@ -377,6 +377,26 @@ const getActiveSops = async (req, res) => {
     // Use state SOP or default SOP
     const effectiveStateSop = stateSop || defaultSop;
 
+    // Check if the state is excluded from the default SOP
+    // A state is excluded if: no specific state SOP exists AND no default SOP applies (because it's excluded)
+    let isStateExcluded = false;
+    if (!stateSop && !defaultSop) {
+      // Check if the state is actually in the excluded list
+      try {
+        const excludedCheckResult = await pool.query(`
+          SELECT excluded_states FROM default_sop_settings
+          WHERE default_document_id IS NOT NULL
+          LIMIT 1
+        `);
+        if (excludedCheckResult.rows.length > 0) {
+          const excludedStates = excludedCheckResult.rows[0].excluded_states || [];
+          isStateExcluded = excludedStates.includes(state);
+        }
+      } catch (err) {
+        console.log('Note: Could not check excluded states:', err.message);
+      }
+    }
+
     res.json({
       state,
       organization: organization || null,
@@ -396,7 +416,8 @@ const getActiveSops = async (req, res) => {
         documentType: orgSop.document_type,
         fileUrl: orgSop.file_url,
         assignedAt: orgSop.created_at
-      } : null
+      } : null,
+      isStateExcluded
     });
 
   } catch (error) {

@@ -34,6 +34,7 @@ const SopScreen: React.FC = () => {
   ]);
   const [activeStateSop, setActiveStateSop] = useState<any>(null);
   const [activeOrgSop, setActiveOrgSop] = useState<any>(null);
+  const [isStateExcluded, setIsStateExcluded] = useState(false);
   const [isLoadingSop, setIsLoadingSop] = useState(false);
   const [isLoadingOrgs, setIsLoadingOrgs] = useState(true);
   const [loadingMessage, setLoadingMessage] = useState('Loading...');
@@ -220,6 +221,7 @@ const SopScreen: React.FC = () => {
       lastFetchParams.current = fetchKey;
       setActiveStateSop(response.data.stateSop);
       setActiveOrgSop(response.data.orgSop);
+      setIsStateExcluded(response.data.isStateExcluded || false);
       setDataReady(true);
     } catch (err: any) {
       // Ignore abort errors
@@ -234,6 +236,7 @@ const SopScreen: React.FC = () => {
       }
       setActiveStateSop(null);
       setActiveOrgSop(null);
+      setIsStateExcluded(false);
       setDataReady(true);
     } finally {
       setIsLoadingSop(false);
@@ -379,41 +382,43 @@ const SopScreen: React.FC = () => {
             </View>
           ) : (
             <>
-              {/* State SOP Row */}
-              <View style={styles.sopRow}>
-                <View style={styles.sopRowLeft}>
-                  <View style={[styles.sopTypeTag, activeStateSop?.isDefault ? styles.defaultTag : styles.stateTag]}>
-                    <Text style={styles.sopTypeTagText}>{activeStateSop?.isDefault ? 'DEFAULT' : 'STATE'}</Text>
+              {/* State SOP Row - Hidden when state is excluded from Default SOP */}
+              {!isStateExcluded && (
+                <View style={styles.sopRow}>
+                  <View style={styles.sopRowLeft}>
+                    <View style={[styles.sopTypeTag, activeStateSop?.isDefault ? styles.defaultTag : styles.stateTag]}>
+                      <Text style={styles.sopTypeTagText}>{activeStateSop?.isDefault ? 'DEFAULT' : 'STATE'}</Text>
+                    </View>
+                    <View style={styles.sopInfo}>
+                      <Text style={styles.sopLabel}>{selectedState || 'NC'} SOP</Text>
+                      <Text style={[
+                        styles.sopStatus,
+                        hasStateSop ? styles.sopStatusAssigned : styles.sopStatusMissing
+                      ]}>
+                        {hasStateSop
+                          ? (activeStateSop.isDefault
+                              ? `Using ${activeStateSop.documentName}`
+                              : activeStateSop.documentName)
+                          : 'Not assigned'}
+                      </Text>
+                    </View>
                   </View>
-                  <View style={styles.sopInfo}>
-                    <Text style={styles.sopLabel}>{selectedState || 'NC'} SOP</Text>
-                    <Text style={[
-                      styles.sopStatus,
-                      hasStateSop ? styles.sopStatusAssigned : styles.sopStatusMissing
-                    ]}>
-                      {hasStateSop 
-                        ? (activeStateSop.isDefault 
-                            ? `Using ${activeStateSop.documentName}` 
-                            : activeStateSop.documentName)
-                        : 'Not assigned'}
-                    </Text>
-                  </View>
+                  {hasStateSop && activeStateSop.fileUrl && (
+                    <TouchableOpacity
+                      style={styles.viewButton}
+                      onPress={() => handleViewDocument(activeStateSop.fileUrl, activeStateSop.documentName)}
+                    >
+                      <ExternalLink size={16} color="#fff" />
+                      <Text style={styles.viewButtonText}>View</Text>
+                    </TouchableOpacity>
+                  )}
+                  {!hasStateSop && (
+                    <View style={styles.statusBadge}>
+                      <AlertCircle size={14} color="#F59E0B" />
+                    </View>
+                  )}
                 </View>
-                {hasStateSop && activeStateSop.fileUrl && (
-                  <TouchableOpacity 
-                    style={styles.viewButton}
-                    onPress={() => handleViewDocument(activeStateSop.fileUrl, activeStateSop.documentName)}
-                  >
-                    <ExternalLink size={16} color="#fff" />
-                    <Text style={styles.viewButtonText}>View</Text>
-                  </TouchableOpacity>
-                )}
-                {!hasStateSop && (
-                  <View style={styles.statusBadge}>
-                    <AlertCircle size={14} color="#F59E0B" />
-                  </View>
-                )}
-              </View>
+              )}
 
               {/* Organization SOP Row */}
               <View style={styles.sopRow}>
@@ -475,18 +480,27 @@ const SopScreen: React.FC = () => {
               <>
                 <CheckCircle size={18} color="#10B981" />
                 <Text style={styles.statusSummaryTextActive}>
-                  {hasStateSop && hasOrgSop 
+                  {hasStateSop && hasOrgSop
                     ? 'Statements will comply with both State and Organization SOPs'
-                    : hasStateSop 
+                    : hasStateSop
                       ? 'Statements will comply with State SOP'
                       : 'Statements will comply with Organization SOP'}
+                </Text>
+              </>
+            ) : isStateExcluded && hasOrgSop ? (
+              <>
+                <CheckCircle size={18} color="#10B981" />
+                <Text style={styles.statusSummaryTextActive}>
+                  Statements will comply with Organization SOP
                 </Text>
               </>
             ) : (
               <>
                 <AlertCircle size={18} color="#6B7280" />
                 <Text style={styles.statusSummaryTextInactive}>
-                  No SOP configured. Statements will use Spediak's general best-practice guidance.
+                  {isStateExcluded
+                    ? 'No State SOP required for this state. Statements will use Spediak\'s general best-practice guidance.'
+                    : 'No SOP configured. Statements will use Spediak\'s general best-practice guidance.'}
                 </Text>
               </>
             )}
