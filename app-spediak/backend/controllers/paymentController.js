@@ -1,7 +1,17 @@
 const Stripe = require('stripe');
 const pool = require('../db');
 
-const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
+// Lazy-initialize so missing STRIPE_SECRET_KEY doesn't crash server startup
+let _stripe = null;
+function getStripe() {
+  if (!_stripe) {
+    if (!process.env.STRIPE_SECRET_KEY) {
+      throw new Error('STRIPE_SECRET_KEY environment variable is not set');
+    }
+    _stripe = Stripe(process.env.STRIPE_SECRET_KEY);
+  }
+  return _stripe;
+}
 
 const STRIPE_PLANS = {
   pro: {
@@ -40,7 +50,7 @@ const createCheckoutSession = async (req, res) => {
     const successUrl = `${process.env.FRONTEND_URL || 'https://app.spediak.com'}/payment-success?session_id={CHECKOUT_SESSION_ID}`;
     const cancelUrl = `${process.env.FRONTEND_URL || 'https://app.spediak.com'}/plans`;
 
-    const session = await stripe.checkout.sessions.create({
+    const session = await getStripe().checkout.sessions.create({
       mode: 'subscription',
       payment_method_types: ['card'],
       line_items: [
@@ -83,7 +93,7 @@ const handleWebhook = async (req, res) => {
 
   let event;
   try {
-    event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+    event = getStripe().webhooks.constructEvent(req.body, sig, webhookSecret);
   } catch (err) {
     console.error('[Payment] Webhook signature verification failed:', err.message);
     return res.status(400).json({ message: `Webhook Error: ${err.message}` });
@@ -181,7 +191,7 @@ const getSubscriptionStatus = async (req, res) => {
     let stripeDetails = null;
     if (sub.stripe_subscription_id && sub.plan_type !== 'free') {
       try {
-        const stripeSub = await stripe.subscriptions.retrieve(sub.stripe_subscription_id);
+        const stripeSub = await getStripe().subscriptions.retrieve(sub.stripe_subscription_id);
         stripeDetails = {
           current_period_end: new Date(stripeSub.current_period_end * 1000).toISOString(),
           cancel_at_period_end: stripeSub.cancel_at_period_end,
