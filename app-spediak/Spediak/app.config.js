@@ -38,8 +38,7 @@ module.exports = {
     }
     },
     "plugins": [
-      "expo-router",
-      "react-native-purchases"
+      "expo-router"
     ]
   }
 };
