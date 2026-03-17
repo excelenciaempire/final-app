@@ -1,23 +1,18 @@
-const { OpenAI } = require('openai');
+const Anthropic = require('@anthropic-ai/sdk');
 const pool = require('../db'); // Import the database pool
 const { searchKnowledgeBase } = require('../utils/knowledgeUtils');
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
 // ============================================
 // SPEED OPTIMIZATION CONFIG
 // ============================================
-// GPT-4o-mini is the FASTEST vision-capable model available
-// - 15x faster than GPT-4 Turbo
-// - Cost-effective at $0.15/1M input tokens
-// - Supports image analysis with 'low' detail for speed
-const OPENAI_CONFIG = {
-  model: 'gpt-4o-mini',  // Fastest vision model
-  maxTokens: 300,         // Reduced for faster response (typical statement is ~200 tokens)
-  temperature: 0.5,       // Lower = faster, more consistent
-  imageDetail: 'low',     // Low detail = faster image processing (~85 tokens vs 765+ for high)
+const CLAUDE_CONFIG = {
+  model: 'claude-sonnet-4-6',
+  maxTokens: 300,
+  temperature: 0.5,
 };
 
 // Prompt cache to avoid DB lookups
@@ -227,32 +222,33 @@ State: ${userState}
 Description: ${description}
 Generate now.`;
 
-    console.log(`[⚡ Fast DDID] Calling OpenAI ${OPENAI_CONFIG.model}...`);
+    console.log(`[⚡ Fast DDID] Calling Claude ${CLAUDE_CONFIG.model}...`);
     const apiStart = Date.now();
 
-    const response = await openai.chat.completions.create({
-      model: OPENAI_CONFIG.model,
+    const response = await anthropic.messages.create({
+      model: CLAUDE_CONFIG.model,
+      max_tokens: CLAUDE_CONFIG.maxTokens,
+      temperature: CLAUDE_CONFIG.temperature,
       messages: [
         {
           role: 'user',
           content: [
             { type: 'text', text: prompt },
             {
-              type: 'image_url',
-              image_url: {
-                url: `data:image/jpeg;base64,${imageBase64}`,
-                detail: OPENAI_CONFIG.imageDetail
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: 'image/jpeg',
+                data: imageBase64,
               },
             },
           ],
         },
       ],
-      max_tokens: OPENAI_CONFIG.maxTokens,
-      temperature: OPENAI_CONFIG.temperature,
     });
 
     const apiTime = Date.now() - apiStart;
-    let ddid = response.choices[0].message.content?.trim() || 'Error generating statement.';
+    let ddid = response.content[0].text?.trim() || 'Error generating statement.';
     ddid = ddid.replace(/\*\*/g, '');
 
     const totalTime = Date.now() - startTime;
@@ -401,37 +397,38 @@ State: ${userState}${organization && organization !== 'None' ? `\nOrganization: 
 ${hasSop ? `=== STANDARDS OF PRACTICE ===\n${sopContext}\n` : ''}${hasKnowledge ? `=== KNOWLEDGE BASE ===\n${knowledge.substring(0, 1500)}\n` : ''}
 Write ONE professional paragraph using DDID format: Describe the condition → Determine the issue → Implication if not addressed → Direction/recommendation. 4-6 sentences, technical language, no bullet points.`;
 
-    console.log(`[⚡ Fast Generate] Calling OpenAI ${OPENAI_CONFIG.model}...`);
+    console.log(`[⚡ Fast Generate] Calling Claude ${CLAUDE_CONFIG.model}...`);
     const apiStart = Date.now();
 
     // ============================================
     // FAST API CALL (Speed Optimization #3)
     // ============================================
-    const response = await openai.chat.completions.create({
-      model: OPENAI_CONFIG.model,
+    const response = await anthropic.messages.create({
+      model: CLAUDE_CONFIG.model,
+      max_tokens: CLAUDE_CONFIG.maxTokens,
+      temperature: CLAUDE_CONFIG.temperature,
       messages: [
         {
           role: 'user',
           content: [
             { type: 'text', text: prompt },
             {
-              type: 'image_url',
-              image_url: {
-                url: `data:image/jpeg;base64,${imageBase64}`,
-                detail: OPENAI_CONFIG.imageDetail  // 'low' = ~85 tokens, fastest
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: 'image/jpeg',
+                data: imageBase64,
               },
             },
           ],
         },
       ],
-      max_tokens: OPENAI_CONFIG.maxTokens,
-      temperature: OPENAI_CONFIG.temperature,
     });
 
     const apiTime = Date.now() - apiStart;
-    console.log(`[⚡ Fast Generate] OpenAI responded in ${apiTime}ms`);
+    console.log(`[⚡ Fast Generate] Claude responded in ${apiTime}ms`);
 
-    let statement = response.choices[0].message.content?.trim() || 'Error generating statement.';
+    let statement = response.content[0].text?.trim() || 'Error generating statement.';
     
     // Quick cleanup
     statement = statement.replace(/\*\*/g, '').replace(/^\s*[-•]\s*/gm, '').trim();

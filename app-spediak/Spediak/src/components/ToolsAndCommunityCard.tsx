@@ -12,18 +12,12 @@ const ToolsAndCommunityCard: React.FC = () => {
   const { navigateTo, isWebDesktop } = useAppNavigation();
 
   const handleSopReference = () => {
-    // For web desktop, use app navigation context
-    if (Platform.OS === 'web' && isWebDesktop) {
+    // For all web platforms, use app navigation context
+    if (Platform.OS === 'web') {
       navigateTo('SOP');
       return;
     }
-    
-    // For web mobile, use direct URL navigation
-    if (Platform.OS === 'web') {
-      window.location.href = '/sop';
-      return;
-    }
-    
+
     // For native, use React Navigation
     try {
       if (navigation && navigation.navigate) {

@@ -540,67 +540,91 @@ const UserSearchTab: React.FC = () => {
   const handleSoftDelete = async () => {
     if (!loadedUser) return;
 
-    Alert.alert('Soft Delete', 'This will deactivate the user account. Continue?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete (soft)',
-        style: 'destructive',
-        onPress: async () => {
-          setActionLoading('soft-delete');
-          try {
-            const token = await getToken();
-            if (!token) return;
+    const doSoftDelete = async () => {
+      setActionLoading('soft-delete');
+      try {
+        const token = await getToken();
+        if (!token) return;
 
-            await axios.post(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/soft-delete`, {}, {
-              headers: { Authorization: `Bearer ${token}` }
-            });
+        await axios.post(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}/soft-delete`, {}, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
 
-            Alert.alert('Success', 'User soft deleted');
-            addLocalAuditEvent('User soft deleted');
-            handleClearUser();
-          } catch (error) {
-            Alert.alert('Error', 'Failed to soft delete user');
-          } finally {
-            setActionLoading(null);
-          }
+        if (Platform.OS === 'web') {
+          alert('User soft deleted successfully.');
+        } else {
+          Alert.alert('Success', 'User soft deleted');
         }
+        addLocalAuditEvent('User soft deleted');
+        handleClearUser();
+      } catch (error) {
+        if (Platform.OS === 'web') {
+          alert('Error: Failed to soft delete user');
+        } else {
+          Alert.alert('Error', 'Failed to soft delete user');
+        }
+      } finally {
+        setActionLoading(null);
       }
-    ]);
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('This will deactivate the user account. Continue?')) {
+        doSoftDelete();
+      }
+    } else {
+      Alert.alert('Soft Delete', 'This will deactivate the user account. Continue?', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete (soft)', style: 'destructive', onPress: doSoftDelete }
+      ]);
+    }
   };
 
   // Hard delete user
   const handleHardDelete = async () => {
     if (!loadedUser) return;
 
-    Alert.alert(
-      'Permanent Delete',
-      'WARNING: This will permanently delete the user and all their data. This cannot be undone!',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'DELETE PERMANENTLY',
-          style: 'destructive',
-          onPress: async () => {
-            setActionLoading('hard-delete');
-            try {
-              const token = await getToken();
-              if (!token) return;
+    const doHardDelete = async () => {
+      setActionLoading('hard-delete');
+      try {
+        const token = await getToken();
+        if (!token) return;
 
-              await axios.delete(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}`, {
-                headers: { Authorization: `Bearer ${token}` }
-              });
+        await axios.delete(`${BASE_URL}/api/admin/users/${loadedUser.clerk_id}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
 
-              Alert.alert('Success', 'User permanently deleted');
-              handleClearUser();
-            } catch (error) {
-              Alert.alert('Error', 'Failed to delete user');
-            } finally {
-              setActionLoading(null);
-            }
-          }
+        if (Platform.OS === 'web') {
+          alert('User permanently deleted.');
+        } else {
+          Alert.alert('Success', 'User permanently deleted');
         }
-      ]
-    );
+        handleClearUser();
+      } catch (error) {
+        if (Platform.OS === 'web') {
+          alert('Error: Failed to delete user');
+        } else {
+          Alert.alert('Error', 'Failed to delete user');
+        }
+      } finally {
+        setActionLoading(null);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('WARNING: This will permanently delete the user and all their data. This cannot be undone!')) {
+        doHardDelete();
+      }
+    } else {
+      Alert.alert(
+        'Permanent Delete',
+        'WARNING: This will permanently delete the user and all their data. This cannot be undone!',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'DELETE PERMANENTLY', style: 'destructive', onPress: doHardDelete }
+        ]
+      );
+    }
   };
 
   // Save role/security
@@ -756,16 +780,16 @@ const UserSearchTab: React.FC = () => {
         });
 
         if (Platform.OS === 'web') {
-          alert('Password reset email has been sent to the user.');
+          alert('User sessions revoked. They will need to use \'Forgot Password\' on their next login attempt.');
         } else {
-          Alert.alert('Success', 'Password reset email sent');
+          Alert.alert('Success', "User sessions revoked. They will need to use 'Forgot Password' on their next login attempt.");
         }
-        addLocalAuditEvent('Password reset forced');
+        addLocalAuditEvent('Password reset forced (sessions revoked)');
       } catch (error) {
         if (Platform.OS === 'web') {
-          alert('Error: Failed to force password reset');
+          alert('Error: Failed to revoke user sessions');
         } else {
-          Alert.alert('Error', 'Failed to force password reset');
+          Alert.alert('Error', 'Failed to revoke user sessions');
         }
       } finally {
         setActionLoading(null);
@@ -773,13 +797,13 @@ const UserSearchTab: React.FC = () => {
     };
 
     if (Platform.OS === 'web') {
-      if (window.confirm('Send a password reset email to this user?')) {
+      if (window.confirm('This will revoke all active sessions for this user. They will need to use \'Forgot Password\' to regain access. Continue?')) {
         doReset();
       }
     } else {
-      Alert.alert('Confirm Reset', 'Send password reset email?', [
+      Alert.alert('Confirm Reset', "This will revoke all active sessions. The user will need to use 'Forgot Password' to regain access.", [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Send', onPress: doReset }
+        { text: 'Revoke Sessions', onPress: doReset }
       ]);
     }
   };

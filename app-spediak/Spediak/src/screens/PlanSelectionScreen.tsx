@@ -1,26 +1,46 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking, Alert } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking, Alert, Platform, ActivityIndicator } from 'react-native';
+import { useAuth } from '@clerk/clerk-expo';
 import { COLORS } from '../styles/colors';
 import { CheckCircle, Star, Zap } from 'lucide-react-native';
 import { useSubscription } from '../context/SubscriptionContext';
+import { purchaseSubscription } from '../services/PaymentService';
 
 const PlanSelectionScreen: React.FC = () => {
   const { subscription } = useSubscription();
+  const { getToken } = useAuth();
   const currentPlan = subscription?.plan_type || 'free';
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
-  const handleUpgradeToPro = () => {
-    Alert.alert(
-      "Upgrade to Pro",
-      "Pro plan integration with payment gateway will be available soon. Contact support for early access.",
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "Contact Support", onPress: () => Linking.openURL('mailto:support@spediak.com?subject=Pro Plan Inquiry') }
-      ]
-    );
+  const handleUpgradeToPro = async () => {
+    setIsProcessingPayment(true);
+    try {
+      const result = await purchaseSubscription('pro', getToken);
+      if (!result.success && result.error && result.error !== 'Purchase cancelled') {
+        if (Platform.OS === 'web') {
+          alert('Payment error: ' + result.error);
+        } else {
+          Alert.alert('Payment Error', result.error);
+        }
+      }
+    } catch (err: any) {
+      if (Platform.OS === 'web') {
+        alert('Payment error: ' + (err.message || 'Unknown error'));
+      } else {
+        Alert.alert('Payment Error', err.message || 'Unknown error');
+      }
+    } finally {
+      setIsProcessingPayment(false);
+    }
   };
 
   const handleContactPlatinum = () => {
-    Linking.openURL('mailto:sales@spediak.com?subject=Inquiry about Platinum Plan');
+    const mailtoUrl = 'mailto:sales@spediak.com?subject=Inquiry about Platinum Plan';
+    if (Platform.OS === 'web') {
+      window.open(mailtoUrl, '_blank');
+    } else {
+      Linking.openURL(mailtoUrl);
+    }
   };
 
   const plans = [
@@ -151,18 +171,23 @@ const PlanSelectionScreen: React.FC = () => {
                 style={[
                   styles.actionButton,
                   plan.popular && styles.popularActionButton,
-                  isCurrentPlan && styles.currentPlanButton
+                  isCurrentPlan && styles.currentPlanButton,
+                  (isProcessingPayment && plan.id === 'pro') && styles.buttonDisabled
                 ]}
                 onPress={() => handlePlanAction(plan.id, isCurrentPlan ? 'current' : plan.action)}
-                disabled={isCurrentPlan}
+                disabled={isCurrentPlan || (isProcessingPayment && plan.id === 'pro')}
               >
-                <Text style={[
-                  styles.actionButtonText,
-                  plan.popular && styles.popularActionButtonText,
-                  isCurrentPlan && styles.currentPlanButtonText
-                ]}>
-                  {isCurrentPlan ? 'Current Plan' : plan.actionLabel}
-                </Text>
+                {isProcessingPayment && plan.id === 'pro' ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={[
+                    styles.actionButtonText,
+                    plan.popular && styles.popularActionButtonText,
+                    isCurrentPlan && styles.currentPlanButtonText
+                  ]}>
+                    {isCurrentPlan ? 'Current Plan' : plan.actionLabel}
+                  </Text>
+                )}
               </TouchableOpacity>
             </View>
           );
@@ -330,6 +355,9 @@ const styles = StyleSheet.create({
   },
   currentPlanButtonText: {
     color: COLORS.textSecondary,
+  },
+  buttonDisabled: {
+    opacity: 0.6,
   },
   faqContainer: {
     backgroundColor: '#FFFFFF',

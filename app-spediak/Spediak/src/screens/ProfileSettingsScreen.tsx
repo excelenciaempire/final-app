@@ -203,7 +203,7 @@ const ProfileSettingsScreen: React.FC = () => {
             }
         };
         fetchStateSopInfo();
-    }, [selectedState, getToken]);
+    }, [selectedState]);
 
     const pickImage = async () => {
         const permissions = await ImagePicker.requestMediaLibraryPermissionsAsync();

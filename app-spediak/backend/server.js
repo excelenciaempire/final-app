@@ -3,6 +3,7 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 const apiRoutes = require('./routes/api');
 const adminRoutes = require('./routes/adminRoutes'); // Import admin routes
+const paymentRoutes = require('./routes/paymentRoutes'); // Import payment routes
 const { handleClerkWebhook } = require('./controllers/webhookController');
 
 dotenv.config();
@@ -35,8 +36,9 @@ app.use(cors({
 // Explicit OPTIONS handling for preflight requests
 app.options('*', cors({ origin: true, credentials: true }));
 
-// Webhook Route
+// Webhook Routes (must be before JSON body parser to receive raw body)
 app.post('/api/webhooks/clerk', express.raw({ type: 'application/json' }), handleClerkWebhook);
+app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), require('./controllers/paymentController').handleWebhook);
 
 // Standard Body Parsers
 app.use(express.json({ limit: '50mb' }));
@@ -45,6 +47,7 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 // Routes
 app.use('/api', apiRoutes);
 app.use('/api/admin', adminRoutes); // Mount admin routes
+app.use('/api/payments', paymentRoutes); // Mount payment routes
 
 // Root route
 app.get('/', (req, res) => {

@@ -59,7 +59,10 @@ const SopScreen: React.FC = () => {
             timeout: 10000
           });
           
-          const savedOrg = response.data.profile?.organization;
+          const orgsData = response.data.profile?.organizations;
+          const savedOrg = (Array.isArray(orgsData) && orgsData.length > 0)
+            ? orgsData[0]
+            : response.data.profile?.organization;
           if (savedOrg && savedOrg !== 'None') {
             setOrganization(savedOrg);
             setSelectedOrganization(savedOrg);
@@ -299,7 +302,12 @@ const SopScreen: React.FC = () => {
   const handleReportIssue = () => {
     const subject = encodeURIComponent('SOP Request/Issue');
     const body = encodeURIComponent(`State: ${selectedState}\nOrganization: ${organization}\n\nPlease describe your request or issue:\n`);
-    Linking.openURL(`mailto:support@spediak.com?subject=${subject}&body=${body}`);
+    const url = `mailto:support@spediak.com?subject=${subject}&body=${body}`;
+    if (Platform.OS === 'web') {
+      window.open(url, '_blank');
+    } else {
+      Linking.openURL(url);
+    }
   };
 
   const hasStateSop = activeStateSop !== null;
@@ -398,7 +406,7 @@ const SopScreen: React.FC = () => {
                         {hasStateSop
                           ? (activeStateSop.isDefault
                               ? `Using ${activeStateSop.documentName}`
-                              : activeStateSop.documentName)
+                              : `Using ${activeStateSop.documentName}`)
                           : 'Not assigned'}
                       </Text>
                     </View>
@@ -438,10 +446,10 @@ const SopScreen: React.FC = () => {
                           ? styles.sopStatusAssigned 
                           : styles.sopStatusMissing
                     ]}>
-                      {organization === 'None' 
+                      {organization === 'None'
                         ? 'None selected'
-                        : hasOrgSop 
-                          ? activeOrgSop.documentName 
+                        : hasOrgSop
+                          ? `Using ${activeOrgSop.documentName}`
                           : 'Not assigned'}
                     </Text>
                   </View>

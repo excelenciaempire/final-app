@@ -285,14 +285,64 @@ const SopHistoryScreen: React.FC = () => {
     );
   };
 
-  const FilterChip = ({ 
-    label, 
-    isActive, 
-    onPress 
-  }: { 
-    label: string; 
-    isActive: boolean; 
-    onPress: () => void; 
+  const renderHistoryItemTimeline = ({ item, index }: { item: SopHistoryEntry; index: number }) => {
+    const date = new Date(item.created_at);
+    const formattedDate = format(date, 'MMM d, yyyy');
+    const formattedTime = format(date, 'hh:mm a');
+
+    const isStateChange = item.assignment_type === 'state';
+    const isOrgChange = item.assignment_type === 'organization';
+    const changeTitle = isStateChange
+      ? 'State SOP change'
+      : isOrgChange
+        ? 'Organization SOP change'
+        : `SOP Document ${formatActionType(item.action_type)}`;
+
+    const badgeStyle = getActionBadgeStyle(item.action_type);
+    const isLast = index === history.length - 1;
+
+    return (
+      <View style={styles.timelineItem}>
+        {/* Left column: line + dot */}
+        <View style={styles.timelineLeft}>
+          <View style={[styles.timelineDot, { backgroundColor: badgeStyle.backgroundColor }]} />
+          {!isLast && <View style={styles.timelineLine} />}
+        </View>
+
+        {/* Right column: content */}
+        <View style={styles.timelineContent}>
+          <Text style={styles.timelineDate}>{formattedDate}</Text>
+          <Text style={styles.timelineTime}>{formattedTime}</Text>
+          <View style={styles.timelineCard}>
+            <View style={styles.timelineTitleRow}>
+              <Text style={styles.timelineTitle}>{changeTitle}</Text>
+              <View style={[styles.actionBadge, badgeStyle]}>
+                <Text style={styles.actionBadgeText}>{formatActionType(item.action_type)}</Text>
+              </View>
+            </View>
+            {item.assignment_value ? (
+              <Text style={styles.timelineScope}>
+                {item.assignment_type === 'state' ? 'State' : 'Org'}: {item.assignment_value}
+              </Text>
+            ) : null}
+            <Text style={styles.timelineDocument} numberOfLines={2}>
+              {item.sop_document_name || '(no document name)'}
+            </Text>
+            <Text style={styles.timelineAdmin}>By: {item.changed_by_email || 'Prototype Admin'}</Text>
+          </View>
+        </View>
+      </View>
+    );
+  };
+
+  const FilterChip = ({
+    label,
+    isActive,
+    onPress
+  }: {
+    label: string;
+    isActive: boolean;
+    onPress: () => void;
   }) => (
     <TouchableOpacity
       style={[styles.filterChip, isActive && styles.filterChipActive]}
@@ -459,14 +509,25 @@ const SopHistoryScreen: React.FC = () => {
       ) : (
         <>
           {/* History List */}
-          <FlatList
-            data={history}
-            renderItem={renderHistoryItem}
-            keyExtractor={(item) => item.id.toString()}
-            style={styles.historyList}
-            contentContainerStyle={styles.historyListContent}
-            scrollEnabled={false}
-          />
+          {viewMode === 'cards' ? (
+            <FlatList
+              data={history}
+              renderItem={renderHistoryItem}
+              keyExtractor={(item) => item.id.toString()}
+              style={styles.historyList}
+              contentContainerStyle={styles.historyListContent}
+              scrollEnabled={false}
+            />
+          ) : (
+            <FlatList
+              data={history}
+              renderItem={renderHistoryItemTimeline}
+              keyExtractor={(item) => item.id.toString()}
+              style={styles.historyList}
+              contentContainerStyle={styles.timelineListContent}
+              scrollEnabled={false}
+            />
+          )}
 
           {/* Results Count */}
           <Text style={styles.resultsCount}>
@@ -878,6 +939,85 @@ const styles = StyleSheet.create({
   paginationInfo: {
     fontSize: 14,
     color: COLORS.textSecondary,
+  },
+  timelineListContent: {
+    paddingVertical: 8,
+  },
+  timelineItem: {
+    flexDirection: 'row',
+    marginBottom: 0,
+  },
+  timelineLeft: {
+    width: 32,
+    alignItems: 'center',
+  },
+  timelineDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    marginTop: 4,
+    zIndex: 1,
+  },
+  timelineLine: {
+    width: 2,
+    flex: 1,
+    backgroundColor: '#D1D5DB',
+    marginTop: 2,
+    marginBottom: -2,
+  },
+  timelineContent: {
+    flex: 1,
+    paddingLeft: 12,
+    paddingBottom: 20,
+  },
+  timelineDate: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#374151',
+    marginBottom: 0,
+  },
+  timelineTime: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    marginBottom: 8,
+  },
+  timelineCard: {
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    padding: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  timelineTitleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  timelineTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1E3A5F',
+    flex: 1,
+    marginRight: 8,
+  },
+  timelineScope: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginBottom: 4,
+  },
+  timelineDocument: {
+    fontSize: 13,
+    color: '#1F2937',
+    fontWeight: '500',
+    marginBottom: 6,
+  },
+  timelineAdmin: {
+    fontSize: 12,
+    color: '#9CA3AF',
   },
 });
 
