@@ -15,9 +15,9 @@ import { useUser, useAuth } from '@clerk/clerk-expo';
 import { Picker } from '@react-native-picker/picker';
 import * as ImagePicker from 'expo-image-picker';
 import axios from 'axios';
-import { Camera, CheckCircle } from 'lucide-react-native';
+import { Camera, Check } from 'lucide-react-native';
 import { COLORS } from '../styles/colors';
-import { US_STATES, ORGANIZATIONS } from '../context/GlobalStateContext';
+import { US_STATES, ORGANIZATION_OPTIONS } from '../context/GlobalStateContext';
 import { BASE_URL } from '../config/api';
 
 // Simple navigation prop type for reload logic
@@ -34,7 +34,7 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = () => {
     const [open, setOpen] = useState(false); // State for dropdown open/closed
     const [selectedState, setSelectedState] = useState<string | null>(null); // Keep this for the value
     const [items, setItems] = useState(US_STATES); // Items for the dropdown - all US states
-    const [selectedOrganization, setSelectedOrganization] = useState<string | null>(null);
+    const [selectedOrganizations, setSelectedOrganizations] = useState<string[]>([]);
     const [companyName, setCompanyName] = useState<string>('');
 
     const [profileImageUri, setProfileImageUri] = useState<string | null>(null);
@@ -154,8 +154,9 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = () => {
 
             // --- Step 2: Update Clerk Metadata ---
             const metadataUpdate: any = { inspectionState: selectedState };
-            if (selectedOrganization) {
-                metadataUpdate.organization = selectedOrganization;
+            if (selectedOrganizations.length > 0) {
+                metadataUpdate.organization = selectedOrganizations[0];
+                metadataUpdate.organizations = selectedOrganizations;
             }
             if (companyName.trim()) {
                 metadataUpdate.companyName = companyName.trim();
@@ -173,7 +174,8 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = () => {
                 if (token) {
                     await axios.put(`${BASE_URL}/api/user/profile`, {
                         primaryState: selectedState,
-                        organization: selectedOrganization || 'None',
+                        organizations: selectedOrganizations,
+                        organization: selectedOrganizations[0] || null,
                         companyName: companyName.trim() || null
                     }, {
                         headers: { Authorization: `Bearer ${token}` },
@@ -249,21 +251,37 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = () => {
                 </Picker>
             </View>
 
-            {/* Organization Picker */}
-            <Text style={styles.label}>Organization (Optional):</Text>
-            <View style={styles.pickerContainer}>
-                <Picker
-                    selectedValue={selectedOrganization}
-                    onValueChange={(itemValue) => setSelectedOrganization(itemValue)}
-                    style={styles.picker}
-                    itemStyle={styles.pickerItem}
-                >
-                    <Picker.Item label="Select Organization..." value={null} style={styles.pickerPlaceholder} />
-                    {ORGANIZATIONS.map((org) => (
-                        <Picker.Item key={org.value} label={org.label} value={org.value} />
-                    ))}
-                </Picker>
+            {/* Organizations - Multi-select checkboxes */}
+            <Text style={styles.label}>Professional Organizations <Text style={styles.optionalLabel}>(optional)</Text></Text>
+            <Text style={styles.orgHint}>Select all organizations you belong to</Text>
+            <View style={styles.organizationsContainer}>
+                {ORGANIZATION_OPTIONS.map(org => {
+                    const isSelected = selectedOrganizations.includes(org.value);
+                    return (
+                        <TouchableOpacity
+                            key={org.value}
+                            style={[styles.organizationChip, isSelected && styles.organizationChipSelected]}
+                            onPress={() => {
+                                setSelectedOrganizations(prev =>
+                                    prev.includes(org.value)
+                                        ? prev.filter(o => o !== org.value)
+                                        : [...prev, org.value]
+                                );
+                            }}
+                        >
+                            <View style={[styles.orgCheckbox, isSelected && styles.orgCheckboxSelected]}>
+                                {isSelected && <Check size={12} color="#fff" />}
+                            </View>
+                            <Text style={[styles.organizationChipText, isSelected && styles.organizationChipTextSelected]}>
+                                {org.label}
+                            </Text>
+                        </TouchableOpacity>
+                    );
+                })}
             </View>
+            {selectedOrganizations.length > 0 && (
+                <Text style={styles.selectedOrgsText}>Selected: {selectedOrganizations.join(', ')}</Text>
+            )}
 
             {/* Company Name Input */}
             <Text style={styles.label}>Company Name (Optional):</Text>
@@ -444,6 +462,69 @@ const styles = StyleSheet.create({
         paddingHorizontal: 15,
         fontSize: 16,
         color: '#333',
+    },
+    optionalLabel: {
+        fontSize: 14,
+        fontWeight: '400',
+        color: '#9CA3AF',
+    },
+    orgHint: {
+        fontSize: 13,
+        color: '#6c757d',
+        alignSelf: 'flex-start',
+        marginBottom: 10,
+        marginTop: -4,
+    },
+    organizationsContainer: {
+        width: '100%',
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 8,
+        marginBottom: 8,
+    },
+    organizationChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingVertical: 8,
+        paddingHorizontal: 12,
+        borderRadius: 20,
+        borderWidth: 1.5,
+        borderColor: '#D1D5DB',
+        backgroundColor: '#F9FAFB',
+    },
+    organizationChipSelected: {
+        borderColor: COLORS.primary,
+        backgroundColor: '#FFF1F1',
+    },
+    orgCheckbox: {
+        width: 18,
+        height: 18,
+        borderRadius: 4,
+        borderWidth: 1.5,
+        borderColor: '#9CA3AF',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#fff',
+    },
+    orgCheckboxSelected: {
+        backgroundColor: COLORS.primary,
+        borderColor: COLORS.primary,
+    },
+    organizationChipText: {
+        fontSize: 13,
+        color: '#374151',
+    },
+    organizationChipTextSelected: {
+        color: COLORS.primary,
+        fontWeight: '600',
+    },
+    selectedOrgsText: {
+        fontSize: 12,
+        color: '#6c757d',
+        fontStyle: 'italic',
+        alignSelf: 'flex-start',
+        marginBottom: 20,
     },
 });
 

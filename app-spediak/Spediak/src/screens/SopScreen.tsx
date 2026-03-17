@@ -29,7 +29,6 @@ const SopScreen: React.FC = () => {
   const isLargeScreen = width > 600;
 
   const [selectedOrgs, setSelectedOrgs] = useState<string[]>([]);
-  const [hasOrgChanges, setHasOrgChanges] = useState(false);
   const [isSavingOrgs, setIsSavingOrgs] = useState(false);
   const [activeStateSop, setActiveStateSop] = useState<any>(null);
   const [activeOrgSops, setActiveOrgSops] = useState<any[]>([]);
@@ -43,6 +42,8 @@ const SopScreen: React.FC = () => {
   const isInitializing = useRef(true);
   const abortControllerRef = useRef<AbortController | null>(null);
   const lastFetchParams = useRef<string>('');
+  const pendingSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const selectedOrgsRef = useRef<string[]>([]);
 
   // Load user's organizations from backend on mount
   useEffect(() => {
@@ -81,52 +82,45 @@ const SopScreen: React.FC = () => {
 
   // Keep selectedOrgs in sync with global context when profile is updated elsewhere
   useEffect(() => {
-    if (!isInitializing.current && selectedOrganizations.length > 0 && !hasOrgChanges) {
+    if (!isInitializing.current && selectedOrganizations.length > 0) {
       setSelectedOrgs(selectedOrganizations);
+      selectedOrgsRef.current = selectedOrganizations;
     }
   }, [selectedOrganizations]);
 
-  // Toggle an org in the selection
-  const handleToggleOrg = (orgValue: string) => {
-    setSelectedOrgs(prev => {
-      const next = prev.includes(orgValue)
-        ? prev.filter(o => o !== orgValue)
-        : [...prev, orgValue];
-      setHasOrgChanges(true);
-      return next;
-    });
-  };
-
-  // Save org selection to backend and sync global context
-  const handleSaveOrgs = async () => {
+  // Persist org changes to backend
+  const saveOrgs = async (orgsToSave: string[]) => {
     setIsSavingOrgs(true);
     try {
       const token = await getToken();
       if (token) {
         await axios.put(`${BASE_URL}/api/user/profile`, {
-          organizations: selectedOrgs,
-          organization: selectedOrgs[0] || null,
+          organizations: orgsToSave,
+          organization: orgsToSave[0] || null,
         }, {
           headers: { Authorization: `Bearer ${token}` },
           timeout: 10000
         });
       }
-      // Sync global context
-      setSelectedOrganizations(selectedOrgs);
-      setHasOrgChanges(false);
-      // Refetch SOP data with updated orgs
+      setSelectedOrganizations(orgsToSave);
       lastFetchParams.current = '';
-      fetchSopData(selectedState, selectedOrgs);
+      fetchSopData(selectedState, orgsToSave);
     } catch (err) {
       console.error('[SopScreen] Error saving organizations:', err);
-      if (Platform.OS === 'web') {
-        alert('Failed to save organization changes. Please try again.');
-      } else {
-        Alert.alert('Error', 'Failed to save organization changes. Please try again.');
-      }
     } finally {
       setIsSavingOrgs(false);
     }
+  };
+
+  // Toggle an org — updates UI immediately and auto-saves with debounce
+  const handleToggleOrg = (orgValue: string) => {
+    const next = selectedOrgsRef.current.includes(orgValue)
+      ? selectedOrgsRef.current.filter(o => o !== orgValue)
+      : [...selectedOrgsRef.current, orgValue];
+    setSelectedOrgs(next);
+    selectedOrgsRef.current = next;
+    if (pendingSaveRef.current) clearTimeout(pendingSaveRef.current);
+    pendingSaveRef.current = setTimeout(() => saveOrgs(next), 400);
   };
 
   // Fetch SOP data - accepts array of orgs for multi-org support
@@ -319,21 +313,11 @@ const SopScreen: React.FC = () => {
           {selectedOrgs.length > 0 && (
             <Text style={styles.selectedOrgsText}>Selected: {selectedOrgs.join(', ')}</Text>
           )}
-          {hasOrgChanges && (
-            <TouchableOpacity
-              style={[styles.saveOrgsButton, isSavingOrgs && styles.saveOrgsButtonDisabled]}
-              onPress={handleSaveOrgs}
-              disabled={isSavingOrgs}
-            >
-              {isSavingOrgs ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <>
-                  <Check size={16} color="#fff" />
-                  <Text style={styles.saveOrgsButtonText}>Save Organization Changes</Text>
-                </>
-              )}
-            </TouchableOpacity>
+          {isSavingOrgs && (
+            <View style={styles.savingRow}>
+              <ActivityIndicator size="small" color={COLORS.primary} />
+              <Text style={styles.savingText}>Saving...</Text>
+            </View>
           )}
         </View>
 
@@ -637,6 +621,17 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     fontStyle: 'italic',
     marginBottom: 8,
+  },
+  savingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 6,
+  },
+  savingText: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    fontStyle: 'italic',
   },
   saveOrgsButton: {
     flexDirection: 'row',

@@ -96,6 +96,7 @@ const ProfileSettingsScreen: React.FC = () => {
     const [newImageUri, setNewImageUri] = useState<string | null>(null);
     const [newImageBlob, setNewImageBlob] = useState<Blob | null>(null);
     const [isSavingProfile, setIsSavingProfile] = useState<boolean>(false);
+    const [isSavingOrgs, setIsSavingOrgs] = useState<boolean>(false);
 
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
@@ -231,6 +232,32 @@ const ProfileSettingsScreen: React.FC = () => {
                 setNewImageUri(null);
                 setNewImageBlob(null);
             }
+        }
+    };
+
+    // Auto-save org toggle to backend and sync global context
+    const handleToggleOrg = async (orgValue: string) => {
+        const next = organizations.includes(orgValue)
+            ? organizations.filter(o => o !== orgValue)
+            : [...organizations, orgValue];
+        setOrganizations(next);
+        setIsSavingOrgs(true);
+        try {
+            const token = await getToken();
+            if (token) {
+                await axios.put(`${BASE_URL}/api/user/profile`, {
+                    organizations: next,
+                    organization: next[0] || null,
+                }, {
+                    headers: { Authorization: `Bearer ${token}` },
+                    timeout: 10000
+                });
+            }
+            setGlobalOrganizations(next);
+        } catch (err) {
+            console.error('[ProfileSettings] Error saving organizations:', err);
+        } finally {
+            setIsSavingOrgs(false);
         }
     };
 
@@ -726,14 +753,8 @@ const ProfileSettingsScreen: React.FC = () => {
                                     styles.organizationChip,
                                     isSelected && styles.organizationChipSelected
                                 ]}
-                                onPress={() => {
-                                    if (isSelected) {
-                                        setOrganizations(organizations.filter(o => o !== org.value));
-                                    } else {
-                                        setOrganizations([...organizations, org.value]);
-                                    }
-                                }}
-                                disabled={isLoading}
+                                onPress={() => handleToggleOrg(org.value)}
+                                disabled={isLoading || isSavingOrgs}
                             >
                                 <View style={[
                                     styles.checkbox,
@@ -755,6 +776,12 @@ const ProfileSettingsScreen: React.FC = () => {
                     <Text style={styles.selectedOrgsText}>
                         Selected: {organizations.join(', ')}
                     </Text>
+                )}
+                {isSavingOrgs && (
+                    <View style={styles.savingOrgRow}>
+                        <ActivityIndicator size="small" color={COLORS.primary} />
+                        <Text style={styles.savingOrgText}>Saving...</Text>
+                    </View>
                 )}
 
                 {/* Save Button */}
@@ -1105,6 +1132,18 @@ const styles = StyleSheet.create({
         color: COLORS.textSecondary,
         fontStyle: 'italic',
         marginBottom: 8,
+    },
+    savingOrgRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        marginTop: 4,
+        marginBottom: 8,
+    },
+    savingOrgText: {
+        fontSize: 13,
+        color: COLORS.textSecondary,
+        fontStyle: 'italic',
     },
     saveButton: {
         flexDirection: 'row',
