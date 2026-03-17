@@ -2,43 +2,56 @@ import { Platform } from 'react-native';
 import axios from 'axios';
 import { BASE_URL } from '../config/api';
 
-// Native-only import — guarded so web bundle doesn't break
+// RevenueCat API key (same for iOS and Android in test mode)
+const RC_API_KEY = 'test_bGkjpmqYvnNwpOUAEsWhnZnbHvC';
+
+// Entitlement identifier — must match exactly what's in RevenueCat dashboard
+const RC_ENTITLEMENT_PRO = 'Spediak  Pro'; // double space is intentional
+
+// Native-only imports — guarded so web bundle doesn't break
 let Purchases: any = null;
+let LOG_LEVEL: any = null;
+let RevenueCatUI: any = null;
+let PAYWALL_RESULT: any = null;
+
 if (Platform.OS !== 'web') {
   try {
-    Purchases = require('react-native-purchases').default;
+    const rcModule = require('react-native-purchases');
+    Purchases = rcModule.default;
+    LOG_LEVEL = rcModule.LOG_LEVEL;
   } catch {
     console.warn('[PaymentService] react-native-purchases not available');
+  }
+
+  try {
+    const rcUIModule = require('react-native-purchases-ui');
+    RevenueCatUI = rcUIModule.default;
+    PAYWALL_RESULT = rcUIModule.PAYWALL_RESULT;
+  } catch {
+    console.warn('[PaymentService] react-native-purchases-ui not available');
   }
 }
 
 export type PlanId = 'pro' | 'platinum';
 
-// RevenueCat product IDs (must match what you configure in the RC dashboard)
-const RC_PRODUCT_IDS: Record<PlanId, string> = {
-  pro: 'spediak_pro_monthly',
-  platinum: 'spediak_platinum_monthly',
-};
-
 /**
  * Initialize RevenueCat on native platforms.
- * Call this once at app startup (e.g. in App.tsx).
+ * Call once at app startup in App.tsx.
  */
-export async function initializePayments(): Promise<void> {
+export function initializePayments(): void {
   if (Platform.OS === 'web' || !Purchases) return;
 
-  const key =
-    Platform.OS === 'ios'
-      ? process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY
-      : process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY;
-
-  if (!key) {
-    console.warn('[PaymentService] RevenueCat API key not configured');
-    return;
-  }
-
   try {
-    Purchases.configure({ apiKey: key });
+    if (LOG_LEVEL) {
+      Purchases.setLogLevel(LOG_LEVEL.VERBOSE);
+    }
+
+    if (Platform.OS === 'ios') {
+      Purchases.configure({ apiKey: RC_API_KEY });
+    } else if (Platform.OS === 'android') {
+      Purchases.configure({ apiKey: RC_API_KEY });
+    }
+
     console.log('[PaymentService] RevenueCat initialized');
   } catch (error) {
     console.error('[PaymentService] Failed to initialize RevenueCat:', error);
@@ -46,9 +59,24 @@ export async function initializePayments(): Promise<void> {
 }
 
 /**
+ * Check if the user has an active Pro entitlement (native only).
+ */
+export async function hasProEntitlement(): Promise<boolean> {
+  if (Platform.OS === 'web' || !Purchases) return false;
+
+  try {
+    const customerInfo = await Purchases.getCustomerInfo();
+    return typeof customerInfo.entitlements.active[RC_ENTITLEMENT_PRO] !== 'undefined';
+  } catch (e) {
+    console.error('[PaymentService] Error fetching customer info:', e);
+    return false;
+  }
+}
+
+/**
  * Purchase a subscription plan.
  * - Web: creates a Stripe Checkout session and redirects
- * - Native: triggers RevenueCat purchase flow
+ * - Native: shows RevenueCat native paywall UI
  */
 export async function purchaseSubscription(
   planId: PlanId,
@@ -57,7 +85,7 @@ export async function purchaseSubscription(
   if (Platform.OS === 'web') {
     return purchaseWeb(planId, getToken);
   }
-  return purchaseNative(planId);
+  return presentNativePaywall();
 }
 
 async function purchaseWeb(
@@ -77,7 +105,6 @@ async function purchaseWeb(
     const { url } = response.data;
     if (!url) return { success: false, error: 'No checkout URL returned' };
 
-    // Redirect to Stripe Checkout
     window.location.href = url;
     return { success: true };
   } catch (error: any) {
@@ -87,49 +114,36 @@ async function purchaseWeb(
   }
 }
 
-async function purchaseNative(planId: PlanId): Promise<{ success: boolean; error?: string }> {
-  if (!Purchases) {
-    return { success: false, error: 'In-app purchases not available on this platform' };
+async function presentNativePaywall(): Promise<{ success: boolean; error?: string }> {
+  if (!RevenueCatUI || !PAYWALL_RESULT) {
+    return { success: false, error: 'Paywall UI not available on this platform' };
   }
 
   try {
-    const productId = RC_PRODUCT_IDS[planId];
-    const offerings = await Purchases.getOfferings();
-    const offering = offerings.current;
+    const result = await RevenueCatUI.presentPaywall();
 
-    if (!offering) {
-      return { success: false, error: 'No offerings available' };
+    switch (result) {
+      case PAYWALL_RESULT.PURCHASED:
+      case PAYWALL_RESULT.RESTORED:
+        return { success: true };
+      case PAYWALL_RESULT.CANCELLED:
+        return { success: false, error: 'Purchase cancelled' };
+      case PAYWALL_RESULT.NOT_PRESENTED:
+      case PAYWALL_RESULT.ERROR:
+      default:
+        return { success: false, error: 'Paywall could not be presented. Check RevenueCat dashboard configuration.' };
     }
-
-    const pkg = offering.availablePackages.find(
-      (p: any) => p.product.identifier === productId
-    );
-
-    if (!pkg) {
-      return { success: false, error: `Product ${productId} not found` };
-    }
-
-    const { customerInfo } = await Purchases.purchasePackage(pkg);
-    console.log('[PaymentService] Native purchase complete:', customerInfo.activeSubscriptions);
-    return { success: true };
   } catch (error: any) {
-    if (error.userCancelled) {
-      return { success: false, error: 'Purchase cancelled' };
-    }
-    console.error('[PaymentService] Native purchase error:', error);
+    console.error('[PaymentService] Native paywall error:', error);
     return { success: false, error: error.message || 'Purchase failed' };
   }
 }
 
 /**
  * Restore purchases (native only).
- * On web, redirect to Stripe customer portal.
  */
-export async function restorePurchases(
-  getToken: () => Promise<string | null>
-): Promise<{ success: boolean; error?: string }> {
+export async function restorePurchases(): Promise<{ success: boolean; error?: string }> {
   if (Platform.OS === 'web') {
-    // Could redirect to Stripe billing portal — for now just inform user
     return { success: false, error: 'To manage your subscription on web, visit your account settings.' };
   }
 
@@ -139,7 +153,7 @@ export async function restorePurchases(
 
   try {
     const customerInfo = await Purchases.restorePurchases();
-    const hasPro = Object.keys(customerInfo.entitlements.active).length > 0;
+    const hasPro = typeof customerInfo.entitlements.active[RC_ENTITLEMENT_PRO] !== 'undefined';
     return { success: hasPro };
   } catch (error: any) {
     return { success: false, error: error.message || 'Restore failed' };

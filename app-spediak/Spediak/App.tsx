@@ -10,6 +10,7 @@ import RootNavigator from "./src/navigation/RootNavigator";
 import { GlobalStateProvider } from "./src/context/GlobalStateContext";
 import { SubscriptionProvider } from "./src/context/SubscriptionContext";
 import { AdRotationProvider } from "./src/context/AdRotationContext";
+import { initializePayments } from "./src/services/PaymentService";
 
 // Version: 2.1.0 - Production Ready
 // Error #130 resolved: Fixed imports in newInspection.tsx
@@ -109,6 +110,11 @@ export default function App() {
     if (Platform.OS === 'web' && typeof document !== 'undefined') {
       document.title = 'Spediak';
     }
+  }, []);
+
+  // Initialize RevenueCat on native platforms
+  React.useEffect(() => {
+    initializePayments();
   }, []);
 
   return (
