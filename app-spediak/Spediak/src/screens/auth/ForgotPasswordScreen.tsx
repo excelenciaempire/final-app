@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../styles/colors';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AuthStackParamList } from '../../navigation/AuthNavigator';
+import { BASE_URL } from '../../config/api';
 
 type ForgotPasswordScreenProps = NativeStackScreenProps<AuthStackParamList, 'ForgotPassword'>;
 
@@ -22,27 +23,47 @@ const ForgotPasswordScreen: React.FC<ForgotPasswordScreenProps> = ({ navigation 
 
   const [emailAddress, setEmailAddress] = useState('');
   const [loading, setLoading] = useState(false);
-  const [successfulCreation, setSuccessfulCreation] = useState(false);
-  const [secondFactor, setSecondFactor] = useState(false); // For handling the next step (code + new password)
+  const [secondFactor, setSecondFactor] = useState(false);
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
   const [passwordVisible, setPasswordVisible] = useState(false);
-
+  const [error, setError] = useState<string | null>(null);
 
   // Request password reset code
   const onRequestReset = async () => {
     if (!isLoaded) return;
+    if (!emailAddress.trim()) {
+      setError('Please enter your email address.');
+      return;
+    }
+
     setLoading(true);
+    setError(null);
+
     try {
+      // Check if email exists in the database first
+      const checkRes = await fetch(`${BASE_URL}/api/auth/check-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: emailAddress.trim().toLowerCase() }),
+      });
+      const checkData = await checkRes.json();
+
+      if (!checkData.exists) {
+        setError('No account found with that email address.');
+        setLoading(false);
+        return;
+      }
+
+      // Email exists — request reset code via Clerk
       await signIn.create({
         strategy: 'reset_password_email_code',
-        identifier: emailAddress,
+        identifier: emailAddress.trim(),
       });
-      setSuccessfulCreation(true);
-      setSecondFactor(true); // Move to the next step UI
-       Alert.alert('Check your email', 'A password reset code has been sent to your email.');
+      setSecondFactor(true);
     } catch (err: any) {
-      Alert.alert('Error', err.errors ? err.errors[0].message : 'Password reset request failed');
+      const msg = err.errors ? err.errors[0].message : 'Password reset request failed. Please try again.';
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -51,18 +72,30 @@ const ForgotPasswordScreen: React.FC<ForgotPasswordScreenProps> = ({ navigation 
   // Complete the password reset
   const onReset = async () => {
     if (!isLoaded) return;
+    if (!code.trim() || !password.trim()) {
+      setError('Please enter both the verification code and your new password.');
+      return;
+    }
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters.');
+      return;
+    }
+
     setLoading(true);
+    setError(null);
+
     try {
-      const result = await signIn.attemptFirstFactor({
+      await signIn.attemptFirstFactor({
         strategy: 'reset_password_email_code',
-        code,
+        code: code.trim(),
         password,
       });
-      console.log(result);
-      Alert.alert('Success', 'Password reset successfully.');
-      navigation.navigate('Login'); // Navigate back to Login on success
+      Alert.alert('Success', 'Your password has been reset successfully.', [
+        { text: 'Log In', onPress: () => navigation.navigate('Login') },
+      ]);
     } catch (err: any) {
-      Alert.alert('Error', err.errors ? err.errors[0].message : 'Password reset failed');
+      const msg = err.errors ? err.errors[0].message : 'Password reset failed. Please try again.';
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -77,69 +110,80 @@ const ForgotPasswordScreen: React.FC<ForgotPasswordScreenProps> = ({ navigation 
       <Text style={styles.title}>Reset Password</Text>
 
       {!secondFactor && (
-          <>
-            <Text style={styles.description}>
-              Enter your email address to receive a password reset code.
-            </Text>
-            <View style={styles.inputContainer}>
-                <Ionicons name="mail-outline" size={20} color={COLORS.darkText} style={styles.inputIcon} />
-                <TextInput
-                    style={styles.input}
-                    placeholder="Email Address"
-                    placeholderTextColor={COLORS.darkText}
-                    value={emailAddress}
-                    autoCapitalize="none"
-                    keyboardType="email-address"
-                    onChangeText={setEmailAddress}
-                />
-            </View>
-            <TouchableOpacity style={styles.button} onPress={onRequestReset} disabled={loading}>
-                {loading ? <ActivityIndicator color={COLORS.white} /> : <Text style={styles.buttonText}>Reset Password</Text>}
-            </TouchableOpacity>
+        <>
+          <Text style={styles.description}>
+            Enter your email address to receive a password reset code.
+          </Text>
+          <View style={styles.inputContainer}>
+            <Ionicons name="mail-outline" size={20} color={COLORS.darkText} style={styles.inputIcon} />
+            <TextInput
+              style={styles.input}
+              placeholder="Email Address"
+              placeholderTextColor={COLORS.darkText}
+              value={emailAddress}
+              autoCapitalize="none"
+              keyboardType="email-address"
+              onChangeText={(t) => { setEmailAddress(t); setError(null); }}
+            />
+          </View>
+
+          {error && <Text style={styles.errorText}>{error}</Text>}
+
+          <TouchableOpacity style={styles.button} onPress={onRequestReset} disabled={loading}>
+            {loading
+              ? <ActivityIndicator color={COLORS.white} />
+              : <Text style={styles.buttonText}>Send Reset Code</Text>}
+          </TouchableOpacity>
         </>
       )}
 
-        {secondFactor && (
-            <>
-                <Text style={styles.description}>
-                    Check your email for the reset code and enter it below along with your new password.
-                </Text>
-                 <View style={styles.inputContainer}>
-                    <Ionicons name="shield-checkmark-outline" size={20} color={COLORS.darkText} style={styles.inputIcon} />
-                    <TextInput
-                        style={styles.input}
-                        value={code}
-                        placeholder="Verification Code"
-                        placeholderTextColor={COLORS.darkText}
-                        keyboardType="numeric"
-                        onChangeText={setCode}
-                    />
-                </View>
-                 <View style={styles.inputContainer}>
-                    <Ionicons name="lock-closed-outline" size={20} color={COLORS.darkText} style={styles.inputIcon} />
-                    <TextInput
-                        style={styles.input}
-                        placeholder="New Password"
-                        placeholderTextColor={COLORS.darkText}
-                        value={password}
-                        secureTextEntry={!passwordVisible}
-                        onChangeText={setPassword}
-                    />
-                    <TouchableOpacity onPress={() => setPasswordVisible(!passwordVisible)} style={styles.eyeIconContainer}>
-                        <Ionicons name={passwordVisible ? "eye-off-outline" : "eye-outline"} size={20} color={COLORS.darkText} />
-                    </TouchableOpacity>
-                </View>
+      {secondFactor && (
+        <>
+          <Text style={styles.description}>
+            A reset code was sent to <Text style={{ fontWeight: '600' }}>{emailAddress}</Text>.{'\n'}
+            Enter the code and your new password below.
+          </Text>
 
-                <TouchableOpacity style={styles.button} onPress={onReset} disabled={loading}>
-                    {loading ? <ActivityIndicator color={COLORS.white} /> : <Text style={styles.buttonText}>Set New Password</Text>}
-                </TouchableOpacity>
-            </>
-        )}
+          <View style={styles.inputContainer}>
+            <Ionicons name="shield-checkmark-outline" size={20} color={COLORS.darkText} style={styles.inputIcon} />
+            <TextInput
+              style={styles.input}
+              value={code}
+              placeholder="Verification Code"
+              placeholderTextColor={COLORS.darkText}
+              keyboardType="numeric"
+              onChangeText={(t) => { setCode(t); setError(null); }}
+            />
+          </View>
+
+          <View style={styles.inputContainer}>
+            <Ionicons name="lock-closed-outline" size={20} color={COLORS.darkText} style={styles.inputIcon} />
+            <TextInput
+              style={styles.input}
+              placeholder="New Password"
+              placeholderTextColor={COLORS.darkText}
+              value={password}
+              secureTextEntry={!passwordVisible}
+              onChangeText={(t) => { setPassword(t); setError(null); }}
+            />
+            <TouchableOpacity onPress={() => setPasswordVisible(!passwordVisible)} style={styles.eyeIconContainer}>
+              <Ionicons name={passwordVisible ? 'eye-off-outline' : 'eye-outline'} size={20} color={COLORS.darkText} />
+            </TouchableOpacity>
+          </View>
+
+          {error && <Text style={styles.errorText}>{error}</Text>}
+
+          <TouchableOpacity style={styles.button} onPress={onReset} disabled={loading}>
+            {loading
+              ? <ActivityIndicator color={COLORS.white} />
+              : <Text style={styles.buttonText}>Set New Password</Text>}
+          </TouchableOpacity>
+        </>
+      )}
     </SafeAreaView>
   );
 };
 
-// Reuse or adapt styles
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -149,7 +193,7 @@ const styles = StyleSheet.create({
   },
   backButton: {
     position: 'absolute',
-    top: 60, // Adjust as needed for SafeAreaView
+    top: 60,
     left: 20,
     zIndex: 1,
   },
@@ -165,6 +209,7 @@ const styles = StyleSheet.create({
     color: COLORS.darkText,
     textAlign: 'center',
     marginBottom: 30,
+    lineHeight: 22,
   },
   inputContainer: {
     flexDirection: 'row',
@@ -175,7 +220,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
   },
   inputIcon: {
-      marginRight: 10,
+    marginRight: 10,
   },
   input: {
     flex: 1,
@@ -183,21 +228,31 @@ const styles = StyleSheet.create({
     color: COLORS.darkText,
     fontSize: 16,
   },
-   eyeIconContainer: {
-     padding: 5,
+  eyeIconContainer: {
+    padding: 5,
+  },
+  errorText: {
+    color: '#DC2626',
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 12,
+    marginTop: -4,
   },
   button: {
     backgroundColor: COLORS.primary,
-    paddingVertical: 15,
+    paddingVertical: 14,
+    paddingHorizontal: 40,
     borderRadius: 10,
     alignItems: 'center',
-    marginTop: 10, // Added margin top
+    alignSelf: 'center',
+    marginTop: 10,
+    minWidth: 180,
   },
   buttonText: {
     color: COLORS.white,
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
   },
 });
 
-export default ForgotPasswordScreen; 
+export default ForgotPasswordScreen;

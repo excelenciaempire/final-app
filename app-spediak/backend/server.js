@@ -44,6 +44,23 @@ app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), req
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
+// Public auth routes (no authentication required)
+const pool = require('./db');
+app.post('/api/auth/check-email', async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ exists: false });
+  try {
+    const result = await pool.query(
+      'SELECT 1 FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1',
+      [email]
+    );
+    res.json({ exists: result.rows.length > 0 });
+  } catch (err) {
+    console.error('[Auth] check-email error:', err);
+    res.status(500).json({ exists: false });
+  }
+});
+
 // Routes
 app.use('/api', apiRoutes);
 app.use('/api/admin', adminRoutes); // Mount admin routes
