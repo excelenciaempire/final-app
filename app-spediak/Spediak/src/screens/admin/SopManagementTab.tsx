@@ -672,6 +672,91 @@ const SopManagementTab: React.FC = () => {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+      {/* ============== DEFAULT SOP SETTINGS ============== */}
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Default SOP for All States</Text>
+        <Text style={styles.cardDescription}>
+          This document applies to all 50 US states by default. States with manually assigned SOPs will have both documents.
+        </Text>
+
+        {/* Current Default */}
+        {defaultSopSettings.documentName ? (
+          <View style={styles.currentDefaultBanner}>
+            <Check size={16} color="#10B981" />
+            <Text style={styles.currentDefaultText}>
+              Current: <Text style={{ fontWeight: '700' }}>{defaultSopSettings.documentName}</Text>
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.noAssignmentBanner}>
+            <Text style={styles.noAssignmentText}>No default SOP configured</Text>
+          </View>
+        )}
+
+        {/* Select Default Document */}
+        <Text style={styles.stepLabel}>Select default document</Text>
+        <View style={styles.pickerContainer}>
+          <Picker
+            selectedValue={selectedDefaultDoc}
+            onValueChange={(value) => setSelectedDefaultDoc(value)}
+            style={styles.picker}
+          >
+            <Picker.Item label="Select document..." value={null} />
+            {sopDocuments.map((doc) => (
+              <Picker.Item key={doc.id} label={doc.document_name} value={doc.id} />
+            ))}
+          </Picker>
+          <ChevronDown size={20} color={COLORS.textSecondary} style={styles.pickerIcon} />
+        </View>
+
+        {/* Excluded States */}
+        <Text style={styles.stepLabel}>Exclude states from default</Text>
+        <Text style={styles.hintText}>
+          These states will NOT receive the default SOP (only manually assigned ones)
+        </Text>
+        <View style={styles.stateChipsContainer}>
+          {US_STATES.map((state) => {
+            const isExcluded = defaultSopSettings.excludedStates?.includes(state.value);
+            return (
+              <TouchableOpacity
+                key={state.value}
+                style={[
+                  styles.stateChip,
+                  isExcluded && styles.stateChipExcluded
+                ]}
+                onPress={() => toggleStateExclusion(state.value)}
+              >
+                <Text style={[
+                  styles.stateChipText,
+                  isExcluded && styles.stateChipTextExcluded
+                ]}>
+                  {state.value}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {defaultSopSettings.excludedStates?.length > 0 && (
+          <Text style={styles.excludedCountText}>
+            {defaultSopSettings.excludedStates.length} state(s) excluded
+          </Text>
+        )}
+
+        {/* Save Button */}
+        <TouchableOpacity
+          style={[styles.successButton, savingDefaultSop && styles.buttonDisabled]}
+          onPress={handleSaveDefaultSop}
+          disabled={savingDefaultSop}
+        >
+          {savingDefaultSop ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Text style={styles.successButtonText}>Save Default SOP Settings</Text>
+          )}
+        </TouchableOpacity>
+      </View>
+
       {/* ============== STATE SOP DOCUMENTS ============== */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>State SOP Documents</Text>
@@ -924,91 +1009,6 @@ const SopManagementTab: React.FC = () => {
         <TouchableOpacity style={styles.historyButton} onPress={handleViewHistory}>
           <History size={16} color={COLORS.primary} />
           <Text style={styles.historyButtonText}>View SOP Change History</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* ============== DEFAULT SOP SETTINGS ============== */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Default SOP for All States</Text>
-        <Text style={styles.cardDescription}>
-          This document applies to all 50 US states by default. States with manually assigned SOPs will have both documents.
-        </Text>
-
-        {/* Current Default */}
-        {defaultSopSettings.documentName ? (
-          <View style={styles.currentDefaultBanner}>
-            <Check size={16} color="#10B981" />
-            <Text style={styles.currentDefaultText}>
-              Current: <Text style={{ fontWeight: '700' }}>{defaultSopSettings.documentName}</Text>
-            </Text>
-          </View>
-        ) : (
-          <View style={styles.noAssignmentBanner}>
-            <Text style={styles.noAssignmentText}>No default SOP configured</Text>
-          </View>
-        )}
-
-        {/* Select Default Document */}
-        <Text style={styles.stepLabel}>Select default document</Text>
-        <View style={styles.pickerContainer}>
-          <Picker
-            selectedValue={selectedDefaultDoc}
-            onValueChange={(value) => setSelectedDefaultDoc(value)}
-            style={styles.picker}
-          >
-            <Picker.Item label="Select document..." value={null} />
-            {sopDocuments.map((doc) => (
-              <Picker.Item key={doc.id} label={doc.document_name} value={doc.id} />
-            ))}
-          </Picker>
-          <ChevronDown size={20} color={COLORS.textSecondary} style={styles.pickerIcon} />
-        </View>
-
-        {/* Excluded States */}
-        <Text style={styles.stepLabel}>Exclude states from default</Text>
-        <Text style={styles.hintText}>
-          These states will NOT receive the default SOP (only manually assigned ones)
-        </Text>
-        <View style={styles.stateChipsContainer}>
-          {US_STATES.map((state) => {
-            const isExcluded = defaultSopSettings.excludedStates?.includes(state.value);
-            return (
-              <TouchableOpacity
-                key={state.value}
-                style={[
-                  styles.stateChip,
-                  isExcluded && styles.stateChipExcluded
-                ]}
-                onPress={() => toggleStateExclusion(state.value)}
-              >
-                <Text style={[
-                  styles.stateChipText,
-                  isExcluded && styles.stateChipTextExcluded
-                ]}>
-                  {state.value}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        {defaultSopSettings.excludedStates?.length > 0 && (
-          <Text style={styles.excludedCountText}>
-            {defaultSopSettings.excludedStates.length} state(s) excluded
-          </Text>
-        )}
-
-        {/* Save Button */}
-        <TouchableOpacity
-          style={[styles.successButton, savingDefaultSop && styles.buttonDisabled]}
-          onPress={handleSaveDefaultSop}
-          disabled={savingDefaultSop}
-        >
-          {savingDefaultSop ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Text style={styles.successButtonText}>Save Default SOP Settings</Text>
-          )}
         </TouchableOpacity>
       </View>
 

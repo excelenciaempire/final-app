@@ -288,11 +288,13 @@ export default function NewInspectionScreen() {
     // --- Image dimensions state ---
     const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(null);
 
-    // --- Use Global State Context for selected state and organization ---
-    const { selectedState, selectedOrganization, isContentStale, clearStaleFlag } = useGlobalState();
+    // --- Use Global State Context for selected state and organizations ---
+    const { selectedState, selectedOrganization, selectedOrganizations, isContentStale, clearStaleFlag } = useGlobalState();
     const { subscription, canGenerateStatement } = useSubscription();
     const userState = selectedState || user?.unsafeMetadata?.inspectionState as string || 'NC';
-    const userOrganization = selectedOrganization || user?.unsafeMetadata?.organization as string || 'None';
+    const userOrganizations = selectedOrganizations.length > 0
+      ? selectedOrganizations
+      : (selectedOrganization && selectedOrganization !== 'None' ? [selectedOrganization] : []);
     // --- End global state usage ---
 
     // --- Refactored Image Picking Logic ---
@@ -543,20 +545,21 @@ export default function NewInspectionScreen() {
             const token = await getToken();
             if (!token) throw new Error("Authentication token not found.");
 
-            console.log(`[handleGenerateStatement] Generating statement for State: ${userState}, Organization: ${userOrganization}`);
-            
+            console.log(`[handleGenerateStatement] Generating statement for State: ${userState}, Organizations: ${userOrganizations.join(', ') || 'None'}`);
+
             // Compress image for faster AI analysis (original kept for display)
             console.log('[handleGenerateStatement] Compressing image for AI analysis...');
             const compressedImage = await compressImageForAI(imageBase64, 1024, 0.7);
-            
+
             console.log(`[handleGenerateStatement] Calling POST ${BASE_URL}/api/generate-statement`);
             const startTime = Date.now();
-            
+
             const response = await axios.post(`${BASE_URL}/api/generate-statement`, {
-                imageBase64: compressedImage, // Use compressed image for faster AI processing
+                imageBase64: compressedImage,
                 notes: initialDescription,
                 userState,
-                organization: userOrganization,
+                organizations: userOrganizations,
+                organization: userOrganizations[0] || 'None', // backward compat
             }, {
                 headers: { Authorization: `Bearer ${token}` },
                 timeout: 45000, // Reduced timeout - should be faster now

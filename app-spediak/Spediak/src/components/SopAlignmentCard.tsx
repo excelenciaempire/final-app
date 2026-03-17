@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Linking, Platform } from 'react-native';
 import { useGlobalState } from '../context/GlobalStateContext';
-import { useAuth, useUser } from '@clerk/clerk-expo';
+import { useAuth } from '@clerk/clerk-expo';
 import axios from 'axios';
 import { BASE_URL } from '../config/api';
 import { COLORS } from '../styles/colors';
@@ -24,56 +24,25 @@ interface ActiveSop {
 }
 
 const SopAlignmentCard: React.FC = () => {
-  const { selectedState, selectedOrganization, setSelectedOrganization } = useGlobalState();
+  const { selectedState, selectedOrganization, selectedOrganizations } = useGlobalState();
   const { getToken } = useAuth();
-  const { user } = useUser();
   const navigation = useNavigation<any>();
   const { navigateTo, isWebDesktop } = useAppNavigation();
   const { subscription } = useSubscription();
   const [activeSops, setActiveSops] = useState<ActiveSop>({ stateSop: null, orgSop: null, isStateExcluded: false });
   const [isLoading, setIsLoading] = useState(false);
-  const [localOrganization, setLocalOrganization] = useState<string | null>(null);
-  
+
   // Check if user is on a paid plan (Pro or Platinum)
   const isPaidUser = subscription?.plan_type === 'pro' || subscription?.plan_type === 'platinum';
   const hasFetchedRef = useRef(false);
   const lastStateRef = useRef<string | null>(null);
   const lastOrgRef = useRef<string | null>(null);
-  const hasLoadedOrgRef = useRef(false);
 
-  // Load organization from backend profile if not already set
-  useEffect(() => {
-    const loadOrganizationFromBackend = async () => {
-      if (hasLoadedOrgRef.current) return;
-      if (selectedOrganization && selectedOrganization !== 'None') return;
-      
-      try {
-        const token = await getToken();
-        if (!token) return;
-        
-        const response = await axios.get(`${BASE_URL}/api/user/profile`, {
-          headers: { Authorization: `Bearer ${token}` },
-          timeout: 10000
-        });
-        
-        const savedOrg = response.data.profile?.organization;
-        if (savedOrg && savedOrg !== 'None') {
-          setLocalOrganization(savedOrg);
-          setSelectedOrganization(savedOrg);
-          console.log('[SopAlignmentCard] Loaded organization from backend:', savedOrg);
-        }
-        hasLoadedOrgRef.current = true;
-      } catch (err) {
-        console.log('[SopAlignmentCard] Could not load organization from backend');
-        hasLoadedOrgRef.current = true;
-      }
-    };
-    
-    loadOrganizationFromBackend();
-  }, [getToken, selectedOrganization, setSelectedOrganization]);
-
-  // Use global context organization, local loaded, or fallback to user metadata
-  const organization = selectedOrganization || localOrganization || user?.unsafeMetadata?.organization as string || null;
+  // Use first organization for SOP lookup (primary), show all in display
+  const organization = selectedOrganizations[0] || selectedOrganization || null;
+  const allOrgs = selectedOrganizations.length > 0
+    ? selectedOrganizations
+    : (selectedOrganization && selectedOrganization !== 'None' ? [selectedOrganization] : []);
 
   useEffect(() => {
     // Only fetch if state/org changed or hasn't been fetched
@@ -98,8 +67,8 @@ const SopAlignmentCard: React.FC = () => {
         }
 
         const params: any = { state: selectedState };
-        if (organization && organization !== 'None') {
-          params.organization = organization;
+        if (allOrgs.length > 0) {
+          params.organizations = allOrgs.join(',');
         }
 
         const response = await axios.get(`${BASE_URL}/api/sop/active`, {
@@ -132,7 +101,7 @@ const SopAlignmentCard: React.FC = () => {
     };
 
     fetchActiveSops();
-  }, [selectedState, organization]);
+  }, [selectedState, organization, selectedOrganizations]);
 
   const handleConfigureClick = () => {
     // For web desktop, use app navigation context
@@ -197,12 +166,12 @@ const SopAlignmentCard: React.FC = () => {
                 )}
                 {hasOrgSop && (
                   <Text style={styles.sopSourceItem}>
-                    • Organization SOP: {organization} - {activeSops.orgSop?.documentName}
+                    • Organization SOP: {allOrgs.join(', ')} - {activeSops.orgSop?.documentName}
                   </Text>
                 )}
-                {!hasOrgSop && organization && organization !== 'None' && (
+                {!hasOrgSop && allOrgs.length > 0 && (
                   <Text style={styles.sopSourceItem}>
-                    • Organization: {organization} (no SOP document assigned)
+                    • Organizations: {allOrgs.join(', ')} (no SOP document assigned)
                   </Text>
                 )}
               </View>
@@ -219,12 +188,12 @@ const SopAlignmentCard: React.FC = () => {
                 </Text>
                 {hasOrgSop && (
                   <Text style={styles.sopSourceItem}>
-                    • Organization SOP: {organization} - {activeSops.orgSop?.documentName}
+                    • Organization SOP: {allOrgs.join(', ')} - {activeSops.orgSop?.documentName}
                   </Text>
                 )}
-                {!hasOrgSop && organization && organization !== 'None' && (
+                {!hasOrgSop && allOrgs.length > 0 && (
                   <Text style={styles.sopSourceItem}>
-                    • Organization: {organization} (no SOP document assigned)
+                    • Organizations: {allOrgs.join(', ')} (no SOP document assigned)
                   </Text>
                 )}
               </View>
@@ -233,9 +202,9 @@ const SopAlignmentCard: React.FC = () => {
                 <Text style={styles.sopBannerText}>
                   Using Spediak's best-practice guidance for your statements.
                 </Text>
-                {organization && organization !== 'None' && (
+                {allOrgs.length > 0 && (
                   <Text style={styles.sopSourceItem}>
-                    • Your organization: {organization}
+                    • Your organizations: {allOrgs.join(', ')}
                   </Text>
                 )}
               </View>

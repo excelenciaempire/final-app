@@ -59,7 +59,7 @@ export const US_STATES = [
   { label: 'Wyoming', value: 'WY' },
 ];
 
-// Organizations list
+// Organizations list (legacy single-select)
 export const ORGANIZATIONS = [
   { label: 'None', value: 'None' },
   { label: 'ASHI (American Society of Home Inspectors)', value: 'ASHI' },
@@ -68,11 +68,24 @@ export const ORGANIZATIONS = [
   { label: 'Other', value: 'Other' },
 ];
 
+// Full multi-select organization options (used in Profile and SOP screens)
+export const ORGANIZATION_OPTIONS = [
+  { label: 'ASHI (American Society of Home Inspectors)', value: 'ASHI' },
+  { label: 'InterNACHI (International Association of Certified Home Inspectors)', value: 'InterNACHI' },
+  { label: 'Inspector Nation', value: 'Inspector Nation' },
+  { label: 'NAHI (National Association of Home Inspectors)', value: 'NAHI' },
+  { label: 'CREIA (California Real Estate Inspection Association)', value: 'CREIA' },
+  { label: 'TPREIA (Texas Professional Real Estate Inspectors Association)', value: 'TPREIA' },
+  { label: 'Other', value: 'Other' },
+];
+
 interface GlobalStateContextType {
   selectedState: string | null;
   setSelectedState: (state: string) => void;
-  selectedOrganization: string | null;
-  setSelectedOrganization: (org: string) => void;
+  selectedOrganization: string | null; // backward compat - first of selectedOrganizations
+  setSelectedOrganization: (org: string) => void; // backward compat
+  selectedOrganizations: string[]; // all selected organizations
+  setSelectedOrganizations: (orgs: string[]) => void;
   isContentStale: boolean;
   markContentAsStale: () => void;
   clearStaleFlag: () => void;
@@ -86,10 +99,13 @@ const STALE_FLAG_KEY = '@spediak_content_stale';
 
 export const GlobalStateProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [selectedState, setSelectedStateInternal] = useState<string | null>(null);
-  const [selectedOrganization, setSelectedOrganizationInternal] = useState<string | null>(null);
+  const [selectedOrganizationsInternal, setSelectedOrganizationsInternal] = useState<string[]>([]);
   const [isContentStale, setIsContentStale] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const [profileLoaded, setProfileLoaded] = useState(false);
+
+  // Derived backward-compat single org
+  const selectedOrganization = selectedOrganizationsInternal[0] || null;
   
   const { getToken, isSignedIn } = useAuth();
   const { user } = useUser();
@@ -110,26 +126,29 @@ export const GlobalStateProvider: React.FC<{ children: ReactNode }> = ({ childre
         const data = await response.json();
         if (data.profile) {
           const profileState = data.profile.primary_state;
-          const profileOrgs = data.profile.organizations || [];
-          const profileOrg = profileOrgs.length > 0 ? profileOrgs[0] : 'None';
-          
+          const profileOrgs: string[] = Array.isArray(data.profile.organizations)
+            ? data.profile.organizations
+            : (data.profile.organization && data.profile.organization !== 'None')
+              ? [data.profile.organization]
+              : [];
+
           // Backend profile is the source of truth - always update to match
           if (profileState) {
             setSelectedStateInternal(profileState);
-            // Also persist to storage
             if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
               localStorage.setItem(STORAGE_KEY, profileState);
             } else if (Platform.OS !== 'web') {
               await AsyncStorage.setItem(STORAGE_KEY, profileState);
             }
           }
-          
-          if (profileOrg) {
-            setSelectedOrganizationInternal(profileOrg);
+
+          if (profileOrgs.length >= 0) {
+            setSelectedOrganizationsInternal(profileOrgs);
+            const json = JSON.stringify(profileOrgs);
             if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
-              localStorage.setItem(ORG_STORAGE_KEY, profileOrg);
+              localStorage.setItem(ORG_STORAGE_KEY, json);
             } else if (Platform.OS !== 'web') {
-              await AsyncStorage.setItem(ORG_STORAGE_KEY, profileOrg);
+              await AsyncStorage.setItem(ORG_STORAGE_KEY, json);
             }
           }
         }
@@ -160,9 +179,22 @@ export const GlobalStateProvider: React.FC<{ children: ReactNode }> = ({ childre
           setSelectedStateInternal(savedState);
         }
         if (savedOrg) {
-          setSelectedOrganizationInternal(savedOrg);
+          // Handle both JSON array format and legacy plain string
+          try {
+            const parsed = JSON.parse(savedOrg);
+            if (Array.isArray(parsed)) {
+              setSelectedOrganizationsInternal(parsed);
+            } else if (typeof parsed === 'string' && parsed !== 'None') {
+              setSelectedOrganizationsInternal([parsed]);
+            }
+          } catch {
+            // Legacy plain string format
+            if (savedOrg !== 'None') {
+              setSelectedOrganizationsInternal([savedOrg]);
+            }
+          }
         }
-        
+
         // Also try to use Clerk metadata as fallback
         if (!savedState && user?.unsafeMetadata?.inspectionState) {
           const clerkState = user.unsafeMetadata.inspectionState as string;
@@ -224,24 +256,33 @@ export const GlobalStateProvider: React.FC<{ children: ReactNode }> = ({ childre
     }
   };
 
-  const setSelectedOrganization = async (org: string) => {
-    // If organization is changing and we have existing content, mark as stale
-    if (selectedOrganization && selectedOrganization !== org) {
+  const setSelectedOrganizations = async (orgs: string[]) => {
+    // If organizations are changing and we have existing content, mark as stale
+    const prevFirst = selectedOrganizationsInternal[0] || null;
+    const newFirst = orgs[0] || null;
+    if (prevFirst && prevFirst !== newFirst) {
       markContentAsStale();
     }
 
-    setSelectedOrganizationInternal(org);
+    setSelectedOrganizationsInternal(orgs);
 
-    // Persist to storage
+    // Persist as JSON array
     try {
+      const json = JSON.stringify(orgs);
       if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
-        localStorage.setItem(ORG_STORAGE_KEY, org);
+        localStorage.setItem(ORG_STORAGE_KEY, json);
       } else if (Platform.OS !== 'web') {
-        await AsyncStorage.setItem(ORG_STORAGE_KEY, org);
+        await AsyncStorage.setItem(ORG_STORAGE_KEY, json);
       }
     } catch (error) {
-      console.error('Error persisting organization:', error);
+      console.error('Error persisting organizations:', error);
     }
+  };
+
+  // Backward-compat single-org setter
+  const setSelectedOrganization = async (org: string) => {
+    const newOrgs = org && org !== 'None' ? [org] : [];
+    await setSelectedOrganizations(newOrgs);
   };
 
   const markContentAsStale = () => {
@@ -278,6 +319,8 @@ export const GlobalStateProvider: React.FC<{ children: ReactNode }> = ({ childre
         setSelectedState,
         selectedOrganization,
         setSelectedOrganization,
+        selectedOrganizations: selectedOrganizationsInternal,
+        setSelectedOrganizations,
         isContentStale,
         markContentAsStale,
         clearStaleFlag,
@@ -298,6 +341,8 @@ export const useGlobalState = () => {
       setSelectedState: () => {},
       selectedOrganization: null,
       setSelectedOrganization: () => {},
+      selectedOrganizations: [],
+      setSelectedOrganizations: () => {},
       isContentStale: false,
       markContentAsStale: () => {},
       clearStaleFlag: () => {},

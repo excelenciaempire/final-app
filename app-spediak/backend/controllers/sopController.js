@@ -354,20 +354,54 @@ const getActiveSops = async (req, res) => {
       }
     }
 
-    // Get organization SOP if provided
-    if (organization && organization !== 'None') {
+    // Build list of organizations to look up (support both single 'organization' and multi 'organizations')
+    const orgList = [];
+    if (req.query.organizations) {
+      req.query.organizations.split(',').forEach(o => {
+        const trimmed = o.trim();
+        if (trimmed && trimmed !== 'None') orgList.push(trimmed);
+      });
+    } else if (organization && organization !== 'None') {
+      orgList.push(organization);
+    }
+
+    // Fetch SOP documents for all requested organizations in one query
+    const orgSops = [];
+    if (orgList.length > 0) {
       try {
         const orgResult = await pool.query(`
           SELECT sa.id, sa.sop_document_id, sa.assignment_type, sa.assignment_value, sa.created_at,
                  sd.document_name, sd.document_type, sd.file_url
           FROM sop_assignments sa
           LEFT JOIN sop_documents sd ON sa.sop_document_id = sd.id
-          WHERE sa.assignment_type = 'organization' AND sa.assignment_value = $1
-          LIMIT 1
-        `, [organization]);
+          WHERE sa.assignment_type = 'organization' AND sa.assignment_value = ANY($1::text[])
+        `, [orgList]);
 
-        if (orgResult.rows.length > 0) {
-          orgSop = orgResult.rows[0];
+        // Build map: orgName -> sop row
+        const orgSopMap = new Map();
+        for (const row of orgResult.rows) {
+          if (!orgSopMap.has(row.assignment_value)) {
+            orgSopMap.set(row.assignment_value, row);
+          }
+        }
+
+        // Build ordered array matching orgList
+        for (const org of orgList) {
+          const row = orgSopMap.get(org);
+          orgSops.push({
+            orgName: org,
+            id: row?.id || null,
+            documentId: row?.sop_document_id || null,
+            documentName: row?.document_name || null,
+            documentType: row?.document_type || null,
+            fileUrl: row?.file_url || null,
+            assignedAt: row?.created_at || null,
+          });
+        }
+
+        // Set backward-compat single orgSop
+        if (orgSops.length > 0 && orgSops[0].documentId) {
+          orgSop = { ...orgSops[0] };
         }
       } catch (orgErr) {
         console.log('Note: Org SOP query failed (table may be empty or structure differs):', orgErr.message);
@@ -409,14 +443,17 @@ const getActiveSops = async (req, res) => {
         assignedAt: effectiveStateSop.created_at || null,
         isDefault: effectiveStateSop.isDefault || false
       } : null,
+      // backward compat - first org with an assigned SOP document
       orgSop: orgSop ? {
         id: orgSop.id,
-        documentId: orgSop.sop_document_id,
-        documentName: orgSop.document_name || 'Unknown Document',
-        documentType: orgSop.document_type,
-        fileUrl: orgSop.file_url,
-        assignedAt: orgSop.created_at
+        documentId: orgSop.documentId || orgSop.sop_document_id,
+        documentName: orgSop.documentName || orgSop.document_name || 'Unknown Document',
+        documentType: orgSop.documentType || orgSop.document_type,
+        fileUrl: orgSop.fileUrl || orgSop.file_url,
+        assignedAt: orgSop.assignedAt || orgSop.created_at
       } : null,
+      // new - full array of all org entries (includes orgs with no document assigned)
+      orgSops,
       isStateExcluded
     });
 
@@ -428,6 +465,7 @@ const getActiveSops = async (req, res) => {
       organization: req.query.organization || null,
       stateSop: null,
       orgSop: null,
+      orgSops: [],
       warning: 'Could not load SOP data'
     });
   }

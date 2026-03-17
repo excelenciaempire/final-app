@@ -317,14 +317,19 @@ async function getCachedPrompt() {
  */
 const generateStatementDirect = async (req, res) => {
   const startTime = Date.now();
-  const { imageBase64, notes, userState, organization } = req.body;
+  const { imageBase64, notes, userState, organization, organizations } = req.body;
   const clerkId = req.auth?.userId;
 
   if (!imageBase64 || !userState) {
     return res.status(400).json({ message: 'Missing required fields (image, userState).' });
   }
 
-  console.log(`[⚡ Fast Generate] Request - State: ${userState}, Org: ${organization || 'None'}`);
+  // Support both organizations[] array and legacy organization string
+  const orgsToUse = Array.isArray(organizations) && organizations.length > 0
+    ? organizations.filter(o => o && o !== 'None')
+    : (organization && organization !== 'None' ? [organization] : []);
+
+  console.log(`[⚡ Fast Generate] Request - State: ${userState}, Orgs: ${orgsToUse.join(', ') || 'None'}`);
 
   try {
     // ============================================
@@ -338,8 +343,8 @@ const generateStatementDirect = async (req, res) => {
         [clerkId]
       ) : Promise.resolve({ rows: [] }),
       
-      // 2. SOP context (State + Organization) - 5000 chars each
-      getSopContextFast(userState, organization),
+      // 2. SOP context (State + all Organizations)
+      getSopContextFast(userState, orgsToUse),
       
       // 3. Knowledge Base search (with 2s timeout for speed)
       Promise.race([
@@ -392,7 +397,7 @@ const generateStatementDirect = async (req, res) => {
     const prompt = `${basePrompt}
 
 === INSPECTION CONTEXT ===
-State: ${userState}${organization && organization !== 'None' ? `\nOrganization: ${organization}` : ''}${notes ? `\nInspector Notes: ${notes.substring(0, 300)}` : ''}
+State: ${userState}${orgsToUse.length > 0 ? `\nOrganizations: ${orgsToUse.join(', ')}` : ''}${notes ? `\nInspector Notes: ${notes.substring(0, 300)}` : ''}
 
 ${hasSop ? `=== STANDARDS OF PRACTICE ===\n${sopContext}\n` : ''}${hasKnowledge ? `=== KNOWLEDGE BASE ===\n${knowledge.substring(0, 1500)}\n` : ''}
 Write ONE professional paragraph using DDID format: Describe the condition → Determine the issue → Implication if not addressed → Direction/recommendation. 4-6 sentences, technical language, no bullet points.`;
@@ -441,11 +446,11 @@ Write ONE professional paragraph using DDID format: Describe the condition → D
     console.log(`[⚡ Fast Generate] Total time: ${totalTime}ms (API: ${apiTime}ms)`);
 
     // Send response immediately
-    res.json({ 
+    res.json({
       statement,
       sopUsed: hasSop,
       state: userState,
-      organization: organization || null,
+      organizations: orgsToUse,
       processingTime: totalTime
     });
 
@@ -468,15 +473,21 @@ Write ONE professional paragraph using DDID format: Describe the condition → D
 
 /**
  * FAST SOP Context Fetcher
- * - Fetches both State and Organization SOP in parallel
- * - Limited to 5000 chars each for balance of context vs speed
+ * - Fetches State SOP and all Organization SOPs in parallel
+ * - Accepts orgs as string[] for multi-org support
+ * - Limited to 5000 chars for state, 3000 chars per org
  */
-async function getSopContextFast(state, organization) {
+async function getSopContextFast(state, orgs) {
   try {
     const sopParts = [];
-    
-    // Fetch State and Organization SOP in parallel
-    const [stateResult, orgResult] = await Promise.all([
+
+    // Normalize orgs to array
+    const orgList = Array.isArray(orgs)
+      ? orgs.filter(o => o && o !== 'None')
+      : (orgs && orgs !== 'None' ? [orgs] : []);
+
+    // Fetch State SOP + all Org SOPs in parallel
+    const [stateResult, ...orgResults] = await Promise.all([
       // State SOP (primary authority)
       pool.query(`
         SELECT sd.document_name, sd.extracted_text
@@ -486,28 +497,32 @@ async function getSopContextFast(state, organization) {
         AND sd.extracted_text IS NOT NULL AND sd.extracted_text != ''
         LIMIT 1
       `, [state]),
-      
-      // Organization SOP (secondary authority)
-      organization && organization !== 'None' ? pool.query(`
+
+      // One query per org (run in parallel)
+      ...orgList.map(org => pool.query(`
         SELECT sd.document_name, sd.extracted_text
         FROM sop_assignments sa
         JOIN sop_documents sd ON sa.sop_document_id = sd.id
         WHERE sa.assignment_type = 'organization' AND sa.assignment_value = $1
         AND sd.extracted_text IS NOT NULL AND sd.extracted_text != ''
         LIMIT 1
-      `, [organization]) : Promise.resolve({ rows: [] })
+      `, [org]))
     ]);
-    
+
     // Add State SOP (5000 chars max)
     if (stateResult.rows.length > 0 && stateResult.rows[0].extracted_text) {
       sopParts.push(`[STATE: ${state}]\n${stateResult.rows[0].extracted_text.substring(0, 5000)}`);
     }
-    
-    // Add Organization SOP (5000 chars max)
-    if (orgResult.rows.length > 0 && orgResult.rows[0].extracted_text) {
-      sopParts.push(`[ORG: ${organization}]\n${orgResult.rows[0].extracted_text.substring(0, 5000)}`);
+
+    // Add each Org SOP (3000 chars max per org to stay within token limits)
+    for (let i = 0; i < orgResults.length; i++) {
+      const orgResult = orgResults[i];
+      const orgName = orgList[i];
+      if (orgResult.rows.length > 0 && orgResult.rows[0].extracted_text) {
+        sopParts.push(`[ORG: ${orgName}]\n${orgResult.rows[0].extracted_text.substring(0, 3000)}`);
+      }
     }
-    
+
     return sopParts.join('\n\n');
   } catch (error) {
     console.warn('[Fast SOP] Error:', error.message);

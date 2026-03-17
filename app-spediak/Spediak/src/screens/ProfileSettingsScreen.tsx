@@ -78,11 +78,10 @@ const ProfileSettingsScreen: React.FC = () => {
     const { isLoaded, isSignedIn, user } = useUser();
     const { signOut, getToken } = useAuth();
     const { width } = useWindowDimensions();
-    const { 
-        selectedState: globalState, 
-        setSelectedState: setGlobalState, 
-        selectedOrganization: globalOrganization,
-        setSelectedOrganization: setGlobalOrganization 
+    const {
+        selectedState: globalState,
+        setSelectedState: setGlobalState,
+        setSelectedOrganizations: setGlobalOrganizations,
     } = useGlobalState();
 
     // State for editable fields
@@ -295,9 +294,7 @@ const ProfileSettingsScreen: React.FC = () => {
             if (selectedState) {
                 setGlobalState(selectedState);
             }
-            if (organizations.length > 0) {
-                setGlobalOrganization(organizations[0]);
-            }
+            setGlobalOrganizations(organizations);
 
             setSuccessMessage('Profile updated successfully!');
             Alert.alert("Success", "Profile updated successfully!");

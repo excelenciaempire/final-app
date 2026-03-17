@@ -1,42 +1,40 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  ScrollView, 
-  TouchableOpacity, 
-  ActivityIndicator, 
-  Linking, 
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  ActivityIndicator,
+  Linking,
   Alert,
   Platform,
   useWindowDimensions
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
-import { useGlobalState, US_STATES } from '../context/GlobalStateContext';
+import { useGlobalState, US_STATES, ORGANIZATION_OPTIONS } from '../context/GlobalStateContext';
 import { useAuth, useUser } from '@clerk/clerk-expo';
 import axios from 'axios';
 import { BASE_URL } from '../config/api';
 import { COLORS } from '../styles/colors';
-import { FileText, ExternalLink, CheckCircle, AlertCircle, ChevronDown } from 'lucide-react-native';
+import { FileText, ExternalLink, CheckCircle, AlertCircle, ChevronDown, Check } from 'lucide-react-native';
 import AdBanner from '../components/AdBanner';
 import StatementUsageCard from '../components/StatementUsageCard';
 
 const SopScreen: React.FC = () => {
-  const { selectedState, setSelectedState, setSelectedOrganization } = useGlobalState();
+  const { selectedState, setSelectedState, selectedOrganizations, setSelectedOrganizations } = useGlobalState();
   const { getToken } = useAuth();
   const { user } = useUser();
   const { width } = useWindowDimensions();
   const isLargeScreen = width > 600;
-  
-  const [organization, setOrganization] = useState<string>('None');
-  const [organizations, setOrganizations] = useState<{ value: string; label: string }[]>([
-    { value: 'None', label: 'None / Not using organization SOP' }
-  ]);
+
+  const [selectedOrgs, setSelectedOrgs] = useState<string[]>([]);
+  const [hasOrgChanges, setHasOrgChanges] = useState(false);
+  const [isSavingOrgs, setIsSavingOrgs] = useState(false);
   const [activeStateSop, setActiveStateSop] = useState<any>(null);
-  const [activeOrgSop, setActiveOrgSop] = useState<any>(null);
+  const [activeOrgSops, setActiveOrgSops] = useState<any[]>([]);
   const [isStateExcluded, setIsStateExcluded] = useState(false);
   const [isLoadingSop, setIsLoadingSop] = useState(false);
-  const [isLoadingOrgs, setIsLoadingOrgs] = useState(true);
   const [loadingMessage, setLoadingMessage] = useState('Loading...');
   const [dataReady, setDataReady] = useState(false);
 
@@ -46,11 +44,11 @@ const SopScreen: React.FC = () => {
   const abortControllerRef = useRef<AbortController | null>(null);
   const lastFetchParams = useRef<string>('');
 
-  // Initialize organization from backend (only once)
+  // Load user's organizations from backend on mount
   useEffect(() => {
-    const loadOrganizationFromBackend = async () => {
+    const loadOrgsFromBackend = async () => {
       if (!isInitializing.current) return;
-      
+
       try {
         const token = await getToken();
         if (token) {
@@ -58,128 +56,88 @@ const SopScreen: React.FC = () => {
             headers: { Authorization: `Bearer ${token}` },
             timeout: 10000
           });
-          
+
           const orgsData = response.data.profile?.organizations;
-          const savedOrg = (Array.isArray(orgsData) && orgsData.length > 0)
-            ? orgsData[0]
-            : response.data.profile?.organization;
-          if (savedOrg && savedOrg !== 'None') {
-            setOrganization(savedOrg);
-            setSelectedOrganization(savedOrg);
-            console.log('[SopScreen] Loaded organization from backend:', savedOrg);
+          if (Array.isArray(orgsData) && orgsData.length > 0) {
+            setSelectedOrgs(orgsData);
+          } else if (response.data.profile?.organization && response.data.profile.organization !== 'None') {
+            setSelectedOrgs([response.data.profile.organization]);
+          } else if (selectedOrganizations.length > 0) {
+            setSelectedOrgs(selectedOrganizations);
           }
         }
       } catch (err) {
-        // Fallback to Clerk metadata
-        if (user?.unsafeMetadata?.organization) {
-          setOrganization(user.unsafeMetadata.organization as string);
-          setSelectedOrganization(user.unsafeMetadata.organization as string);
+        // Fallback to global context
+        if (selectedOrganizations.length > 0) {
+          setSelectedOrgs(selectedOrganizations);
         }
-        console.log('[SopScreen] Using Clerk metadata for organization');
       }
-      
+
       isInitializing.current = false;
     };
-    
-    loadOrganizationFromBackend();
-  }, [getToken, user?.unsafeMetadata?.organization]);
 
-  // Fetch organizations from backend (only once on mount)
+    loadOrgsFromBackend();
+  }, [getToken]);
+
+  // Keep selectedOrgs in sync with global context when profile is updated elsewhere
   useEffect(() => {
-    let isMounted = true;
-    
-    const fetchOrganizations = async (retryCount = 0) => {
-      try {
-        setIsLoadingOrgs(true);
-        const token = await getToken();
-        if (!token || !isMounted) {
-          setIsLoadingOrgs(false);
-          return;
-        }
-        
-        const response = await axios.get(`${BASE_URL}/api/sop/organizations`, {
-          headers: { Authorization: `Bearer ${token}` },
-          timeout: 30000
-        });
-        
-        if (!isMounted) return;
-        
-        const backendOrgs = response.data.organizations || [];
-        const orgOptions = [
-          { value: 'None', label: 'None / Not using organization SOP' },
-          ...backendOrgs.map((org: any) => ({ 
-            value: org.name, 
-            label: org.name 
-          }))
-        ];
-        setOrganizations(orgOptions);
-      } catch (err: any) {
-        if (!isMounted) return;
-        console.log('Could not fetch organizations:', err?.message);
-        // Retry once if timeout (server cold start)
-        if (retryCount < 1 && err?.code === 'ECONNABORTED') {
-          console.log('Retrying organizations fetch...');
-          setTimeout(() => fetchOrganizations(retryCount + 1), 3000);
-          return;
-        }
-        // Keep default option
-      } finally {
-        if (isMounted) setIsLoadingOrgs(false);
-      }
-    };
-    
-    fetchOrganizations();
-    
-    return () => { isMounted = false; };
-  }, []); // Empty dependency - only run once on mount
+    if (!isInitializing.current && selectedOrganizations.length > 0 && !hasOrgChanges) {
+      setSelectedOrgs(selectedOrganizations);
+    }
+  }, [selectedOrganizations]);
 
-  // Save organization selection to backend and user metadata
-  const handleOrganizationChange = async (value: string) => {
-    setOrganization(value);
-    
-    // Update global context immediately
-    setSelectedOrganization(value);
-    
-    // Save to backend database (persistent storage)
+  // Toggle an org in the selection
+  const handleToggleOrg = (orgValue: string) => {
+    setSelectedOrgs(prev => {
+      const next = prev.includes(orgValue)
+        ? prev.filter(o => o !== orgValue)
+        : [...prev, orgValue];
+      setHasOrgChanges(true);
+      return next;
+    });
+  };
+
+  // Save org selection to backend and sync global context
+  const handleSaveOrgs = async () => {
+    setIsSavingOrgs(true);
     try {
       const token = await getToken();
       if (token) {
         await axios.put(`${BASE_URL}/api/user/profile`, {
-          organization: value
+          organizations: selectedOrgs,
+          organization: selectedOrgs[0] || null,
         }, {
           headers: { Authorization: `Bearer ${token}` },
           timeout: 10000
         });
-        console.log('[SopScreen] Organization saved to backend:', value);
       }
+      // Sync global context
+      setSelectedOrganizations(selectedOrgs);
+      setHasOrgChanges(false);
+      // Refetch SOP data with updated orgs
+      lastFetchParams.current = '';
+      fetchSopData(selectedState, selectedOrgs);
     } catch (err) {
-      console.error('Error saving organization to backend:', err);
-    }
-    
-    // Also save to user metadata for quick access
-    if (user) {
-      try {
-        await user.update({
-          unsafeMetadata: {
-            ...user.unsafeMetadata,
-            organization: value
-          }
-        });
-      } catch (err) {
-        console.error('Error saving organization to Clerk:', err);
+      console.error('[SopScreen] Error saving organizations:', err);
+      if (Platform.OS === 'web') {
+        alert('Failed to save organization changes. Please try again.');
+      } else {
+        Alert.alert('Error', 'Failed to save organization changes. Please try again.');
       }
+    } finally {
+      setIsSavingOrgs(false);
     }
   };
 
-  // Fetch SOP data - memoized without organization in dependencies to prevent loops
-  const fetchSopData = useCallback(async (state: string | null, org: string, retryCount = 0) => {
+  // Fetch SOP data - accepts array of orgs for multi-org support
+  const fetchSopData = useCallback(async (state: string | null, orgs: string[], retryCount = 0) => {
     if (!state) {
       setDataReady(true);
       return;
     }
 
-    // Check if params are the same as last fetch to prevent duplicate calls
-    const fetchKey = `${state}-${org}`;
+    const validOrgs = orgs.filter(o => o && o !== 'None');
+    const fetchKey = `${state}-${validOrgs.join(',')}`;
     if (fetchKey === lastFetchParams.current && dataReady) {
       return;
     }
@@ -193,14 +151,13 @@ const SopScreen: React.FC = () => {
     try {
       setIsLoadingSop(true);
       setLoadingMessage('Loading SOP data...');
-      
-      // Show "server starting" message after 5 seconds
+
       const slowLoadTimer = setTimeout(() => {
         setLoadingMessage('Server starting up, please wait...');
       }, 5000);
-      
+
       const token = await getToken();
-      
+
       if (!token) {
         clearTimeout(slowLoadTimer);
         setIsLoadingSop(false);
@@ -209,8 +166,8 @@ const SopScreen: React.FC = () => {
       }
 
       const params: any = { state };
-      if (org && org !== 'None') {
-        params.organization = org;
+      if (validOrgs.length > 0) {
+        params.organizations = validOrgs.join(',');
       }
 
       const response = await axios.get(`${BASE_URL}/api/sop/active`, {
@@ -223,22 +180,20 @@ const SopScreen: React.FC = () => {
       clearTimeout(slowLoadTimer);
       lastFetchParams.current = fetchKey;
       setActiveStateSop(response.data.stateSop);
-      setActiveOrgSop(response.data.orgSop);
+      setActiveOrgSops(response.data.orgSops || []);
       setIsStateExcluded(response.data.isStateExcluded || false);
       setDataReady(true);
     } catch (err: any) {
-      // Ignore abort errors
       if (err?.name === 'AbortError' || err?.code === 'ERR_CANCELED') return;
-      
+
       console.error('Error fetching SOP data:', err?.message);
-      // Retry once if timeout (server cold start)
       if (retryCount < 1 && err?.code === 'ECONNABORTED') {
         setLoadingMessage('Retrying connection...');
-        setTimeout(() => fetchSopData(state, org, retryCount + 1), 3000);
+        setTimeout(() => fetchSopData(state, orgs, retryCount + 1), 3000);
         return;
       }
       setActiveStateSop(null);
-      setActiveOrgSop(null);
+      setActiveOrgSops([]);
       setIsStateExcluded(false);
       setDataReady(true);
     } finally {
@@ -247,32 +202,29 @@ const SopScreen: React.FC = () => {
     }
   }, [getToken, dataReady]);
 
-  // Fetch SOP data when state or organization changes (debounced)
+  // Fetch SOP data when state or selectedOrgs change (debounced)
   useEffect(() => {
-    // Skip if still initializing
     if (isInitializing.current) return;
-    
-    // Debounce the fetch to prevent rapid re-renders
+
     const debounceTimer = setTimeout(() => {
-      fetchSopData(selectedState, organization);
+      fetchSopData(selectedState, selectedOrgs);
     }, 100);
-    
+
     return () => {
       clearTimeout(debounceTimer);
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
     };
-  }, [selectedState, organization]);
+  }, [selectedState, selectedOrgs]);
 
   // Initial load after component mounts
   useEffect(() => {
     if (!initialLoadDone.current && selectedState) {
       initialLoadDone.current = true;
-      // Delay to ensure user metadata is loaded
       const timer = setTimeout(() => {
         isInitializing.current = false;
-        fetchSopData(selectedState, organization);
+        fetchSopData(selectedState, selectedOrgs);
       }, 300);
       return () => clearTimeout(timer);
     }
@@ -299,22 +251,11 @@ const SopScreen: React.FC = () => {
     }
   };
 
-  const handleReportIssue = () => {
-    const subject = encodeURIComponent('SOP Request/Issue');
-    const body = encodeURIComponent(`State: ${selectedState}\nOrganization: ${organization}\n\nPlease describe your request or issue:\n`);
-    const url = `mailto:support@spediak.com?subject=${subject}&body=${body}`;
-    if (Platform.OS === 'web') {
-      window.open(url, '_blank');
-    } else {
-      Linking.openURL(url);
-    }
-  };
-
   const hasStateSop = activeStateSop !== null;
-  const hasOrgSop = activeOrgSop !== null && organization !== 'None';
+  const hasAnyOrgSop = activeOrgSops.some(o => o.documentId !== null);
 
   return (
-    <ScrollView 
+    <ScrollView
       style={styles.container}
       contentContainerStyle={[styles.contentContainer, isLargeScreen && styles.contentContainerLarge]}
     >
@@ -326,7 +267,7 @@ const SopScreen: React.FC = () => {
       <View style={[styles.cardContainer, isLargeScreen && styles.cardContainerLarge]}>
         <Text style={styles.title}>SOP Configuration</Text>
         <Text style={styles.description}>
-          Select your state and organization to configure which Standards of Practice Spediak will use when generating DDID statements.
+          Select your state and organizations to configure which Standards of Practice Spediak will use when generating DDID statements.
         </Text>
 
         {/* State Selector */}
@@ -340,10 +281,10 @@ const SopScreen: React.FC = () => {
               dropdownIconColor={COLORS.textSecondary}
             >
               {US_STATES.map((state) => (
-                <Picker.Item 
-                  key={state.value} 
-                  label={state.value} 
-                  value={state.value} 
+                <Picker.Item
+                  key={state.value}
+                  label={state.value}
+                  value={state.value}
                 />
               ))}
             </Picker>
@@ -351,29 +292,49 @@ const SopScreen: React.FC = () => {
           </View>
         </View>
 
-        {/* Organization Selector */}
+        {/* Organizations - Multi-select checkboxes */}
         <View style={styles.fieldContainer}>
-          <Text style={styles.label}>Organization SOP <Text style={styles.optionalText}>(optional)</Text></Text>
-          <View style={styles.pickerWrapper}>
-            {isLoadingOrgs ? (
-              <View style={styles.loadingPicker}>
-                <ActivityIndicator size="small" color={COLORS.primary} />
-                <Text style={styles.loadingPickerText}>Loading organizations...</Text>
-              </View>
-            ) : (
-              <Picker
-                selectedValue={organization}
-                onValueChange={handleOrganizationChange}
-                style={styles.picker}
-                dropdownIconColor={COLORS.textSecondary}
-              >
-                {organizations.map((org) => (
-                  <Picker.Item key={org.value} label={org.label} value={org.value} />
-                ))}
-              </Picker>
-            )}
-            {!isLoadingOrgs && <ChevronDown size={18} color={COLORS.textSecondary} style={styles.pickerIcon} />}
+          <Text style={styles.label}>Professional Organizations <Text style={styles.optionalText}>(optional)</Text></Text>
+          <Text style={styles.fieldHint}>Select all organizations you belong to</Text>
+          <View style={styles.organizationsContainer}>
+            {ORGANIZATION_OPTIONS.map(org => {
+              const isSelected = selectedOrgs.includes(org.value);
+              return (
+                <TouchableOpacity
+                  key={org.value}
+                  style={[styles.organizationChip, isSelected && styles.organizationChipSelected]}
+                  onPress={() => handleToggleOrg(org.value)}
+                  disabled={isSavingOrgs}
+                >
+                  <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
+                    {isSelected && <Check size={12} color="#fff" />}
+                  </View>
+                  <Text style={[styles.organizationChipText, isSelected && styles.organizationChipTextSelected]}>
+                    {org.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
+          {selectedOrgs.length > 0 && (
+            <Text style={styles.selectedOrgsText}>Selected: {selectedOrgs.join(', ')}</Text>
+          )}
+          {hasOrgChanges && (
+            <TouchableOpacity
+              style={[styles.saveOrgsButton, isSavingOrgs && styles.saveOrgsButtonDisabled]}
+              onPress={handleSaveOrgs}
+              disabled={isSavingOrgs}
+            >
+              {isSavingOrgs ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Check size={16} color="#fff" />
+                  <Text style={styles.saveOrgsButtonText}>Save Organization Changes</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Active SOP Documents Section */}
@@ -382,7 +343,7 @@ const SopScreen: React.FC = () => {
             <FileText size={20} color={COLORS.primary} />
             <Text style={styles.sectionTitle}>Active SOP Documents</Text>
           </View>
-          
+
           {isLoadingSop ? (
             <View style={styles.loadingRow}>
               <ActivityIndicator size="small" color={COLORS.primary} />
@@ -390,7 +351,7 @@ const SopScreen: React.FC = () => {
             </View>
           ) : (
             <>
-              {/* State SOP Row - Hidden when state is excluded from Default SOP */}
+              {/* State SOP Row */}
               {!isStateExcluded && (
                 <View style={styles.sopRow}>
                   <View style={styles.sopRowLeft}>
@@ -399,15 +360,8 @@ const SopScreen: React.FC = () => {
                     </View>
                     <View style={styles.sopInfo}>
                       <Text style={styles.sopLabel}>{selectedState || 'NC'} SOP</Text>
-                      <Text style={[
-                        styles.sopStatus,
-                        hasStateSop ? styles.sopStatusAssigned : styles.sopStatusMissing
-                      ]}>
-                        {hasStateSop
-                          ? (activeStateSop.isDefault
-                              ? `Using ${activeStateSop.documentName}`
-                              : `Using ${activeStateSop.documentName}`)
-                          : 'Not assigned'}
+                      <Text style={[styles.sopStatus, hasStateSop ? styles.sopStatusAssigned : styles.sopStatusMissing]}>
+                        {hasStateSop ? `Using ${activeStateSop.documentName}` : 'Not assigned'}
                       </Text>
                     </View>
                   </View>
@@ -428,52 +382,56 @@ const SopScreen: React.FC = () => {
                 </View>
               )}
 
-              {/* Organization SOP Row */}
-              <View style={styles.sopRow}>
-                <View style={styles.sopRowLeft}>
-                  <View style={[styles.sopTypeTag, styles.orgTag]}>
-                    <Text style={styles.sopTypeTagText}>ORG</Text>
+              {/* Organization SOP Rows — one per selected org */}
+              {selectedOrgs.length === 0 ? (
+                <View style={styles.sopRow}>
+                  <View style={styles.sopRowLeft}>
+                    <View style={[styles.sopTypeTag, styles.orgTag]}>
+                      <Text style={styles.sopTypeTagText}>ORG</Text>
+                    </View>
+                    <View style={styles.sopInfo}>
+                      <Text style={styles.sopLabel}>Organization SOP</Text>
+                      <Text style={[styles.sopStatus, styles.sopStatusNone]}>None selected</Text>
+                    </View>
                   </View>
-                  <View style={styles.sopInfo}>
-                    <Text style={styles.sopLabel}>
-                      {organization === 'None' ? 'Organization SOP' : `${organization} SOP`}
-                    </Text>
-                    <Text style={[
-                      styles.sopStatus,
-                      organization === 'None' 
-                        ? styles.sopStatusNone
-                        : hasOrgSop 
-                          ? styles.sopStatusAssigned 
-                          : styles.sopStatusMissing
-                    ]}>
-                      {organization === 'None'
-                        ? 'None selected'
-                        : hasOrgSop
-                          ? `Using ${activeOrgSop.documentName}`
-                          : 'Not assigned'}
-                    </Text>
-                  </View>
-                </View>
-                {hasOrgSop && activeOrgSop.fileUrl && (
-                  <TouchableOpacity 
-                    style={styles.viewButton}
-                    onPress={() => handleViewDocument(activeOrgSop.fileUrl, activeOrgSop.documentName)}
-                  >
-                    <ExternalLink size={16} color="#fff" />
-                    <Text style={styles.viewButtonText}>View</Text>
-                  </TouchableOpacity>
-                )}
-                {organization !== 'None' && !hasOrgSop && (
-                  <View style={styles.statusBadge}>
-                    <AlertCircle size={14} color="#F59E0B" />
-                  </View>
-                )}
-                {organization === 'None' && (
                   <View style={styles.statusBadgeNeutral}>
                     <Text style={styles.statusBadgeText}>—</Text>
                   </View>
-                )}
-              </View>
+                </View>
+              ) : (
+                activeOrgSops.map((orgEntry: any) => {
+                  const hasSop = orgEntry.documentId !== null && orgEntry.documentName !== null;
+                  return (
+                    <View key={orgEntry.orgName} style={styles.sopRow}>
+                      <View style={styles.sopRowLeft}>
+                        <View style={[styles.sopTypeTag, styles.orgTag]}>
+                          <Text style={styles.sopTypeTagText}>ORG</Text>
+                        </View>
+                        <View style={styles.sopInfo}>
+                          <Text style={styles.sopLabel}>{orgEntry.orgName} SOP</Text>
+                          <Text style={[styles.sopStatus, hasSop ? styles.sopStatusAssigned : styles.sopStatusMissing]}>
+                            {hasSop ? `Using ${orgEntry.documentName}` : 'Not assigned'}
+                          </Text>
+                        </View>
+                      </View>
+                      {hasSop && orgEntry.fileUrl && (
+                        <TouchableOpacity
+                          style={styles.viewButton}
+                          onPress={() => handleViewDocument(orgEntry.fileUrl, orgEntry.documentName)}
+                        >
+                          <ExternalLink size={16} color="#fff" />
+                          <Text style={styles.viewButtonText}>View</Text>
+                        </TouchableOpacity>
+                      )}
+                      {!hasSop && (
+                        <View style={styles.statusBadge}>
+                          <AlertCircle size={14} color="#F59E0B" />
+                        </View>
+                      )}
+                    </View>
+                  );
+                })
+              )}
             </>
           )}
         </View>
@@ -482,24 +440,17 @@ const SopScreen: React.FC = () => {
         {!isLoadingSop && dataReady && (
           <View style={[
             styles.statusSummary,
-            (hasStateSop || hasOrgSop) ? styles.statusSummaryActive : styles.statusSummaryInactive
+            (hasStateSop || hasAnyOrgSop) ? styles.statusSummaryActive : styles.statusSummaryInactive
           ]}>
-            {(hasStateSop || hasOrgSop) ? (
+            {(hasStateSop || hasAnyOrgSop) ? (
               <>
                 <CheckCircle size={18} color="#10B981" />
                 <Text style={styles.statusSummaryTextActive}>
-                  {hasStateSop && hasOrgSop
-                    ? 'Statements will comply with both State and Organization SOPs'
+                  {hasStateSop && hasAnyOrgSop
+                    ? 'Statements will comply with State and Organization SOPs'
                     : hasStateSop
                       ? 'Statements will comply with State SOP'
                       : 'Statements will comply with Organization SOP'}
-                </Text>
-              </>
-            ) : isStateExcluded && hasOrgSop ? (
-              <>
-                <CheckCircle size={18} color="#10B981" />
-                <Text style={styles.statusSummaryTextActive}>
-                  Statements will comply with Organization SOP
                 </Text>
               </>
             ) : (
@@ -507,22 +458,19 @@ const SopScreen: React.FC = () => {
                 <AlertCircle size={18} color="#6B7280" />
                 <Text style={styles.statusSummaryTextInactive}>
                   {isStateExcluded
-                    ? 'No State SOP required for this state. Statements will use Spediak\'s general best-practice guidance.'
-                    : 'No SOP configured. Statements will use Spediak\'s general best-practice guidance.'}
+                    ? "No State SOP required for this state. Statements will use Spediak's general best-practice guidance."
+                    : "No SOP configured. Statements will use Spediak's general best-practice guidance."}
                 </Text>
               </>
             )}
           </View>
         )}
 
-        {/* Report Issue Button */}
-        <TouchableOpacity 
-          style={styles.reportButton}
-          onPress={handleReportIssue}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.reportButtonText}>Report an issue / Request SOP update</Text>
-        </TouchableOpacity>
+        {/* Support contact */}
+        <Text style={styles.supportText}>
+          Questions or SOP requests? Contact us at{' '}
+          <Text style={styles.supportEmail}>support@spediak.com</Text>
+        </Text>
       </View>
     </ScrollView>
   );
@@ -633,6 +581,81 @@ const styles = StyleSheet.create({
     color: '#F59E0B',
     textAlign: 'center',
     marginTop: 4,
+  },
+  fieldHint: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    marginBottom: 10,
+    marginTop: -4,
+  },
+  organizationsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
+  },
+  organizationChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginBottom: 4,
+  },
+  organizationChipSelected: {
+    backgroundColor: '#EFF6FF',
+    borderColor: COLORS.primary,
+  },
+  organizationChipText: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    marginLeft: 8,
+    flexShrink: 1,
+  },
+  organizationChipTextSelected: {
+    color: COLORS.primary,
+    fontWeight: '600',
+  },
+  checkbox: {
+    width: 18,
+    height: 18,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: '#D1D5DB',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxSelected: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  selectedOrgsText: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    fontStyle: 'italic',
+    marginBottom: 8,
+  },
+  saveOrgsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primary,
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    gap: 8,
+    marginTop: 4,
+  },
+  saveOrgsButtonDisabled: {
+    opacity: 0.6,
+  },
+  saveOrgsButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
   },
   activeSopSection: {
     backgroundColor: '#F8FAFC',
@@ -782,19 +805,16 @@ const styles = StyleSheet.create({
     flex: 1,
     lineHeight: 18,
   },
-  reportButton: {
-    backgroundColor: '#F0F4F8',
-    borderRadius: 10,
-    paddingVertical: 16,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#E0E4E8',
+  supportText: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    marginTop: 4,
+    lineHeight: 20,
   },
-  reportButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
+  supportEmail: {
     color: COLORS.primary,
-    textDecorationLine: 'underline',
+    fontWeight: '600',
   },
 });
 
