@@ -66,13 +66,14 @@
     </div>
   </div>
   <script>
-    // Prevent pinch-to-zoom on iOS Safari (viewport zoom reveals off-screen drawer)
-    document.addEventListener('touchmove', function(e) {
-      if (e.touches.length > 1) { e.preventDefault(); }
-    }, { passive: false });
+    // Prevent pinch-to-zoom on iOS Safari (viewport zoom reveals off-screen drawer).
+    // Use capture:true so these fire before React Native web's own touch handlers.
     document.addEventListener('touchstart', function(e) {
       if (e.touches.length > 1) { e.preventDefault(); }
-    }, { passive: false });
+    }, { passive: false, capture: true });
+    document.addEventListener('touchmove', function(e) {
+      if (e.touches.length > 1) { e.preventDefault(); }
+    }, { passive: false, capture: true });
   </script>
 </body>
 </html>

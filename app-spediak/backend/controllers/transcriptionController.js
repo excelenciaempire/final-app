@@ -28,7 +28,9 @@ const transcribeAudioController = async (req, res) => {
     return res.status(400).json({ message: `Missing ${missingParam} in request body` });
   }
 
-  const fileExtension = mimeTypeExtensions[mimetype];
+  // Strip codec parameters (e.g. "audio/webm;codecs=opus" → "audio/webm")
+  const baseMimetype = mimetype.split(';')[0].trim();
+  const fileExtension = mimeTypeExtensions[baseMimetype];
   if (!fileExtension) {
     console.error(`[TranscribeController] Unsupported mimetype: ${mimetype}`);
     return res.status(400).json({ message: `Unsupported mimetype: ${mimetype}` });
