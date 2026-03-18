@@ -1237,6 +1237,24 @@ export default function NewInspectionScreen() {
                 >
                     <Text style={styles.feedbackLinkText}>Send Feedback</Text>
                 </TouchableOpacity>
+
+                {/* --- Support Contact --- */}
+                <Text style={styles.supportContactText}>
+                    Need help? Contact us at{' '}
+                    <Text
+                        style={styles.supportContactEmail}
+                        onPress={() => {
+                            const url = 'mailto:support@spediak.com';
+                            if (Platform.OS === 'web') {
+                                window.open(url, '_blank');
+                            } else {
+                                Linking.openURL(url);
+                            }
+                        }}
+                    >
+                        support@spediak.com
+                    </Text>
+                </Text>
             </KeyboardAvoidingView>
 
             <PreDescriptionModal
@@ -1622,6 +1640,19 @@ const styles = StyleSheet.create({
     feedbackLinkText: {
         color: COLORS.primary,
         fontSize: 15,
+        textDecorationLine: 'underline',
+    },
+    supportContactText: {
+        marginTop: 8,
+        marginBottom: 24,
+        alignSelf: 'center',
+        fontSize: 13,
+        color: COLORS.textSecondary,
+        textAlign: 'center',
+    },
+    supportContactEmail: {
+        color: COLORS.primary,
+        fontWeight: '600',
         textDecorationLine: 'underline',
     },
     staleWarning: {

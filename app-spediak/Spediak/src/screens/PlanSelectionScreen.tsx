@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking, Alert, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform, ActivityIndicator } from 'react-native';
 import { useAuth } from '@clerk/clerk-expo';
 import { COLORS } from '../styles/colors';
 import { CheckCircle, Star, Zap } from 'lucide-react-native';
@@ -10,12 +10,12 @@ const PlanSelectionScreen: React.FC = () => {
   const { subscription } = useSubscription();
   const { getToken } = useAuth();
   const currentPlan = subscription?.plan_type || 'free';
-  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [processingPlan, setProcessingPlan] = useState<string | null>(null);
 
-  const handleUpgradeToPro = async () => {
-    setIsProcessingPayment(true);
+  const handleUpgrade = async (planId: 'pro' | 'platinum') => {
+    setProcessingPlan(planId);
     try {
-      const result = await purchaseSubscription('pro', getToken);
+      const result = await purchaseSubscription(planId, getToken);
       if (!result.success && result.error && result.error !== 'Purchase cancelled') {
         if (Platform.OS === 'web') {
           alert('Payment error: ' + result.error);
@@ -30,16 +30,7 @@ const PlanSelectionScreen: React.FC = () => {
         Alert.alert('Payment Error', err.message || 'Unknown error');
       }
     } finally {
-      setIsProcessingPayment(false);
-    }
-  };
-
-  const handleContactPlatinum = () => {
-    const mailtoUrl = 'mailto:sales@spediak.com?subject=Inquiry about Platinum Plan';
-    if (Platform.OS === 'web') {
-      window.open(mailtoUrl, '_blank');
-    } else {
-      Linking.openURL(mailtoUrl);
+      setProcessingPlan(null);
     }
   };
 
@@ -81,7 +72,7 @@ const PlanSelectionScreen: React.FC = () => {
       icon: Star,
       color: '#FFA500',
       action: 'upgrade',
-      actionLabel: 'Start 7-Day Trial',
+      actionLabel: 'Start Plan',
       popular: true
     },
     {
@@ -102,8 +93,8 @@ const PlanSelectionScreen: React.FC = () => {
       ],
       icon: Zap,
       color: '#9C27B0',
-      action: 'contact',
-      actionLabel: 'Contact Sales'
+      action: 'upgrade',
+      actionLabel: 'Start Plan'
     }
   ];
 
@@ -111,9 +102,7 @@ const PlanSelectionScreen: React.FC = () => {
     if (action === 'current') {
       Alert.alert('Current Plan', 'This is your current plan.');
     } else if (action === 'upgrade') {
-      handleUpgradeToPro();
-    } else if (action === 'contact') {
-      handleContactPlatinum();
+      handleUpgrade(planId as 'pro' | 'platinum');
     }
   };
 
@@ -172,12 +161,12 @@ const PlanSelectionScreen: React.FC = () => {
                   styles.actionButton,
                   plan.popular && styles.popularActionButton,
                   isCurrentPlan && styles.currentPlanButton,
-                  (isProcessingPayment && plan.id === 'pro') && styles.buttonDisabled
+                  (processingPlan === plan.id) && styles.buttonDisabled
                 ]}
                 onPress={() => handlePlanAction(plan.id, isCurrentPlan ? 'current' : plan.action)}
-                disabled={isCurrentPlan || (isProcessingPayment && plan.id === 'pro')}
+                disabled={isCurrentPlan || processingPlan !== null}
               >
-                {isProcessingPayment && plan.id === 'pro' ? (
+                {processingPlan === plan.id ? (
                   <ActivityIndicator color="#fff" size="small" />
                 ) : (
                   <Text style={[
