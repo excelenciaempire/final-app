@@ -390,9 +390,9 @@ const SopScreen: React.FC = () => {
                   </View>
                 </View>
               ) : (
-                activeOrgSops.map((orgEntry: any) => {
-                  const hasSop = orgEntry.documentId !== null && orgEntry.documentName !== null;
-                  return (
+                activeOrgSops
+                  .filter((orgEntry: any) => orgEntry.documentId !== null && orgEntry.documentName !== null)
+                  .map((orgEntry: any) => (
                     <View key={orgEntry.orgName} style={styles.sopRow}>
                       <View style={styles.sopRowLeft}>
                         <View style={[styles.sopTypeTag, styles.orgTag]}>
@@ -400,12 +400,12 @@ const SopScreen: React.FC = () => {
                         </View>
                         <View style={styles.sopInfo}>
                           <Text style={styles.sopLabel}>{orgEntry.orgName} SOP</Text>
-                          <Text style={[styles.sopStatus, hasSop ? styles.sopStatusAssigned : styles.sopStatusMissing]}>
-                            {hasSop ? `Using ${orgEntry.documentName}` : 'Not assigned'}
+                          <Text style={[styles.sopStatus, styles.sopStatusAssigned]}>
+                            {`Using ${orgEntry.documentName}`}
                           </Text>
                         </View>
                       </View>
-                      {hasSop && orgEntry.fileUrl && (
+                      {orgEntry.fileUrl && (
                         <TouchableOpacity
                           style={styles.viewButton}
                           onPress={() => handleViewDocument(orgEntry.fileUrl, orgEntry.documentName)}
@@ -414,14 +414,8 @@ const SopScreen: React.FC = () => {
                           <Text style={styles.viewButtonText}>View</Text>
                         </TouchableOpacity>
                       )}
-                      {!hasSop && (
-                        <View style={styles.statusBadge}>
-                          <AlertCircle size={14} color="#F59E0B" />
-                        </View>
-                      )}
                     </View>
-                  );
-                })
+                  ))
               )}
             </>
           )}
