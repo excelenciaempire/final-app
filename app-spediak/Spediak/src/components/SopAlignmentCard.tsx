@@ -10,6 +10,12 @@ import { useNavigation } from '@react-navigation/native';
 import { useAppNavigation } from '../context/AppNavigationContext';
 import { useSubscription } from '../context/SubscriptionContext';
 
+interface OrgSopEntry {
+  orgName: string;
+  documentId: number | null;
+  documentName: string | null;
+}
+
 interface ActiveSop {
   stateSop: {
     documentName: string;
@@ -20,6 +26,7 @@ interface ActiveSop {
     documentName: string;
     fileUrl?: string;
   } | null;
+  orgSops: OrgSopEntry[];
   isStateExcluded?: boolean;
 }
 
@@ -29,7 +36,7 @@ const SopAlignmentCard: React.FC = () => {
   const navigation = useNavigation<any>();
   const { navigateTo, isWebDesktop } = useAppNavigation();
   const { subscription } = useSubscription();
-  const [activeSops, setActiveSops] = useState<ActiveSop>({ stateSop: null, orgSop: null, isStateExcluded: false });
+  const [activeSops, setActiveSops] = useState<ActiveSop>({ stateSop: null, orgSop: null, orgSops: [], isStateExcluded: false });
   const [isLoading, setIsLoading] = useState(false);
 
   // Check if user is on a paid plan (Pro or Platinum)
@@ -87,6 +94,7 @@ const SopAlignmentCard: React.FC = () => {
             documentName: response.data.orgSop.documentName,
             fileUrl: response.data.orgSop.fileUrl
           } : null,
+          orgSops: response.data.orgSops || [],
           isStateExcluded: response.data.isStateExcluded || false
         });
       } catch (err: any) {
@@ -128,6 +136,8 @@ const SopAlignmentCard: React.FC = () => {
   const hasOrgSop = activeSops?.orgSop !== null;
   const isStateExcluded = activeSops?.isStateExcluded || false;
   const hasAnySop = hasStateSop || hasOrgSop;
+  // Only orgs that actually have a document assigned
+  const orgsWithDocs = (activeSops?.orgSops || []).filter(o => o.documentId !== null && o.documentName !== null);
 
   return (
     <View style={styles.card}>
@@ -164,38 +174,30 @@ const SopAlignmentCard: React.FC = () => {
                     {activeSops.stateSop?.isDefault && <Text style={styles.defaultBadge}> (InterNACHI)</Text>}
                   </Text>
                 )}
-                {hasOrgSop && (
-                  <Text style={styles.sopSourceItem}>
-                    • Organization SOP: {allOrgs.join(', ')} - {activeSops.orgSop?.documentName}
+                {orgsWithDocs.map(o => (
+                  <Text key={o.orgName} style={styles.sopSourceItem}>
+                    • Organization SOP ({o.orgName}): {o.documentName}
                   </Text>
-                )}
-                {!hasOrgSop && allOrgs.length > 0 && (
-                  <Text style={styles.sopSourceItem}>
-                    • Organizations: {allOrgs.join(', ')} (no SOP document assigned)
-                  </Text>
-                )}
+                ))}
               </View>
             ) : isStateExcluded && hasOrgSop ? (
               <View style={styles.sopSourcesList}>
-                <Text style={styles.sopSourceItem}>
-                  • Organization SOP: {organization} - {activeSops.orgSop?.documentName}
-                </Text>
+                {orgsWithDocs.map(o => (
+                  <Text key={o.orgName} style={styles.sopSourceItem}>
+                    • Organization SOP ({o.orgName}): {o.documentName}
+                  </Text>
+                ))}
               </View>
             ) : isStateExcluded ? (
               <View style={styles.sopSourcesList}>
                 <Text style={styles.sopBannerText}>
                   No State SOP required for {selectedState}. Using Spediak's best-practice guidance.
                 </Text>
-                {hasOrgSop && (
-                  <Text style={styles.sopSourceItem}>
-                    • Organization SOP: {allOrgs.join(', ')} - {activeSops.orgSop?.documentName}
+                {orgsWithDocs.map(o => (
+                  <Text key={o.orgName} style={styles.sopSourceItem}>
+                    • Organization SOP ({o.orgName}): {o.documentName}
                   </Text>
-                )}
-                {!hasOrgSop && allOrgs.length > 0 && (
-                  <Text style={styles.sopSourceItem}>
-                    • Organizations: {allOrgs.join(', ')} (no SOP document assigned)
-                  </Text>
-                )}
+                ))}
               </View>
             ) : isPaidUser ? (
               <View style={styles.sopSourcesList}>
