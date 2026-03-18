@@ -19,12 +19,13 @@
       width: 100%;
       overflow: hidden;
       overscroll-behavior: none;
+      touch-action: pan-x pan-y; /* disables pinch-zoom at CSS level */
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
       background-color: #f8f9fa;
     }
-    /* position:fixed creates a containing block so overflow:hidden clips
-       absolutely-positioned children (e.g. the off-screen drawer panel).
-       Without it, Safari's pinch-zoom lets users pan to reveal the drawer. */
+    /* transform: translateZ(0) makes #root a containing block for ALL
+       position:fixed descendants (Safari included), so overflow:hidden
+       actually clips the off-screen drawer panel even when zoomed. */
     #root {
       position: fixed;
       top: 0;
@@ -33,6 +34,9 @@
       height: 100%;
       overflow: hidden;
       overscroll-behavior: none;
+      touch-action: pan-x pan-y;
+      transform: translateZ(0);
+      -webkit-transform: translateZ(0);
     }
     /* Loading indicator */
     .loading-container {
@@ -76,8 +80,16 @@
     </div>
   </div>
   <script>
-    // Prevent pinch-to-zoom on iOS Safari (viewport zoom reveals off-screen drawer).
-    // Use capture:true so these fire before React Native web's own touch handlers.
+    // Prevent pinch-to-zoom on iOS Safari so the off-screen drawer panel
+    // cannot be revealed by panning after a zoom.
+
+    // 1. Safari-specific gesture events (most reliable for pinch-zoom).
+    document.addEventListener('gesturestart',  function(e) { e.preventDefault(); }, { passive: false });
+    document.addEventListener('gesturechange', function(e) { e.preventDefault(); }, { passive: false });
+    document.addEventListener('gestureend',    function(e) { e.preventDefault(); }, { passive: false });
+
+    // 2. Multi-touch fallback (catches cases where gesture events don't fire).
+    //    capture:true fires before React Native Web's own handlers.
     document.addEventListener('touchstart', function(e) {
       if (e.touches.length > 1) { e.preventDefault(); }
     }, { passive: false, capture: true });
