@@ -1119,6 +1119,57 @@ const deleteOrganization = async (req, res) => {
 };
 
 /**
+ * Rename an SOP organization
+ */
+const updateOrganization = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name } = req.body;
+    const clerkId = req.auth.userId;
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({ message: 'Organization name is required' });
+    }
+
+    const org = await pool.query('SELECT name FROM sop_organizations WHERE id = $1', [id]);
+    if (org.rows.length === 0) {
+      return res.status(404).json({ message: 'Organization not found' });
+    }
+    const oldName = org.rows[0].name;
+    const newName = name.trim();
+
+    // Check uniqueness
+    const existing = await pool.query(
+      'SELECT id FROM sop_organizations WHERE LOWER(name) = LOWER($1) AND id != $2',
+      [newName, id]
+    );
+    if (existing.rows.length > 0) {
+      return res.status(400).json({ message: 'An organization with that name already exists' });
+    }
+
+    // Rename in org table
+    await pool.query('UPDATE sop_organizations SET name = $1 WHERE id = $2', [newName, id]);
+
+    // Keep assignments in sync
+    await pool.query(
+      'UPDATE sop_assignments SET assignment_value = $1 WHERE assignment_type = $2 AND assignment_value = $3',
+      [newName, 'organization', oldName]
+    );
+
+    // Log to history
+    await pool.query(`
+      INSERT INTO sop_history (action_type, assignment_type, assignment_value, changed_by, created_at)
+      VALUES ('org_renamed', 'organization', $1, $2, NOW())
+    `, [`${oldName} → ${newName}`, clerkId]);
+
+    res.json({ message: 'Organization renamed', oldName, newName });
+  } catch (error) {
+    console.error('Error renaming organization:', error);
+    res.status(500).json({ message: 'Failed to rename organization' });
+  }
+};
+
+/**
  * Remove a SOP assignment (state or organization)
  */
 const removeSopAssignment = async (req, res) => {
@@ -1376,6 +1427,7 @@ module.exports = {
   getOrganizations,
   createOrganization,
   deleteOrganization,
+  updateOrganization,
   removeSopAssignment,
   deleteSopDocument,
   getDefaultSopSettings,

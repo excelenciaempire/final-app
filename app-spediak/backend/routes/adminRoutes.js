@@ -169,6 +169,7 @@ router.delete('/sop/documents/:documentId', sopController.deleteSopDocument);
 // SOP Organization Management
 router.get('/sop/organizations', sopController.getOrganizations);
 router.post('/sop/organizations', sopController.createOrganization);
+router.put('/sop/organizations/:id', sopController.updateOrganization);
 router.delete('/sop/organizations/:id', sopController.deleteOrganization);
 
 // Default SOP Settings (Admin only)

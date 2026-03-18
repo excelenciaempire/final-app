@@ -17,7 +17,7 @@ import { useNavigation } from '@react-navigation/native';
 import axios from 'axios';
 import { BASE_URL } from '../../config/api';
 import { COLORS } from '../../styles/colors';
-import { Upload, FileText, Check, Plus, Trash2, History, ChevronDown, X, Eye } from 'lucide-react-native';
+import { Upload, FileText, Check, Plus, Trash2, History, ChevronDown, X, Eye, Edit2 } from 'lucide-react-native';
 import { US_STATES } from '../../context/GlobalStateContext';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
@@ -131,6 +131,9 @@ const SopManagementTab: React.FC = () => {
   const [deletingDocId, setDeletingDocId] = useState<number | null>(null);
   const [removingAssignmentId, setRemovingAssignmentId] = useState<number | null>(null);
   const [deletingOrgId, setDeletingOrgId] = useState<number | null>(null);
+  const [editingOrgId, setEditingOrgId] = useState<number | null>(null);
+  const [editingOrgName, setEditingOrgName] = useState('');
+  const [savingOrgId, setSavingOrgId] = useState<number | null>(null);
 
   useEffect(() => {
     fetchData();
@@ -412,6 +415,38 @@ const SopManagementTab: React.FC = () => {
           { text: 'Delete', style: 'destructive', onPress: doDelete }
         ]
       );
+    }
+  };
+
+  // Rename organization
+  const handleRenameOrganization = async (id: number) => {
+    const trimmed = editingOrgName.trim();
+    if (!trimmed) return;
+    try {
+      setSavingOrgId(id);
+      const token = await getToken();
+      if (!token) throw new Error('Not authenticated');
+      await axios.put(`${BASE_URL}/api/admin/sop/organizations/${id}`, { name: trimmed }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setEditingOrgId(null);
+      setEditingOrgName('');
+      await fetchOrganizations();
+      await fetchSopAssignments();
+      if (selectedOrg) {
+        // Update selected org name if it was the one being renamed
+        const updated = organizations.find(o => o.id === id);
+        if (updated && selectedOrg === updated.name) setSelectedOrg(trimmed);
+      }
+    } catch (error: any) {
+      const msg = error.response?.data?.message || 'Failed to rename organization';
+      if (Platform.OS === 'web') {
+        alert(msg);
+      } else {
+        Alert.alert('Error', msg);
+      }
+    } finally {
+      setSavingOrgId(null);
     }
   };
 
@@ -1156,34 +1191,76 @@ const SopManagementTab: React.FC = () => {
           <View style={styles.orgList}>
             {organizations.map((org) => {
               const assignment = getOrgAssignment(org.name);
+              const isEditing = editingOrgId === org.id;
               return (
                 <View key={org.id} style={styles.orgItem}>
                   <View style={styles.orgInfo}>
-                    <Text style={styles.orgName}>{org.name}</Text>
+                    {isEditing ? (
+                      <TextInput
+                        style={styles.orgEditInput}
+                        value={editingOrgName}
+                        onChangeText={setEditingOrgName}
+                        autoFocus
+                        selectTextOnFocus
+                        onSubmitEditing={() => handleRenameOrganization(org.id)}
+                      />
+                    ) : (
+                      <Text style={styles.orgName}>{org.name}</Text>
+                    )}
                     <Text style={styles.orgStatus}>
                       {assignment ? `✓ ${assignment.document_name}` : 'No document assigned'}
                     </Text>
                   </View>
                   <View style={styles.orgActions}>
-                    {assignment?.file_url && (
-                      <TouchableOpacity 
-                        style={styles.iconButton}
-                        onPress={() => handleViewDocument(assignment.file_url!)}
-                      >
-                        <Eye size={16} color={COLORS.primary} />
-                      </TouchableOpacity>
+                    {isEditing ? (
+                      <>
+                        <TouchableOpacity
+                          style={styles.iconButton}
+                          onPress={() => handleRenameOrganization(org.id)}
+                          disabled={savingOrgId === org.id}
+                        >
+                          {savingOrgId === org.id ? (
+                            <ActivityIndicator size="small" color={COLORS.primary} />
+                          ) : (
+                            <Check size={16} color={COLORS.primary} />
+                          )}
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.iconButton}
+                          onPress={() => { setEditingOrgId(null); setEditingOrgName(''); }}
+                        >
+                          <X size={16} color={COLORS.textSecondary} />
+                        </TouchableOpacity>
+                      </>
+                    ) : (
+                      <>
+                        {assignment?.file_url && (
+                          <TouchableOpacity
+                            style={styles.iconButton}
+                            onPress={() => handleViewDocument(assignment.file_url!)}
+                          >
+                            <Eye size={16} color={COLORS.primary} />
+                          </TouchableOpacity>
+                        )}
+                        <TouchableOpacity
+                          style={styles.iconButton}
+                          onPress={() => { setEditingOrgId(org.id); setEditingOrgName(org.name); }}
+                        >
+                          <Edit2 size={16} color="#6B7280" />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.iconButton}
+                          onPress={() => handleDeleteOrganization(org)}
+                          disabled={deletingOrgId === org.id}
+                        >
+                          {deletingOrgId === org.id ? (
+                            <ActivityIndicator size="small" color={COLORS.error} />
+                          ) : (
+                            <Trash2 size={16} color={COLORS.error} />
+                          )}
+                        </TouchableOpacity>
+                      </>
                     )}
-                    <TouchableOpacity 
-                      style={styles.iconButton}
-                      onPress={() => handleDeleteOrganization(org)}
-                      disabled={deletingOrgId === org.id}
-                    >
-                      {deletingOrgId === org.id ? (
-                        <ActivityIndicator size="small" color={COLORS.error} />
-                      ) : (
-                        <Trash2 size={16} color={COLORS.error} />
-                      )}
-                    </TouchableOpacity>
                   </View>
                 </View>
               );
@@ -1661,6 +1738,16 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1F2937',
     marginBottom: 4,
+  },
+  orgEditInput: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1F2937',
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.primary,
+    paddingVertical: 2,
+    marginBottom: 4,
+    minWidth: 120,
   },
   orgStatus: {
     fontSize: 12,
