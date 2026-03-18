@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,8 +6,8 @@ import {
   TouchableOpacity,
   StyleSheet,
   SafeAreaView,
-  Alert,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { useSignIn } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,7 +19,7 @@ import { BASE_URL } from '../../config/api';
 type ForgotPasswordScreenProps = NativeStackScreenProps<AuthStackParamList, 'ForgotPassword'>;
 
 const ForgotPasswordScreen: React.FC<ForgotPasswordScreenProps> = ({ navigation }) => {
-  const { signIn, isLoaded } = useSignIn();
+  const { signIn, setActive, isLoaded } = useSignIn();
 
   const [emailAddress, setEmailAddress] = useState('');
   const [loading, setLoading] = useState(false);
@@ -28,6 +28,23 @@ const ForgotPasswordScreen: React.FC<ForgotPasswordScreenProps> = ({ navigation 
   const [code, setCode] = useState('');
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Hide the browser's native password-reveal button on web
+  useEffect(() => {
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      const styleId = 'hide-pw-reveal';
+      if (!document.getElementById(styleId)) {
+        const s = document.createElement('style');
+        s.id = styleId;
+        s.textContent =
+          'input::-ms-reveal { display: none !important; } ' +
+          'input::-webkit-contacts-auto-fill-button { visibility: hidden !important; } ' +
+          'input::-webkit-credentials-auto-fill-button { visibility: hidden !important; }';
+        document.head.appendChild(s);
+      }
+    }
+  }, []);
 
   // Request password reset code
   const onRequestReset = async () => {
@@ -51,19 +68,26 @@ const ForgotPasswordScreen: React.FC<ForgotPasswordScreenProps> = ({ navigation 
 
       if (!checkData.exists) {
         setError('No account found with that email address.');
-        setLoading(false);
         return;
       }
 
       // Email exists — request reset code via Clerk
-      await signIn.create({
+      await signIn!.create({
         strategy: 'reset_password_email_code',
         identifier: emailAddress.trim(),
       });
       setSecondFactor(true);
     } catch (err: any) {
-      const msg = err.errors ? err.errors[0].message : 'Password reset request failed. Please try again.';
-      setError(msg);
+      const clerkCode = err.errors?.[0]?.code;
+      const clerkMsg = err.errors?.[0]?.message;
+
+      if (clerkCode === 'session_exists') {
+        setError(
+          'You are already signed in. Sign out first to reset your password, or change it from your Profile settings.'
+        );
+      } else {
+        setError(clerkMsg || 'Password reset request failed. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -85,17 +109,23 @@ const ForgotPasswordScreen: React.FC<ForgotPasswordScreenProps> = ({ navigation 
     setError(null);
 
     try {
-      await signIn.attemptFirstFactor({
+      const result = await signIn!.attemptFirstFactor({
         strategy: 'reset_password_email_code',
         code: code.trim(),
         password,
       });
-      Alert.alert('Success', 'Your password has been reset successfully.', [
-        { text: 'Log In', onPress: () => navigation.navigate('Login') },
-      ]);
+
+      if (result.status === 'complete') {
+        // Activate the new session (required by Clerk after password reset)
+        await setActive!({ session: result.createdSessionId });
+        setSuccessMessage('Password reset successfully! Redirecting…');
+        setTimeout(() => navigation.navigate('Login'), 1500);
+      } else {
+        setError('Password reset could not be completed. Please try again.');
+      }
     } catch (err: any) {
-      const msg = err.errors ? err.errors[0].message : 'Password reset failed. Please try again.';
-      setError(msg);
+      const clerkMsg = err.errors?.[0]?.longMessage || err.errors?.[0]?.message;
+      setError(clerkMsg || 'Password reset failed. Please check your code and try again.');
     } finally {
       setLoading(false);
     }
@@ -109,77 +139,81 @@ const ForgotPasswordScreen: React.FC<ForgotPasswordScreenProps> = ({ navigation 
 
       <Text style={styles.title}>Reset Password</Text>
 
-      {!secondFactor && (
-        <>
-          <Text style={styles.description}>
-            Enter your email address to receive a password reset code.
-          </Text>
-          <View style={styles.inputContainer}>
-            <Ionicons name="mail-outline" size={20} color={COLORS.darkText} style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="Email Address"
-              placeholderTextColor={COLORS.darkText}
-              value={emailAddress}
-              autoCapitalize="none"
-              keyboardType="email-address"
-              onChangeText={(t) => { setEmailAddress(t); setError(null); }}
-            />
-          </View>
+      <View style={styles.formContainer}>
+        {!secondFactor && (
+          <>
+            <Text style={styles.description}>
+              Enter your email address to receive a password reset code.
+            </Text>
 
-          {error && <Text style={styles.errorText}>{error}</Text>}
+            <View style={styles.inputContainer}>
+              <Ionicons name="mail-outline" size={20} color={COLORS.darkText} style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="Email Address"
+                placeholderTextColor={COLORS.darkText}
+                value={emailAddress}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                onChangeText={(t) => { setEmailAddress(t); setError(null); }}
+              />
+            </View>
 
-          <TouchableOpacity style={styles.button} onPress={onRequestReset} disabled={loading}>
-            {loading
-              ? <ActivityIndicator color={COLORS.white} />
-              : <Text style={styles.buttonText}>Send Reset Code</Text>}
-          </TouchableOpacity>
-        </>
-      )}
+            {error && <Text style={styles.errorText}>{error}</Text>}
 
-      {secondFactor && (
-        <>
-          <Text style={styles.description}>
-            A reset code was sent to <Text style={{ fontWeight: '600' }}>{emailAddress}</Text>.{'\n'}
-            Enter the code and your new password below.
-          </Text>
-
-          <View style={styles.inputContainer}>
-            <Ionicons name="shield-checkmark-outline" size={20} color={COLORS.darkText} style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              value={code}
-              placeholder="Verification Code"
-              placeholderTextColor={COLORS.darkText}
-              keyboardType="numeric"
-              onChangeText={(t) => { setCode(t); setError(null); }}
-            />
-          </View>
-
-          <View style={styles.inputContainer}>
-            <Ionicons name="lock-closed-outline" size={20} color={COLORS.darkText} style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="New Password"
-              placeholderTextColor={COLORS.darkText}
-              value={password}
-              secureTextEntry={!passwordVisible}
-              onChangeText={(t) => { setPassword(t); setError(null); }}
-            />
-            <TouchableOpacity onPress={() => setPasswordVisible(!passwordVisible)} style={styles.eyeIconContainer}>
-              <Ionicons name={passwordVisible ? 'eye-off-outline' : 'eye-outline'} size={20} color={COLORS.darkText} />
+            <TouchableOpacity style={styles.button} onPress={onRequestReset} disabled={loading}>
+              {loading
+                ? <ActivityIndicator color={COLORS.white} />
+                : <Text style={styles.buttonText}>Send Reset Code</Text>}
             </TouchableOpacity>
-          </View>
+          </>
+        )}
 
-          {error && <Text style={styles.errorText}>{error}</Text>}
+        {secondFactor && (
+          <>
+            <Text style={styles.description}>
+              A reset code was sent to <Text style={{ fontWeight: '600' }}>{emailAddress}</Text>.{'\n'}
+              Enter the code and your new password below.
+            </Text>
 
-          <TouchableOpacity style={styles.button} onPress={onReset} disabled={loading}>
-            {loading
-              ? <ActivityIndicator color={COLORS.white} />
-              : <Text style={styles.buttonText}>Set New Password</Text>}
-          </TouchableOpacity>
-        </>
-      )}
+            <View style={styles.inputContainer}>
+              <Ionicons name="shield-checkmark-outline" size={20} color={COLORS.darkText} style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                value={code}
+                placeholder="Verification Code"
+                placeholderTextColor={COLORS.darkText}
+                keyboardType="numeric"
+                onChangeText={(t) => { setCode(t); setError(null); }}
+              />
+            </View>
+
+            <View style={styles.inputContainer}>
+              <Ionicons name="lock-closed-outline" size={20} color={COLORS.darkText} style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="New Password"
+                placeholderTextColor={COLORS.darkText}
+                value={password}
+                secureTextEntry={!passwordVisible}
+                onChangeText={(t) => { setPassword(t); setError(null); }}
+              />
+              <TouchableOpacity onPress={() => setPasswordVisible(!passwordVisible)} style={styles.eyeIconContainer}>
+                <Ionicons name={passwordVisible ? 'eye-off-outline' : 'eye-outline'} size={20} color={COLORS.darkText} />
+              </TouchableOpacity>
+            </View>
+
+            {error && <Text style={styles.errorText}>{error}</Text>}
+            {successMessage && <Text style={styles.successText}>{successMessage}</Text>}
+
+            <TouchableOpacity style={styles.button} onPress={onReset} disabled={loading}>
+              {loading
+                ? <ActivityIndicator color={COLORS.white} />
+                : <Text style={styles.buttonText}>Set New Password</Text>}
+            </TouchableOpacity>
+          </>
+        )}
+      </View>
     </SafeAreaView>
   );
 };
@@ -188,6 +222,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     justifyContent: 'center',
+    alignItems: 'center',
     paddingHorizontal: 20,
     backgroundColor: COLORS.white,
   },
@@ -203,6 +238,11 @@ const styles = StyleSheet.create({
     color: COLORS.darkText,
     textAlign: 'center',
     marginBottom: 10,
+  },
+  formContainer: {
+    width: '100%',
+    maxWidth: 400,
+    alignSelf: 'center',
   },
   description: {
     fontSize: 16,
@@ -233,6 +273,13 @@ const styles = StyleSheet.create({
   },
   errorText: {
     color: '#DC2626',
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 12,
+    marginTop: -4,
+  },
+  successText: {
+    color: '#16A34A',
     fontSize: 14,
     textAlign: 'center',
     marginBottom: 12,
