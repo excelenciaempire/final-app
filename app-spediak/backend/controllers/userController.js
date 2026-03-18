@@ -137,8 +137,15 @@ const updateProfile = async (req, res) => {
     }
 
     // Handle organizations - prefer array, fallback to single
-    const orgsArray = organizations || (organization && organization !== 'None' ? [organization] : []);
-    const primaryOrg = orgsArray.length > 0 ? orgsArray[0] : (organization || null);
+    // hasExplicitOrgs = true means the caller explicitly provided the organizations field
+    // (even if empty array), so we should update it directly without COALESCE
+    const hasExplicitOrgs = Object.prototype.hasOwnProperty.call(req.body, 'organizations');
+    const orgsArray = hasExplicitOrgs
+      ? (Array.isArray(organizations) ? organizations : [])
+      : (organizations || (organization && organization !== 'None' ? [organization] : []));
+    const primaryOrg = hasExplicitOrgs
+      ? (orgsArray.length > 0 ? orgsArray[0] : null) // explicit: can be null (clearing)
+      : (orgsArray.length > 0 ? orgsArray[0] : (organization || null)); // implicit: keep if null
 
     // Check if profile exists
     const existingProfile = await pool.query(
@@ -196,21 +203,22 @@ const updateProfile = async (req, res) => {
     }
 
     // Update existing profile - try with organizations column first
+    // When orgs are explicitly provided ($9=true), set them directly; otherwise use COALESCE
     try {
       const result = await pool.query(`
-        UPDATE user_profiles 
-        SET 
+        UPDATE user_profiles
+        SET
           profile_photo_url = COALESCE($2, profile_photo_url),
           primary_state = COALESCE($3, primary_state),
           secondary_states = COALESCE($4, secondary_states),
-          organization = COALESCE($5, organization),
-          organizations = COALESCE($6, organizations),
+          organization = CASE WHEN $9 THEN $5 ELSE COALESCE($5, organization) END,
+          organizations = CASE WHEN $9 THEN $6::jsonb ELSE COALESCE($6::jsonb, organizations) END,
           company_name = COALESCE($7, company_name),
           phone_number = COALESCE($8, phone_number),
           updated_at = NOW()
         WHERE clerk_id = $1
         RETURNING *
-      `, [clerkId, profilePhotoUrl, primaryState, secondaryStates, primaryOrg, JSON.stringify(orgsArray), companyName, phoneNumber]);
+      `, [clerkId, profilePhotoUrl, primaryState, secondaryStates, primaryOrg, JSON.stringify(orgsArray), companyName, phoneNumber, hasExplicitOrgs]);
 
       res.json({ 
         message: 'Profile updated successfully', 

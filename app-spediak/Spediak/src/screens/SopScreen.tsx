@@ -99,14 +99,21 @@ const SopScreen: React.FC = () => {
           organization: orgsToSave[0] || null,
         }, {
           headers: { Authorization: `Bearer ${token}` },
-          timeout: 10000
+          timeout: 30000
         });
       }
       setSelectedOrganizations(orgsToSave);
       lastFetchParams.current = '';
       fetchSopData(selectedState, orgsToSave);
-    } catch (err) {
+    } catch (err: any) {
       console.error('[SopScreen] Error saving organizations:', err);
+      // Revert the optimistic UI update
+      setSelectedOrgs(selectedOrgsRef.current);
+      if (Platform.OS === 'web') {
+        alert('Could not save organization changes. Please try again.');
+      } else {
+        Alert.alert('Save Failed', 'Could not save organization changes. Please try again.');
+      }
     } finally {
       setIsSavingOrgs(false);
     }

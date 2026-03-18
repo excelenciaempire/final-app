@@ -129,11 +129,13 @@ const ProfileSettingsScreen: React.FC = () => {
                     setSelectedState(data.profile.primary_state || null);
                     setSecondaryStates(data.profile.secondary_states || []);
                     // Handle both array and string formats for organizations
-                    const orgData = data.profile.organizations || data.profile.organization;
-                    if (Array.isArray(orgData)) {
-                        setOrganizations(orgData);
-                    } else if (orgData && orgData !== 'None') {
-                        setOrganizations([orgData]);
+                    // Note: [] (empty array) is truthy in JS, so we check length explicitly
+                    const orgsArray = data.profile.organizations;
+                    const singleOrg = data.profile.organization;
+                    if (Array.isArray(orgsArray) && orgsArray.length > 0) {
+                        setOrganizations(orgsArray);
+                    } else if (singleOrg && singleOrg !== 'None') {
+                        setOrganizations([singleOrg]);
                     } else {
                         setOrganizations([]);
                     }
@@ -251,12 +253,19 @@ const ProfileSettingsScreen: React.FC = () => {
                     organization: next[0] || null,
                 }, {
                     headers: { Authorization: `Bearer ${token}` },
-                    timeout: 10000
+                    timeout: 30000
                 });
             }
             setGlobalOrganizations(next);
-        } catch (err) {
+        } catch (err: any) {
             console.error('[ProfileSettings] Error saving organizations:', err);
+            // Revert optimistic UI update on failure
+            setOrganizations(organizations);
+            if (Platform.OS === 'web') {
+                alert('Could not save organization changes. Please try again.');
+            } else {
+                Alert.alert('Save Failed', 'Could not save organization changes. Please try again.');
+            }
         } finally {
             setIsSavingOrgs(false);
         }
@@ -316,6 +325,20 @@ const ProfileSettingsScreen: React.FC = () => {
             if (!backendResponse.ok) {
                 const errorData = await backendResponse.json();
                 throw new Error(errorData.message || 'Failed to save profile to backend');
+            }
+
+            // Update local state from response to avoid stale data on refresh
+            const savedData = await backendResponse.json();
+            if (savedData.profile) {
+                setPhoneNumber(savedData.profile.phone_number || '');
+                setCompanyName(savedData.profile.company_name || '');
+                const savedOrgs = savedData.profile.organizations;
+                const savedSingleOrg = savedData.profile.organization;
+                if (Array.isArray(savedOrgs) && savedOrgs.length > 0) {
+                    setOrganizations(savedOrgs);
+                } else if (savedSingleOrg && savedSingleOrg !== 'None') {
+                    setOrganizations([savedSingleOrg]);
+                }
             }
 
             // Sync with global state so sidebar and other screens update immediately
