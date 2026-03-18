@@ -17,7 +17,7 @@ import * as ImagePicker from 'expo-image-picker';
 import axios from 'axios';
 import { Camera, Check } from 'lucide-react-native';
 import { COLORS } from '../styles/colors';
-import { US_STATES, ORGANIZATION_OPTIONS } from '../context/GlobalStateContext';
+import { US_STATES } from '../context/GlobalStateContext';
 import { BASE_URL } from '../config/api';
 
 // Simple navigation prop type for reload logic
@@ -35,6 +35,7 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = () => {
     const [selectedState, setSelectedState] = useState<string | null>(null); // Keep this for the value
     const [items, setItems] = useState(US_STATES); // Items for the dropdown - all US states
     const [selectedOrganizations, setSelectedOrganizations] = useState<string[]>([]);
+    const [orgOptions, setOrgOptions] = useState<{ label: string; value: string }[]>([]);
     const [companyName, setCompanyName] = useState<string>('');
 
     const [profileImageUri, setProfileImageUri] = useState<string | null>(null);
@@ -42,6 +43,28 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = () => {
 
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
+
+    // Fetch org list from backend so it stays in sync with admin dashboard
+    useEffect(() => {
+        const loadOrgOptions = async () => {
+            try {
+                const token = await getToken();
+                if (!token) return;
+                const res = await axios.get(`${BASE_URL}/api/sop/organizations`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                    timeout: 10000,
+                });
+                const opts = (res.data.organizations || []).map((o: { name: string }) => ({
+                    label: o.name,
+                    value: o.name,
+                }));
+                setOrgOptions(opts);
+            } catch (err) {
+                console.error('Could not load org options:', err);
+            }
+        };
+        loadOrgOptions();
+    }, [getToken]);
 
     // Image Picker Logic (copied and adapted from ProfileSettingsScreen)
     const pickImage = async () => {
@@ -255,7 +278,7 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = () => {
             <Text style={styles.label}>Professional Organizations <Text style={styles.optionalLabel}>(optional)</Text></Text>
             <Text style={styles.orgHint}>Select all organizations you belong to</Text>
             <View style={styles.organizationsContainer}>
-                {ORGANIZATION_OPTIONS.map(org => {
+                {orgOptions.map(org => {
                     const isSelected = selectedOrganizations.includes(org.value);
                     return (
                         <TouchableOpacity
@@ -477,8 +500,7 @@ const styles = StyleSheet.create({
     },
     organizationsContainer: {
         width: '100%',
-        flexDirection: 'row',
-        flexWrap: 'wrap',
+        flexDirection: 'column',
         gap: 8,
         marginBottom: 8,
     },
