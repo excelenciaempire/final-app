@@ -617,6 +617,7 @@ export default function NewInspectionScreen() {
                 imageBase64,
                 description: initialDescription,
                 userState,
+                organizations: userOrganizations,
             }, {
                 headers: { Authorization: `Bearer ${token}` },
             });
