@@ -13,7 +13,7 @@ const ImpersonationBanner: React.FC = () => {
   }
 
   return (
-    <View style={[styles.banner, Platform.OS === 'web' && (styles.bannerFixed as any)]}>
+    <View style={[styles.banner, Platform.OS === 'web' && (isMobile ? (styles.bannerFixedBottom as any) : (styles.bannerFixed as any))]}>
       <View style={styles.iconContainer}>
         <Eye size={isMobile ? 14 : 18} color="#FFFFFF" />
       </View>
@@ -48,6 +48,14 @@ const styles = StyleSheet.create({
   bannerFixed: {
     position: 'fixed' as any,
     top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 9999,
+  },
+  bannerFixedBottom: {
+    position: 'fixed' as any,
+    bottom: 0,
+    top: undefined,
     left: 0,
     right: 0,
     zIndex: 9999,

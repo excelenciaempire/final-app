@@ -314,6 +314,7 @@ const RootNavigator: React.FC = () => {
   const { subscription } = useSubscription();
   const { width } = useWindowDimensions(); // Use hook for dynamic width
   const [activeScreen, setActiveScreen] = useState<keyof RootDrawerParamList | 'AdminDashboard'>('NewStatement');
+  const drawerNavRef = React.useRef<any>(null);
 
   // Check both Clerk metadata AND subscription response for admin status
   const isAdmin = useMemo(() => {
@@ -396,6 +397,7 @@ const RootNavigator: React.FC = () => {
       <View style={{ flex: 1, overflow: 'hidden' }}>
         <ImpersonationBanner />
         <Drawer.Navigator
+            ref={drawerNavRef}
             initialRouteName="Home"
             drawerContent={(props: DrawerContentComponentProps) => <CustomDrawerContent {...props} />}
             screenOptions={({ navigation, route }) => ({

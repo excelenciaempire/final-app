@@ -1,5 +1,5 @@
 import React from 'react';
-import { ClerkProvider, SignedIn, SignedOut } from "@clerk/clerk-expo";
+import { ClerkProvider, SignedIn, SignedOut, useUser } from "@clerk/clerk-expo";
 import Constants from "expo-constants";
 import * as SecureStore from "expo-secure-store";
 import { StatusBar } from 'expo-status-bar';
@@ -10,7 +10,8 @@ import RootNavigator from "./src/navigation/RootNavigator";
 import { GlobalStateProvider } from "./src/context/GlobalStateContext";
 import { SubscriptionProvider } from "./src/context/SubscriptionContext";
 import { AdRotationProvider } from "./src/context/AdRotationContext";
-import { initializePayments } from "./src/services/PaymentService";
+import { initializePayments, loginToRevenueCat, logoutFromRevenueCat } from "./src/services/PaymentService";
+import { useSubscription } from "./src/context/SubscriptionContext";
 
 // Version: 2.1.0 - Production Ready
 // Error #130 resolved: Fixed imports in newInspection.tsx
@@ -81,6 +82,50 @@ const errorStyles = StyleSheet.create({
   },
 });
 
+// Links the signed-in Clerk user to RevenueCat and keeps DB subscription in sync.
+// Must render inside SubscriptionProvider so it can call refreshSubscription.
+const PaymentInitializer: React.FC = () => {
+  const { user, isLoaded } = useUser();
+  const { refreshSubscription } = useSubscription();
+
+  // Log in/out of RevenueCat when auth state changes
+  React.useEffect(() => {
+    if (!isLoaded) return;
+    if (user?.id) {
+      loginToRevenueCat(user.id);
+    } else {
+      logoutFromRevenueCat();
+    }
+  }, [isLoaded, user?.id]);
+
+  // Listen for RevenueCat purchase events and refresh DB subscription
+  React.useEffect(() => {
+    let Purchases: any = null;
+    let removeListener: (() => boolean) | null = null;
+    try {
+      Purchases = require('react-native-purchases').default;
+    } catch {}
+
+    if (!Purchases) return;
+
+    const listener = (_customerInfo: any) => {
+      // Small delay so the RevenueCat webhook has time to update the DB first
+      setTimeout(() => refreshSubscription(), 1500);
+    };
+
+    try {
+      Purchases.addCustomerInfoUpdateListener(listener);
+      removeListener = () => Purchases.removeCustomerInfoUpdateListener(listener);
+    } catch {}
+
+    return () => {
+      try { removeListener?.(); } catch {}
+    };
+  }, []);
+
+  return null;
+};
+
 const clerkPublishableKey = Constants.expoConfig?.extra?.clerkPublishableKey;
 
 if (!clerkPublishableKey) {
@@ -126,6 +171,7 @@ export default function App() {
         >
           <GlobalStateProvider>
             <SubscriptionProvider>
+              <PaymentInitializer />
               <AdRotationProvider>
                 <SignedIn>
                   <NavigationContainer

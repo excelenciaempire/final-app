@@ -7,7 +7,7 @@ import { useSubscription } from '../context/SubscriptionContext';
 import { purchaseSubscription } from '../services/PaymentService';
 
 const PlanSelectionScreen: React.FC = () => {
-  const { subscription } = useSubscription();
+  const { subscription, refreshSubscription } = useSubscription();
   const { getToken } = useAuth();
   const currentPlan = subscription?.plan_type || 'free';
   const [processingPlan, setProcessingPlan] = useState<string | null>(null);
@@ -16,7 +16,10 @@ const PlanSelectionScreen: React.FC = () => {
     setProcessingPlan(planId);
     try {
       const result = await purchaseSubscription(planId, getToken);
-      if (!result.success && result.error && result.error !== 'Purchase cancelled') {
+      if (result.success && Platform.OS !== 'web') {
+        // Refresh so the UI reflects the new plan immediately after native purchase
+        await refreshSubscription();
+      } else if (!result.success && result.error && result.error !== 'Purchase cancelled') {
         if (Platform.OS === 'web') {
           alert('Payment error: ' + result.error);
         } else {

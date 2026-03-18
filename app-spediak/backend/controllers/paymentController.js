@@ -209,8 +209,93 @@ const getSubscriptionStatus = async (req, res) => {
   }
 };
 
+/**
+ * POST /api/payments/revenuecat-webhook
+ * Handles RevenueCat webhook events for native iOS/Android purchases.
+ * Set REVENUECAT_WEBHOOK_SECRET in Render env vars and configure the same
+ * value as the Authorization header in RevenueCat dashboard → Webhooks.
+ */
+const handleRevenueCatWebhook = async (req, res) => {
+  const webhookSecret = process.env.REVENUECAT_WEBHOOK_SECRET;
+  if (webhookSecret) {
+    const authHeader = req.headers.authorization;
+    if (authHeader !== webhookSecret) {
+      console.error('[RevenueCat] Webhook auth failed');
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+  }
+
+  const { event } = req.body || {};
+  if (!event) {
+    return res.status(400).json({ message: 'Missing event in payload' });
+  }
+
+  const { type, app_user_id: clerkId, entitlement_ids } = event;
+  console.log(`[RevenueCat] Webhook: ${type} for user ${clerkId}`);
+
+  if (!clerkId) {
+    return res.json({ received: true });
+  }
+
+  try {
+    switch (type) {
+      case 'INITIAL_PURCHASE':
+      case 'RENEWAL':
+      case 'UNCANCELLATION': {
+        const planType = resolvePlanFromEntitlements(entitlement_ids);
+        await pool.query(`
+          UPDATE user_subscriptions
+          SET plan_type = $1, subscription_status = 'active', updated_at = NOW()
+          WHERE clerk_id = $2
+        `, [planType, clerkId]);
+        console.log(`[RevenueCat] Activated ${planType} for user ${clerkId}`);
+        break;
+      }
+
+      case 'CANCELLATION': {
+        // Subscription cancelled but may still be active until period end
+        await pool.query(`
+          UPDATE user_subscriptions
+          SET subscription_status = 'cancelled', updated_at = NOW()
+          WHERE clerk_id = $1
+        `, [clerkId]);
+        console.log(`[RevenueCat] Marked cancelled for user ${clerkId}`);
+        break;
+      }
+
+      case 'EXPIRATION': {
+        // Subscription fully expired — downgrade to free
+        await pool.query(`
+          UPDATE user_subscriptions
+          SET plan_type = 'free', subscription_status = 'expired', updated_at = NOW()
+          WHERE clerk_id = $1
+        `, [clerkId]);
+        console.log(`[RevenueCat] Expired — downgraded user ${clerkId} to free`);
+        break;
+      }
+
+      default:
+        console.log(`[RevenueCat] Unhandled event type: ${type}`);
+    }
+  } catch (error) {
+    console.error('[RevenueCat] Error processing webhook:', error);
+    return res.status(500).json({ message: 'Error processing webhook' });
+  }
+
+  res.json({ received: true });
+};
+
+// Map RevenueCat entitlement IDs to internal plan types
+function resolvePlanFromEntitlements(entitlementIds) {
+  if (!entitlementIds || entitlementIds.length === 0) return 'pro';
+  const lower = entitlementIds.map(id => id.toLowerCase());
+  if (lower.some(id => id.includes('platinum'))) return 'platinum';
+  return 'pro';
+}
+
 module.exports = {
   createCheckoutSession,
   handleWebhook,
+  handleRevenueCatWebhook,
   getSubscriptionStatus,
 };
