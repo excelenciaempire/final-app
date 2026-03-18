@@ -3,11 +3,13 @@ import { View, Text, StyleSheet, Image, TextInput, TouchableOpacity, Alert, Acti
 import { useUser, useAuth, isClerkAPIResponseError } from '@clerk/clerk-expo';
 import { Picker } from '@react-native-picker/picker';
 import * as ImagePicker from 'expo-image-picker';
+import axios from 'axios';
 import { COLORS } from '../styles/colors';
 import { Check, Edit2, User, Phone, Building, MapPin, Award, Mail, ChevronDown } from 'lucide-react-native';
 import StatementUsageCard from '../components/StatementUsageCard';
 import AdBanner from '../components/AdBanner';
 import { useGlobalState } from '../context/GlobalStateContext';
+import { BASE_URL } from '../config/api';
 
 // Define the states available for selection
 const availableStates = [
@@ -113,13 +115,12 @@ const ProfileSettingsScreen: React.FC = () => {
 
     const [isClientMounted, setIsClientMounted] = useState(false);
     const { user: clerkUser, isLoaded: clerkIsLoaded } = useUser();
-    const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5000';
 
     // Load profile from backend
     const loadProfile = async () => {
         try {
             const token = await getToken();
-            const response = await fetch(`${API_URL}/api/user/profile`, {
+            const response = await fetch(`${BASE_URL}/api/user/profile`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (response.ok) {
@@ -179,7 +180,7 @@ const ProfileSettingsScreen: React.FC = () => {
             setStateSopInfo(prev => ({ ...prev, isLoading: true }));
             try {
                 const token = await getToken();
-                const response = await fetch(`${API_URL}/api/sop/active?state=${selectedState}`, {
+                const response = await fetch(`${BASE_URL}/api/sop/active?state=${selectedState}`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 if (response.ok) {
@@ -295,7 +296,7 @@ const ProfileSettingsScreen: React.FC = () => {
 
             // Save to Backend
             const token = await getToken();
-            const backendResponse = await fetch(`${API_URL}/api/user/profile`, {
+            const backendResponse = await fetch(`${BASE_URL}/api/user/profile`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -435,7 +436,7 @@ const ProfileSettingsScreen: React.FC = () => {
                     const token = await getToken();
                     
                     // First sync with backend
-                    await fetch(`${API_URL}/api/user/sync-email`, {
+                    await fetch(`${BASE_URL}/api/user/sync-email`, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -448,7 +449,7 @@ const ProfileSettingsScreen: React.FC = () => {
                     });
 
                     // Then cleanup old emails from Clerk via backend (more reliable)
-                    const cleanupResponse = await fetch(`${API_URL}/api/user/cleanup-emails`, {
+                    const cleanupResponse = await fetch(`${BASE_URL}/api/user/cleanup-emails`, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -507,7 +508,7 @@ const ProfileSettingsScreen: React.FC = () => {
 
         try {
             const token = await getToken();
-            const response = await fetch(`${API_URL}/api/user/change-email`, {
+            const response = await fetch(`${BASE_URL}/api/user/change-email`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
