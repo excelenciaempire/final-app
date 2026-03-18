@@ -65,16 +65,6 @@ const availableStates = [
     { label: 'Wyoming', value: 'WY' },
 ];
 
-// Define organizations - multi-select options
-const organizationOptions = [
-    { label: 'ASHI (American Society of Home Inspectors)', value: 'ASHI' },
-    { label: 'InterNACHI (International Association of Certified Home Inspectors)', value: 'InterNACHI' },
-    { label: 'Inspector Nation', value: 'Inspector Nation' },
-    { label: 'NAHI (National Association of Home Inspectors)', value: 'NAHI' },
-    { label: 'CREIA (California Real Estate Inspection Association)', value: 'CREIA' },
-    { label: 'TPREIA (Texas Professional Real Estate Inspectors Association)', value: 'TPREIA' },
-    { label: 'Other', value: 'Other' },
-];
 
 const ProfileSettingsScreen: React.FC = () => {
     const { isLoaded, isSignedIn, user } = useUser();
@@ -92,6 +82,7 @@ const ProfileSettingsScreen: React.FC = () => {
     const [selectedState, setSelectedState] = useState<string | null>(globalState);
     const [secondaryStates, setSecondaryStates] = useState<string[]>([]);
     const [organizations, setOrganizations] = useState<string[]>([]);
+    const [orgOptions, setOrgOptions] = useState<{ label: string; value: string }[]>([]);
     const [phoneNumber, setPhoneNumber] = useState<string>('');
     const [companyName, setCompanyName] = useState<string>('');
     const [profileImageUri, setProfileImageUri] = useState<string | null>(null);
@@ -120,11 +111,16 @@ const ProfileSettingsScreen: React.FC = () => {
     const loadProfile = async () => {
         try {
             const token = await getToken();
-            const response = await fetch(`${BASE_URL}/api/user/profile`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (response.ok) {
-                const data = await response.json();
+            const [profileRes, orgsRes] = await Promise.all([
+                fetch(`${BASE_URL}/api/user/profile`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                }),
+                fetch(`${BASE_URL}/api/sop/organizations`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                }),
+            ]);
+            if (profileRes.ok) {
+                const data = await profileRes.json();
                 if (data.profile) {
                     setSelectedState(data.profile.primary_state || null);
                     setSecondaryStates(data.profile.secondary_states || []);
@@ -142,6 +138,14 @@ const ProfileSettingsScreen: React.FC = () => {
                     setPhoneNumber(data.profile.phone_number || '');
                     setCompanyName(data.profile.company_name || '');
                 }
+            }
+            if (orgsRes.ok) {
+                const orgsData = await orgsRes.json();
+                const opts = (orgsData.organizations || []).map((o: { name: string }) => ({
+                    label: o.name,
+                    value: o.name,
+                }));
+                setOrgOptions(opts);
             }
         } catch (err) {
             console.error('Error loading profile:', err);
@@ -768,7 +772,7 @@ const ProfileSettingsScreen: React.FC = () => {
                 <Text style={styles.fieldLabel}>Professional Organizations</Text>
                 <Text style={styles.fieldHint}>Select all organizations you belong to</Text>
                 <View style={styles.organizationsContainer}>
-                    {organizationOptions.map(org => {
+                    {orgOptions.map(org => {
                         const isSelected = organizations.includes(org.value);
                         return (
                             <TouchableOpacity
@@ -1108,8 +1112,7 @@ const styles = StyleSheet.create({
         }),
     },
     organizationsContainer: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
+        flexDirection: 'column',
         gap: 8,
         marginBottom: 12,
     },
@@ -1122,7 +1125,6 @@ const styles = StyleSheet.create({
         paddingHorizontal: 12,
         borderWidth: 1,
         borderColor: '#E2E8F0',
-        marginBottom: 4,
     },
     organizationChipSelected: {
         backgroundColor: '#EFF6FF',

@@ -12,7 +12,7 @@ import {
   useWindowDimensions
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
-import { useGlobalState, US_STATES, ORGANIZATION_OPTIONS } from '../context/GlobalStateContext';
+import { useGlobalState, US_STATES } from '../context/GlobalStateContext';
 import { useAuth, useUser } from '@clerk/clerk-expo';
 import axios from 'axios';
 import { BASE_URL } from '../config/api';
@@ -29,6 +29,7 @@ const SopScreen: React.FC = () => {
   const isLargeScreen = width > 600;
 
   const [selectedOrgs, setSelectedOrgs] = useState<string[]>([]);
+  const [orgOptions, setOrgOptions] = useState<{ label: string; value: string }[]>([]);
   const [isSavingOrgs, setIsSavingOrgs] = useState(false);
   const [activeStateSop, setActiveStateSop] = useState<any>(null);
   const [activeOrgSops, setActiveOrgSops] = useState<any[]>([]);
@@ -45,7 +46,7 @@ const SopScreen: React.FC = () => {
   const pendingSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const selectedOrgsRef = useRef<string[]>([]);
 
-  // Load user's organizations from backend on mount
+  // Load user's organizations and available org list from backend on mount
   useEffect(() => {
     const loadOrgsFromBackend = async () => {
       if (!isInitializing.current) return;
@@ -53,19 +54,31 @@ const SopScreen: React.FC = () => {
       try {
         const token = await getToken();
         if (token) {
-          const response = await axios.get(`${BASE_URL}/api/user/profile`, {
-            headers: { Authorization: `Bearer ${token}` },
-            timeout: 10000
-          });
+          const [profileRes, orgsRes] = await Promise.all([
+            axios.get(`${BASE_URL}/api/user/profile`, {
+              headers: { Authorization: `Bearer ${token}` },
+              timeout: 10000
+            }),
+            axios.get(`${BASE_URL}/api/sop/organizations`, {
+              headers: { Authorization: `Bearer ${token}` },
+              timeout: 10000
+            }),
+          ]);
 
-          const orgsData = response.data.profile?.organizations;
+          const orgsData = profileRes.data.profile?.organizations;
           if (Array.isArray(orgsData) && orgsData.length > 0) {
             setSelectedOrgs(orgsData);
-          } else if (response.data.profile?.organization && response.data.profile.organization !== 'None') {
-            setSelectedOrgs([response.data.profile.organization]);
+          } else if (profileRes.data.profile?.organization && profileRes.data.profile.organization !== 'None') {
+            setSelectedOrgs([profileRes.data.profile.organization]);
           } else if (selectedOrganizations.length > 0) {
             setSelectedOrgs(selectedOrganizations);
           }
+
+          const opts = (orgsRes.data.organizations || []).map((o: { name: string }) => ({
+            label: o.name,
+            value: o.name,
+          }));
+          setOrgOptions(opts);
         }
       } catch (err) {
         // Fallback to global context
@@ -298,7 +311,7 @@ const SopScreen: React.FC = () => {
           <Text style={styles.label}>Professional Organizations <Text style={styles.optionalText}>(optional)</Text></Text>
           <Text style={styles.fieldHint}>Select all organizations you belong to</Text>
           <View style={styles.organizationsContainer}>
-            {ORGANIZATION_OPTIONS.map(org => {
+            {orgOptions.map(org => {
               const isSelected = selectedOrgs.includes(org.value);
               return (
                 <TouchableOpacity
@@ -574,8 +587,7 @@ const styles = StyleSheet.create({
     marginTop: -4,
   },
   organizationsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: 'column',
     gap: 8,
     marginBottom: 12,
   },
@@ -588,7 +600,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderWidth: 1,
     borderColor: '#E2E8F0',
-    marginBottom: 4,
   },
   organizationChipSelected: {
     backgroundColor: '#EFF6FF',
