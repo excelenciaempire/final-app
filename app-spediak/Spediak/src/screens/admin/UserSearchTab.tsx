@@ -375,7 +375,7 @@ const UserSearchTab: React.FC = () => {
         note: adminNotes,
         note_type: 'admin',
         created_at: new Date().toISOString(),
-        admin_email: user?.primaryEmailAddress?.emailAddress || 'Admin'
+        admin_email: 'Admin'
       };
       setAdminNotesList(prev => [newNote, ...prev]);
       
@@ -557,11 +557,12 @@ const UserSearchTab: React.FC = () => {
         }
         addLocalAuditEvent('User soft deleted');
         handleClearUser();
-      } catch (error) {
+      } catch (error: any) {
+        const msg = error.response?.data?.message || error.message || 'Failed to soft delete user';
         if (Platform.OS === 'web') {
-          alert('Error: Failed to soft delete user');
+          alert('Error: ' + msg);
         } else {
-          Alert.alert('Error', 'Failed to soft delete user');
+          Alert.alert('Error', msg);
         }
       } finally {
         setActionLoading(null);
@@ -569,11 +570,11 @@ const UserSearchTab: React.FC = () => {
     };
 
     if (Platform.OS === 'web') {
-      if (window.confirm('This will deactivate the user account. Continue?')) {
+      if (window.confirm('This will deactivate the user account (soft delete). They can be restored later. Continue?')) {
         doSoftDelete();
       }
     } else {
-      Alert.alert('Soft Delete', 'This will deactivate the user account. Continue?', [
+      Alert.alert('Soft Delete', 'This will deactivate the user account. They can be restored later. Continue?', [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Delete (soft)', style: 'destructive', onPress: doSoftDelete }
       ]);
@@ -600,11 +601,12 @@ const UserSearchTab: React.FC = () => {
           Alert.alert('Success', 'User permanently deleted');
         }
         handleClearUser();
-      } catch (error) {
+      } catch (error: any) {
+        const msg = error.response?.data?.message || error.message || 'Failed to delete user';
         if (Platform.OS === 'web') {
-          alert('Error: Failed to delete user');
+          alert('Error: ' + msg);
         } else {
-          Alert.alert('Error', 'Failed to delete user');
+          Alert.alert('Error', msg);
         }
       } finally {
         setActionLoading(null);
@@ -612,7 +614,7 @@ const UserSearchTab: React.FC = () => {
     };
 
     if (Platform.OS === 'web') {
-      if (window.confirm('WARNING: This will permanently delete the user and all their data. This cannot be undone!')) {
+      if (window.confirm('WARNING: This will permanently delete the user and ALL their data. This CANNOT be undone!')) {
         doHardDelete();
       }
     } else {
@@ -650,11 +652,12 @@ const UserSearchTab: React.FC = () => {
           Alert.alert('Success', 'Role & security saved');
         }
         addLocalAuditEvent(`Role changed to ${userRole}`, true);
-      } catch (error) {
+      } catch (error: any) {
+        const msg = error.response?.data?.message || error.message || 'Failed to save role/security';
         if (Platform.OS === 'web') {
-          alert('Error: Failed to save role/security');
+          alert('Error: ' + msg);
         } else {
-          Alert.alert('Error', 'Failed to save role/security');
+          Alert.alert('Error', msg);
         }
       } finally {
         setIsSavingSecurity(false);
@@ -662,7 +665,7 @@ const UserSearchTab: React.FC = () => {
     };
 
     if (Platform.OS === 'web') {
-      if (window.confirm(`Save security settings?\n\nRole: ${userRole}\n2FA: ${twoFARequirement}`)) {
+      if (window.confirm(`Save security settings?\n\nRole: ${userRole}\n2FA Required: ${twoFARequirement}`)) {
         doSave();
       }
     } else {
@@ -785,11 +788,12 @@ const UserSearchTab: React.FC = () => {
           Alert.alert('Success', "User sessions revoked. They will need to use 'Forgot Password' on their next login attempt.");
         }
         addLocalAuditEvent('Password reset forced (sessions revoked)');
-      } catch (error) {
+      } catch (error: any) {
+        const msg = error.response?.data?.message || error.message || 'Failed to revoke user sessions';
         if (Platform.OS === 'web') {
-          alert('Error: Failed to revoke user sessions');
+          alert('Error: ' + msg);
         } else {
-          Alert.alert('Error', 'Failed to revoke user sessions');
+          Alert.alert('Error', msg);
         }
       } finally {
         setActionLoading(null);
@@ -797,7 +801,7 @@ const UserSearchTab: React.FC = () => {
     };
 
     if (Platform.OS === 'web') {
-      if (window.confirm('This will revoke all active sessions for this user. They will need to use \'Forgot Password\' to regain access. Continue?')) {
+      if (window.confirm("This will revoke all active sessions for this user. They will need to use 'Forgot Password' to regain access. Continue?")) {
         doReset();
       }
     } else {
@@ -1487,7 +1491,7 @@ const UserSearchTab: React.FC = () => {
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.statusText}>No changes yet.</Text>
+            <Text style={styles.statusText}>Changes take effect immediately after saving. 2FA enforcement requires the user's next login.</Text>
           </View>
         ) : (
           <Text style={styles.loadUserPrompt}>Load a user to manage roles and security.</Text>

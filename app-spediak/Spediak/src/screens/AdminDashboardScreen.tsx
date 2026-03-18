@@ -201,7 +201,32 @@ const AllInspections: React.FC = () => {
                 </TouchableOpacity>
             </View>
             <FlatList data={inspections} renderItem={renderInspectionItem} keyExtractor={item => item.id} onEndReached={handleLoadMore} onEndReachedThreshold={0.5} ListFooterComponent={isLoadingMore ? <ActivityIndicator /> : null} refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />} />
-            {selectedInspection && <DdidModal visible={isModalVisible} onClose={() => setIsModalVisible(false)} ddidText={selectedInspection.ddid} imageUri={selectedInspection.image_url || undefined} />}
+            {selectedInspection && <DdidModal
+                visible={isModalVisible}
+                onClose={async (editedText) => {
+                    setIsModalVisible(false);
+                    if (editedText && editedText !== selectedInspection.ddid) {
+                        try {
+                            const token = await getToken();
+                            await axios.patch(`${BASE_URL}/api/admin/inspections/${selectedInspection.id}`,
+                                { ddid: editedText },
+                                { headers: { Authorization: `Bearer ${token}` } }
+                            );
+                            // Update local list so UI reflects the change immediately
+                            setInspections(prev => prev.map(i =>
+                                i.id === selectedInspection.id ? { ...i, ddid: editedText } : i
+                            ));
+                            setSelectedInspection(prev => prev ? { ...prev, ddid: editedText } : prev);
+                        } catch (err: any) {
+                            const msg = err.response?.data?.message || 'Failed to save edited statement';
+                            if (Platform.OS === 'web') alert(msg);
+                            else Alert.alert('Save Error', msg);
+                        }
+                    }
+                }}
+                ddidText={selectedInspection.ddid}
+                imageUri={selectedInspection.image_url || undefined}
+            />}
             {isFullImageModalVisible && <RNModal visible={isFullImageModalVisible} transparent={true} onRequestClose={() => setIsFullImageModalVisible(false)}><View style={styles.fullImageModalContainer}><TouchableOpacity style={styles.fullImageCloseButton} onPress={() => setIsFullImageModalVisible(false)}><XIcon size={30} color="#fff" /></TouchableOpacity><Image source={{ uri: fullScreenImageUrl ?? undefined }} style={styles.fullImage} resizeMode="contain" /><TouchableOpacity style={styles.downloadButtonFloating} onPress={() => handleDownloadImage(fullScreenImageUrl)}><Download size={24} color="#fff" /></TouchableOpacity></View></RNModal>}
         </View>
     );

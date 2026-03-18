@@ -1643,19 +1643,39 @@ const softDeleteUser = async (req, res) => {
     }
 
     // 3. Update DB - mark as inactive
-    await pool.query(`
-      UPDATE users 
-      SET is_active = FALSE, updated_at = NOW()
-      WHERE clerk_id = $1
-    `, [userId]);
+    try {
+      await pool.query(`
+        UPDATE users
+        SET is_active = FALSE, updated_at = NOW()
+        WHERE clerk_id = $1
+      `, [userId]);
+    } catch (dbErr) {
+      console.error('[Admin] Error updating users table:', dbErr.message);
+      // users table might not have is_active column yet — continue anyway
+    }
 
     // 4. Also mark as suspended in security flags
-    await pool.query(`
-      INSERT INTO user_security_flags (user_clerk_id, is_suspended, is_soft_deleted, suspended_at, suspended_by)
-      VALUES ($1, TRUE, TRUE, NOW(), $2)
-      ON CONFLICT (user_clerk_id) 
-      DO UPDATE SET is_suspended = TRUE, is_soft_deleted = TRUE, suspended_at = NOW(), suspended_by = $2, updated_at = NOW()
-    `, [userId, adminClerkId]);
+    try {
+      await pool.query(`
+        INSERT INTO user_security_flags (user_clerk_id, is_suspended, is_soft_deleted, suspended_at, suspended_by)
+        VALUES ($1, TRUE, TRUE, NOW(), $2)
+        ON CONFLICT (user_clerk_id)
+        DO UPDATE SET is_suspended = TRUE, is_soft_deleted = TRUE, suspended_at = NOW(), suspended_by = $2, updated_at = NOW()
+      `, [userId, adminClerkId]);
+    } catch (dbErr) {
+      // Fallback: update without is_soft_deleted if column doesn't exist
+      console.warn('[Admin] is_soft_deleted column may not exist, trying fallback:', dbErr.message);
+      try {
+        await pool.query(`
+          INSERT INTO user_security_flags (user_clerk_id, is_suspended, suspended_at, suspended_by)
+          VALUES ($1, TRUE, NOW(), $2)
+          ON CONFLICT (user_clerk_id)
+          DO UPDATE SET is_suspended = TRUE, suspended_at = NOW(), suspended_by = $2, updated_at = NOW()
+        `, [userId, adminClerkId]);
+      } catch (fallbackErr) {
+        console.error('[Admin] Security flags fallback also failed:', fallbackErr.message);
+      }
+    }
 
     // 5. Log audit
     await pool.query(`
@@ -2403,8 +2423,51 @@ const adminGetUserEmails = async (req, res) => {
   }
 };
 
+// Admin update inspection (no ownership check — admin can edit any inspection)
+const adminUpdateInspection = async (req, res) => {
+  const { id } = req.params;
+  const { ddid, description } = req.body;
+
+  if (!ddid && !description) {
+    return res.status(400).json({ message: 'Nothing to update' });
+  }
+
+  try {
+    const updates = [];
+    const values = [];
+    let paramIndex = 1;
+
+    if (ddid !== undefined) {
+      updates.push(`ddid = $${paramIndex++}`);
+      values.push(ddid);
+    }
+    if (description !== undefined) {
+      updates.push(`description = $${paramIndex++}`);
+      values.push(description);
+    }
+
+    values.push(id);
+
+    const result = await pool.query(
+      `UPDATE inspections SET ${updates.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
+      values
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: 'Inspection not found' });
+    }
+
+    console.log(`[Admin] Updated inspection ${id}`);
+    return res.json(result.rows[0]);
+  } catch (err) {
+    console.error('[Admin] Error updating inspection:', err);
+    return res.status(500).json({ message: 'Error updating inspection', error: err.message });
+  }
+};
+
 module.exports = {
   getAllInspections: getAllInspectionsWithUserDetails,
+  adminUpdateInspection,
   getUserInspections,
   getAllUsers,
   exportUsersCsv,

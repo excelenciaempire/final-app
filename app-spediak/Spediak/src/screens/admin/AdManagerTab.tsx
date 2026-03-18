@@ -451,9 +451,13 @@ const AdManagerTab: React.FC = () => {
     if (Platform.OS === 'web') {
       const rect = event.currentTarget?.getBoundingClientRect?.();
       if (rect) {
+        // Support both mouse events (desktop) and touch events (mobile web)
+        const touch = event.touches?.[0] ?? event.changedTouches?.[0];
+        const clientX = touch ? touch.clientX : event.clientX;
+        const clientY = touch ? touch.clientY : event.clientY;
         return {
-          x: event.clientX - rect.left,
-          y: event.clientY - rect.top
+          x: (clientX ?? 0) - rect.left,
+          y: (clientY ?? 0) - rect.top
         };
       }
       return { x: event.nativeEvent?.offsetX || 0, y: event.nativeEvent?.offsetY || 0 };
@@ -496,8 +500,12 @@ const AdManagerTab: React.FC = () => {
     return 'none';
   };
 
-  // Mouse/touch handlers for crop interaction
+  // Mouse/touch handlers for crop interaction (works on desktop web, mobile web, and native)
   const handleCropMouseDown = (event: any) => {
+    // Prevent page scrolling when dragging on mobile web
+    if (event.preventDefault && (event.type === 'touchstart' || event.type === 'touchmove')) {
+      event.preventDefault();
+    }
     const pos = getRelativePosition(event);
     
     // Check if clicking on a resize handle
@@ -527,7 +535,9 @@ const AdManagerTab: React.FC = () => {
 
   const handleCropMouseMove = (event: any) => {
     if (cropMode === 'none') return;
-    
+    if (event.preventDefault && (event.type === 'touchstart' || event.type === 'touchmove')) {
+      event.preventDefault();
+    }
     const pos = getRelativePosition(event);
     const scale = imageSize.width / displaySize.width;
     
@@ -1449,9 +1459,9 @@ const AdManagerTab: React.FC = () => {
               <View>
                 <Text style={styles.cropModalTitle}>Crop Ad Image</Text>
                 <Text style={styles.cropModalSubtitle}>
-                  {hasSelection 
+                  {hasSelection
                     ? '✓ Drag to move, use corners to resize'
-                    : 'Click and drag to select the area'}
+                    : 'Tap and drag to select the crop area'}
                 </Text>
               </View>
               <TouchableOpacity onPress={() => setShowCropModal(false)} style={styles.cropModalClose}>
@@ -1464,16 +1474,22 @@ const AdManagerTab: React.FC = () => {
               <View style={styles.cropImageWrapper}>
                 <View style={styles.cropImageContainer}>
                   {originalImage && (
-                    <View 
-                      style={[styles.cropInteractiveArea, { width: displaySize.width, height: displaySize.height }]}
+                    <View
+                      style={[
+                        styles.cropInteractiveArea,
+                        { width: displaySize.width, height: displaySize.height },
+                        // Prevent page scrolling/panning when dragging crop area on mobile web
+                        Platform.OS === 'web' ? { touchAction: 'none' } as any : {}
+                      ]}
                       // @ts-ignore - web events
                       onMouseDown={Platform.OS === 'web' ? handleCropMouseDown : undefined}
                       onMouseMove={Platform.OS === 'web' ? handleCropMouseMove : undefined}
                       onMouseUp={Platform.OS === 'web' ? handleCropMouseUp : undefined}
                       onMouseLeave={Platform.OS === 'web' ? handleCropMouseUp : undefined}
-                      onTouchStart={Platform.OS !== 'web' ? handleCropMouseDown : undefined}
-                      onTouchMove={Platform.OS !== 'web' ? handleCropMouseMove : undefined}
-                      onTouchEnd={Platform.OS !== 'web' ? handleCropMouseUp : undefined}
+                      // Touch events: native uses these; mobile web also needs them (touch-action:none enables them)
+                      onTouchStart={handleCropMouseDown}
+                      onTouchMove={handleCropMouseMove}
+                      onTouchEnd={handleCropMouseUp}
                     >
                       <Image 
                         source={{ uri: originalImage }} 

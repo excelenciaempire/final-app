@@ -3,8 +3,9 @@ const router = express.Router();
 const { requireAuth } = require('../middleware/clerkAuth');
 const { requireAdmin } = require('../middleware/adminAuth');
 const { getPrompts, updatePrompts, lockPrompt, unlockPrompt, getPromptHistory, restorePromptVersion } = require('../controllers/promptController');
-const { 
+const {
   getAllInspections,
+  adminUpdateInspection,
   getUserInspections,
   getAllUsers, 
   exportUsersCsv, 
@@ -80,6 +81,7 @@ router.post('/prompts/restore', restorePromptVersion);
 
 // Admin-specific routes for inspections and user management
 router.get('/all-inspections', getAllInspections);
+router.patch('/inspections/:id', adminUpdateInspection);
 router.get('/users/:userId/inspections', getUserInspections);
 router.get('/all-users', getAllUsers);
 router.get('/export-users-csv', exportUsersCsv);
