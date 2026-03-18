@@ -717,6 +717,20 @@ export default function NewInspectionScreen() {
 
             console.log('[Audio] Starting recording instance creation...');
             const newRecording = new Audio.Recording();
+
+            // Detect supported MIME type for web (Firefox needs webm, Chrome/Safari support mp4)
+            let webMimeType = 'audio/webm';
+            if (Platform.OS === 'web' && typeof MediaRecorder !== 'undefined') {
+                const preferred = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'];
+                for (const type of preferred) {
+                    if (MediaRecorder.isTypeSupported(type)) {
+                        webMimeType = type;
+                        break;
+                    }
+                }
+            }
+            console.log('[Audio] Web MIME type selected:', webMimeType);
+
             await newRecording.prepareToRecordAsync({
                 android: {
                     ...Audio.RecordingOptionsPresets.HIGH_QUALITY.android,
@@ -731,7 +745,7 @@ export default function NewInspectionScreen() {
                     audioQuality: Audio.IOSAudioQuality.MAX,
                 },
                 web: {
-                    mimeType: 'audio/mp4',
+                    mimeType: webMimeType,
                     bitsPerSecond: 128000,
                 },
             });

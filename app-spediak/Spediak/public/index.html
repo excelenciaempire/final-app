@@ -18,6 +18,9 @@
       height: 100%;
       width: 100%;
       overflow: hidden;
+      /* Prevent pinch-to-zoom from revealing off-screen drawer panel */
+      touch-action: pan-x pan-y;
+      overscroll-behavior: none;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
       background-color: #f8f9fa;
     }
@@ -62,6 +65,15 @@
       <div class="loading-spinner"></div>
     </div>
   </div>
+  <script>
+    // Prevent pinch-to-zoom on iOS Safari (viewport zoom reveals off-screen drawer)
+    document.addEventListener('touchmove', function(e) {
+      if (e.touches.length > 1) { e.preventDefault(); }
+    }, { passive: false });
+    document.addEventListener('touchstart', function(e) {
+      if (e.touches.length > 1) { e.preventDefault(); }
+    }, { passive: false });
+  </script>
 </body>
 </html>
 
