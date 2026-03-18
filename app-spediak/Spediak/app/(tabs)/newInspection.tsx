@@ -1034,12 +1034,20 @@ export default function NewInspectionScreen() {
             return;
         }
         
-        // This will create a hidden file input and click it
+        // Safari requires the input to be in the DOM before .click() for
+        // the change event to fire after camera capture.
         const input = document.createElement('input');
         input.type = 'file';
         input.accept = 'image/*';
         input.capture = 'environment'; // Prioritize back camera
-        input.onchange = async (event) => {
+        input.style.position = 'fixed';
+        input.style.top = '-9999px';
+        input.style.left = '-9999px';
+        input.style.opacity = '0';
+        input.style.pointerEvents = 'none';
+        document.body.appendChild(input);
+
+        input.addEventListener('change', async (event) => {
             const target = event.target as HTMLInputElement;
             if (target.files && target.files.length > 0) {
                 const file = target.files[0];
@@ -1051,18 +1059,26 @@ export default function NewInspectionScreen() {
                         const markerIndex = uri.indexOf(base64Marker);
                         if (markerIndex === -1) {
                             handleImageError(new Error("Invalid Data URL from web camera."));
+                            document.body.removeChild(input);
                             return;
                         }
                         const base64 = uri.substring(markerIndex + base64Marker.length);
                         handleImageResult({ assets: [{ uri, base64 }] });
+                        document.body.removeChild(input);
                     };
-                    reader.onerror = (error) => handleImageError(error);
+                    reader.onerror = (error) => {
+                        handleImageError(error);
+                        document.body.removeChild(input);
+                    };
                     reader.readAsDataURL(file);
                 } catch (err) {
                     handleImageError(err);
+                    document.body.removeChild(input);
                 }
+            } else {
+                document.body.removeChild(input);
             }
-        };
+        });
         input.click();
     };
 
