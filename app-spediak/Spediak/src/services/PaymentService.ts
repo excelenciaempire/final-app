@@ -1,25 +1,22 @@
 import { Platform } from 'react-native';
 
-// ── RevenueCat API keys ─────────────────────────────────────────────────────
-const RC_API_KEY_IOS     = process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY     || 'appl_placeholder';
-const RC_API_KEY_ANDROID = process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY || 'goog_placeholder';
-const RC_API_KEY_WEB     = process.env.EXPO_PUBLIC_REVENUECAT_WEB_KEY     || 'rcb_placeholder';
+// ── RevenueCat API key (same for iOS and Android) ────────────────────────────
+const RC_API_KEY = 'test_bGkjpmqYvnNwpOUAEsWhnZnbHvC';
 
-// Entitlement identifiers — must match RevenueCat dashboard exactly
-const RC_ENTITLEMENT_PRO      = 'Spediak  Pro';       // double space intentional
-const RC_ENTITLEMENT_PLATINUM = 'Spediak Platinum';
+// Entitlement identifier — must match RevenueCat dashboard exactly
+const RC_ENTITLEMENT_PRO = 'Spediak  Pro'; // double space is intentional
 
 // ── Native-only SDK (react-native-purchases) ─────────────────────────────────
-let Purchases: any   = null;
-let LOG_LEVEL: any   = null;
+let Purchases: any    = null;
+let LOG_LEVEL: any    = null;
 let RevenueCatUI: any = null;
 let PAYWALL_RESULT: any = null;
 
 if (Platform.OS !== 'web') {
   try {
     const rcModule = require('react-native-purchases');
-    Purchases  = rcModule.default;
-    LOG_LEVEL  = rcModule.LOG_LEVEL;
+    Purchases = rcModule.default;
+    LOG_LEVEL = rcModule.LOG_LEVEL;
   } catch {
     console.warn('[PaymentService] react-native-purchases not available');
   }
@@ -33,114 +30,72 @@ if (Platform.OS !== 'web') {
   }
 }
 
-// ── Web SDK (@revenuecat/purchases-js) ───────────────────────────────────────
-// Loaded lazily to avoid bundling issues when RC_API_KEY_WEB is not yet set.
-let webPurchasesInstance: any = null;
-
-async function getWebPurchases(appUserId: string): Promise<any> {
-  if (webPurchasesInstance) return webPurchasesInstance;
-  try {
-    const { Purchases: RCWeb } = await import('@revenuecat/purchases-js');
-    webPurchasesInstance = RCWeb.configure(RC_API_KEY_WEB, appUserId);
-    return webPurchasesInstance;
-  } catch (e) {
-    console.error('[PaymentService] Failed to load RevenueCat web SDK:', e);
-    return null;
-  }
-}
-
 export type PlanId = 'pro' | 'platinum';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// initializePayments — call once in App.tsx on native only
+// initializePayments — call once at app startup (App.tsx)
+// Native only; no-op on web
 // ─────────────────────────────────────────────────────────────────────────────
 export function initializePayments(): void {
   if (Platform.OS === 'web' || !Purchases) return;
 
   try {
-    if (LOG_LEVEL) Purchases.setLogLevel(LOG_LEVEL.VERBOSE);
+    Purchases.setLogLevel(LOG_LEVEL.VERBOSE);
 
-    const apiKey = Platform.OS === 'ios' ? RC_API_KEY_IOS : RC_API_KEY_ANDROID;
-    Purchases.configure({ apiKey });
-    console.log('[PaymentService] RevenueCat native SDK initialized');
+    if (Platform.OS === 'ios') {
+      Purchases.configure({ apiKey: RC_API_KEY });
+    } else if (Platform.OS === 'android') {
+      Purchases.configure({ apiKey: RC_API_KEY });
+    }
+
+    console.log('[PaymentService] RevenueCat initialized');
   } catch (error) {
     console.error('[PaymentService] Failed to initialize RevenueCat:', error);
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// purchaseSubscription — RevenueCat on ALL platforms
+// purchaseSubscription — present RevenueCat paywall on native
+// Web: not supported via RevenueCat native SDK — inform user
 // ─────────────────────────────────────────────────────────────────────────────
 export async function purchaseSubscription(
-  planId: PlanId,
-  getToken: () => Promise<string | null>
+  _planId: PlanId,
+  _getToken: () => Promise<string | null>
 ): Promise<{ success: boolean; error?: string }> {
   if (Platform.OS === 'web') {
-    return purchaseWeb(planId, getToken);
+    // RevenueCat native SDK is not available on web.
+    // Purchases are handled through the iOS/Android apps.
+    if (typeof window !== 'undefined') {
+      window.alert(
+        'Subscriptions are managed through our mobile app.\n\nDownload Spediak on the App Store or Google Play to subscribe.'
+      );
+    }
+    return { success: false, error: 'Use mobile app to subscribe' };
   }
+
   return presentNativePaywall();
 }
 
-// Web: use @revenuecat/purchases-js
-async function purchaseWeb(
-  planId: PlanId,
-  getToken: () => Promise<string | null>
-): Promise<{ success: boolean; error?: string }> {
-  try {
-    // Use the Clerk token as the app user ID so RevenueCat ties purchases to users
-    const token = await getToken();
-    const appUserId = token ? `clerk_${token.split('.')[1]?.slice(0, 16) || 'user'}` : 'anonymous';
-
-    const purchases = await getWebPurchases(appUserId);
-    if (!purchases) {
-      return { success: false, error: 'RevenueCat web SDK could not be loaded.' };
-    }
-
-    // Fetch offerings and find the right package
-    const offerings = await purchases.getOfferings();
-    const current = offerings?.current;
-    if (!current) {
-      return { success: false, error: 'No offerings available. Please try again later.' };
-    }
-
-    // Match package by plan ID — looks for 'pro' or 'platinum' in package identifier
-    const pkg = current.availablePackages.find((p: any) => {
-      const id = (p.identifier || p.packageType || '').toLowerCase();
-      return id.includes(planId);
-    }) || current.availablePackages[0];
-
-    if (!pkg) {
-      return { success: false, error: 'Plan not available. Please try again later.' };
-    }
-
-    await purchases.purchase({ rcPackage: pkg });
-    return { success: true };
-  } catch (error: any) {
-    if (error?.userCancelled || error?.message?.toLowerCase().includes('cancel')) {
-      return { success: false, error: 'Purchase cancelled' };
-    }
-    console.error('[PaymentService] Web purchase error:', error);
-    return { success: false, error: error.message || 'Purchase failed. Please try again.' };
-  }
-}
-
-// Native: show RevenueCat paywall UI
+// ─────────────────────────────────────────────────────────────────────────────
+// presentNativePaywall — shows RevenueCat paywall UI
+// ─────────────────────────────────────────────────────────────────────────────
 async function presentNativePaywall(): Promise<{ success: boolean; error?: string }> {
   if (!RevenueCatUI || !PAYWALL_RESULT) {
     return { success: false, error: 'Paywall UI not available on this platform' };
   }
 
   try {
-    const result = await RevenueCatUI.presentPaywall();
+    const paywallResult: typeof PAYWALL_RESULT = await RevenueCatUI.presentPaywall();
 
-    switch (result) {
+    switch (paywallResult) {
       case PAYWALL_RESULT.PURCHASED:
       case PAYWALL_RESULT.RESTORED:
         return { success: true };
+      case PAYWALL_RESULT.NOT_PRESENTED:
+      case PAYWALL_RESULT.ERROR:
       case PAYWALL_RESULT.CANCELLED:
-        return { success: false, error: 'Purchase cancelled' };
       default:
-        return { success: false, error: 'Paywall could not be presented. Check RevenueCat dashboard configuration.' };
+        return { success: false, error: 'Purchase cancelled' };
     }
   } catch (error: any) {
     console.error('[PaymentService] Native paywall error:', error);
@@ -156,10 +111,7 @@ export async function hasProEntitlement(): Promise<boolean> {
 
   try {
     const customerInfo = await Purchases.getCustomerInfo();
-    return (
-      typeof customerInfo.entitlements.active[RC_ENTITLEMENT_PRO] !== 'undefined' ||
-      typeof customerInfo.entitlements.active[RC_ENTITLEMENT_PLATINUM] !== 'undefined'
-    );
+    return typeof customerInfo.entitlements.active[RC_ENTITLEMENT_PRO] !== 'undefined';
   } catch (e) {
     console.error('[PaymentService] Error fetching customer info:', e);
     return false;
@@ -167,38 +119,20 @@ export async function hasProEntitlement(): Promise<boolean> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// restorePurchases
+// restorePurchases — native only
 // ─────────────────────────────────────────────────────────────────────────────
-export async function restorePurchases(
-  getToken?: () => Promise<string | null>
-): Promise<{ success: boolean; error?: string }> {
+export async function restorePurchases(): Promise<{ success: boolean; error?: string }> {
   if (Platform.OS === 'web') {
-    // Web: re-fetch offerings; RevenueCat JS SDK handles restore automatically on configure
-    if (getToken) {
-      const token = await getToken();
-      const appUserId = token ? `clerk_${token.split('.')[1]?.slice(0, 16) || 'user'}` : 'anonymous';
-      const purchases = await getWebPurchases(appUserId);
-      if (purchases) {
-        try {
-          const info = await purchases.getCustomerInfo();
-          const active = info?.entitlements?.active || {};
-          const hasSub = Object.keys(active).length > 0;
-          return { success: hasSub };
-        } catch {
-          return { success: false, error: 'Could not retrieve subscription info.' };
-        }
-      }
-    }
-    return { success: false, error: 'To manage your subscription on web, refresh the page.' };
+    return { success: false, error: 'Restore purchases is available on the mobile app.' };
   }
 
-  if (!Purchases) return { success: false, error: 'In-app purchases not available' };
+  if (!Purchases) {
+    return { success: false, error: 'In-app purchases not available' };
+  }
 
   try {
     const customerInfo = await Purchases.restorePurchases();
-    const hasPro =
-      typeof customerInfo.entitlements.active[RC_ENTITLEMENT_PRO] !== 'undefined' ||
-      typeof customerInfo.entitlements.active[RC_ENTITLEMENT_PLATINUM] !== 'undefined';
+    const hasPro = typeof customerInfo.entitlements.active[RC_ENTITLEMENT_PRO] !== 'undefined';
     return { success: hasPro };
   } catch (error: any) {
     return { success: false, error: error.message || 'Restore failed' };
