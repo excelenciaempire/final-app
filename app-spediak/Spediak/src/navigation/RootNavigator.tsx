@@ -393,7 +393,7 @@ const RootNavigator: React.FC = () => {
   // --- Mobile/Small Web Drawer Layout ---
   return (
     <ImpersonationProvider>
-      <View style={{ flex: 1 }}>
+      <View style={{ flex: 1, overflow: 'hidden' }}>
         <ImpersonationBanner />
         <Drawer.Navigator
             initialRouteName="Home"
