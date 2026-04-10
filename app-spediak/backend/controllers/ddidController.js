@@ -11,7 +11,7 @@ const anthropic = new Anthropic({
 // ============================================
 const CLAUDE_CONFIG = {
   model: 'claude-sonnet-4-6',
-  maxTokens: 300,
+  maxTokens: 500,
   temperature: 0.5,
 };
 
@@ -160,31 +160,39 @@ async function getSopContext(state, organization) {
  */
 const generateDdidController = async (req, res) => {
   const startTime = Date.now();
-  const { imageBase64, description, userState } = req.body;
+  const { imageBase64, description, userState, organization, organizations } = req.body;
   const clerkId = req.auth?.userId;
 
   if (!description || !userState || !imageBase64) {
     return res.status(400).json({ message: 'Missing required fields (image, description, userState).' });
   }
 
-  console.log(`[⚡ Fast DDID] Request - State: ${userState}`);
+  // Support both organizations[] array and legacy organization string
+  const orgsToUse = Array.isArray(organizations) && organizations.length > 0
+    ? organizations.filter(o => o && o !== 'None')
+    : (organization && organization !== 'None' ? [organization] : []);
+
+  console.log(`[⚡ Fast DDID] Request - State: ${userState}, Orgs: ${orgsToUse.join(', ') || 'None'}`);
 
   try {
-    // Parallel fetch: subscription + prompt + knowledge
-    const [subscriptionData, promptData, knowledge] = await Promise.all([
+    // Parallel fetch: subscription + prompt + knowledge + SOP
+    const [subscriptionData, promptData, knowledge, sopContext] = await Promise.all([
       clerkId ? pool.query(
         'SELECT plan_type, statements_used, statements_limit, last_reset_date FROM user_subscriptions WHERE clerk_id = $1',
         [clerkId]
       ) : Promise.resolve({ rows: [] }),
-      
+
       // Use cached prompt if available
       getCachedPrompt(),
-      
+
       // Knowledge base search (with timeout)
       Promise.race([
         searchKnowledgeBase(description),
         new Promise(resolve => setTimeout(() => resolve(''), 2000)) // 2s timeout
-      ]).catch(() => '')
+      ]).catch(() => ''),
+
+      // SOP context (State + all Organizations)
+      getSopContextFast(userState, orgsToUse)
     ]);
 
     console.log(`[⚡ Fast DDID] Parallel fetch completed in ${Date.now() - startTime}ms`);
@@ -217,8 +225,15 @@ const generateDdidController = async (req, res) => {
     }
 
     // Build optimized prompt
-    const prompt = `${knowledge ? `Context: ${knowledge.substring(0, 500)}\n` : ''}${promptData ? promptData.substring(0, 1500) : 'Generate DDID statement.'}
-State: ${userState}
+    const hasSop = sopContext && sopContext.length > 0;
+    const hasKnowledge = knowledge && knowledge.length > 0;
+    const basePrompt = promptData ? promptData.substring(0, 3500) : 'You are a home inspection assistant. Generate a four-sentence DDID inspection statement in plain everyday language that a non-technical homebuyer can understand.';
+    const prompt = `${basePrompt}
+
+=== INSPECTION CONTEXT ===
+State: ${userState}${orgsToUse.length > 0 ? `\nOrganizations: ${orgsToUse.join(', ')}` : ''}
+
+${hasSop ? `=== STANDARDS OF PRACTICE ===\n${sopContext}\n` : ''}${hasKnowledge ? `=== KNOWLEDGE BASE ===\n${knowledge.substring(0, 800)}\n` : ''}
 Description: ${description}
 Generate now.`;
 
@@ -255,7 +270,10 @@ Generate now.`;
     console.log(`[⚡ Fast DDID] Complete in ${totalTime}ms (API: ${apiTime}ms)`);
 
     // Send response first
-    res.json({ ddid, processingTime: totalTime });
+    if (!hasSop) {
+      console.log(`[⚡ Fast DDID] No SOP context found for state: ${userState}, orgs: ${orgsToUse.join(', ') || 'None'} — generic mode`);
+    }
+    res.json({ ddid, sopUsed: hasSop, sopMissing: !hasSop, state: userState, organizations: orgsToUse, processingTime: totalTime });
 
     // Non-blocking usage increment
     if (clerkId) {
@@ -392,15 +410,15 @@ const generateStatementDirect = async (req, res) => {
     // Sources: 1) State SOP, 2) Org SOP, 3) Knowledge Base, 4) DDID Prompt, 5) Image+Notes
     const hasSop = sopContext && sopContext.length > 0;
     const hasKnowledge = knowledge && knowledge.length > 0;
-    const basePrompt = ddidPrompt || 'You are a professional home inspector. Generate a DDID statement (Describe, Determine, Implication, Direction) for the inspection finding shown in the image.';
-    
+    const basePrompt = (ddidPrompt ? ddidPrompt.substring(0, 3500) : null) || 'You are a home inspection assistant. Generate a four-sentence DDID inspection statement in plain everyday language that a non-technical homebuyer can understand.';
+
     const prompt = `${basePrompt}
 
 === INSPECTION CONTEXT ===
 State: ${userState}${orgsToUse.length > 0 ? `\nOrganizations: ${orgsToUse.join(', ')}` : ''}${notes ? `\nInspector Notes: ${notes.substring(0, 300)}` : ''}
 
 ${hasSop ? `=== STANDARDS OF PRACTICE ===\n${sopContext}\n` : ''}${hasKnowledge ? `=== KNOWLEDGE BASE ===\n${knowledge.substring(0, 1500)}\n` : ''}
-Write ONE professional paragraph using DDID format: Describe the condition → Determine the issue → Implication if not addressed → Direction/recommendation. 4-6 sentences, technical language, no bullet points.`;
+Write ONE paragraph using DDID format: Describe the condition → Determine the issue → Implication → Direction/recommendation. 4-6 sentences, plain language, no bullet points.`;
 
     console.log(`[⚡ Fast Generate] Calling Claude ${CLAUDE_CONFIG.model}...`);
     const apiStart = Date.now();
@@ -446,9 +464,13 @@ Write ONE professional paragraph using DDID format: Describe the condition → D
     console.log(`[⚡ Fast Generate] Total time: ${totalTime}ms (API: ${apiTime}ms)`);
 
     // Send response immediately
+    if (!hasSop) {
+      console.log(`[⚡ Fast Generate] No SOP context found for state: ${userState}, orgs: ${orgsToUse.join(', ') || 'None'} — generic mode`);
+    }
     res.json({
       statement,
       sopUsed: hasSop,
+      sopMissing: !hasSop,
       state: userState,
       organizations: orgsToUse,
       processingTime: totalTime
@@ -510,16 +532,18 @@ async function getSopContextFast(state, orgs) {
     ]);
 
     // Add State SOP (5000 chars max)
-    if (stateResult.rows.length > 0 && stateResult.rows[0].extracted_text) {
+    const hasStateSop = stateResult.rows.length > 0 && stateResult.rows[0].extracted_text;
+    if (hasStateSop) {
       sopParts.push(`[STATE: ${state}]\n${stateResult.rows[0].extracted_text.substring(0, 5000)}`);
     }
 
-    // Add each Org SOP (3000 chars max per org to stay within token limits)
+    // Add each Org SOP — 5000 chars when org is the only compliance authority, 3000 when state SOP is also present
+    const orgCharLimit = hasStateSop ? 3000 : 5000;
     for (let i = 0; i < orgResults.length; i++) {
       const orgResult = orgResults[i];
       const orgName = orgList[i];
       if (orgResult.rows.length > 0 && orgResult.rows[0].extracted_text) {
-        sopParts.push(`[ORG: ${orgName}]\n${orgResult.rows[0].extracted_text.substring(0, 3000)}`);
+        sopParts.push(`[ORG: ${orgName}]\n${orgResult.rows[0].extracted_text.substring(0, orgCharLimit)}`);
       }
     }
 

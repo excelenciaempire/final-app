@@ -668,6 +668,8 @@ export default function NewInspectionScreen() {
                 imageBase64,
                 description: finalDescription,
                 userState,
+                organizations: userOrganizations,
+                organization: userOrganizations[0] || 'None', // backward compat
             }, {
                 headers: { Authorization: `Bearer ${token}` },
             });
