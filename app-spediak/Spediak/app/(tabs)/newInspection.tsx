@@ -1363,7 +1363,7 @@ const webDropZoneDraggingStyle = {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#000',
+        backgroundColor: '#ffffff',
     },
     contentContainer: {
         padding: 20,
