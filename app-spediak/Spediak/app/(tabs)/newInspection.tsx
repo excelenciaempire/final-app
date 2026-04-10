@@ -1460,7 +1460,8 @@ const styles = StyleSheet.create({
     },
     buttonText: { color: '#fff', fontSize: 16, fontWeight: '600', },
     analyzeButton: {
-        backgroundColor: COLORS.primary,
+        backgroundColor: '#7c3aed',
+        borderRadius: 0,
     },
     newChatButton: {
         backgroundColor: '#FFFFFF', 
