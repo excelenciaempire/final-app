@@ -21,7 +21,8 @@ module.exports = {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      }
+      },
+      "package": "com.spediak.app"
     },
     "web": {
       "name": "Spediak",
@@ -34,8 +35,8 @@ module.exports = {
       "clerkPublishableKey": process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY,
       "apiUrl": process.env.EXPO_PUBLIC_API_URL,
       "eas": {
-        "projectId": "your-project-id"
-    }
+        "projectId": "1e7ca42b-9d2a-4e2f-ba81-bcceea9afcbc"
+      }
     },
     "plugins": [
       "expo-router"
